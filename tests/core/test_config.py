@@ -1,0 +1,52 @@
+from pathlib import Path
+
+import pytest
+
+from pmem.core.config import Config, ConfigError, find_root
+
+
+def write_config(root: Path, text: str) -> None:
+    (root / ".memory").mkdir(parents=True, exist_ok=True)
+    (root / ".memory" / "config.yaml").write_text(text, encoding="utf-8")
+
+
+def test_defaults_fill_missing_keys(tmp_path):
+    write_config(tmp_path, "project: { name: demo }\ngate: { mode: block }\n")
+    cfg = Config.load(tmp_path)
+    assert cfg.get("project.name") == "demo"
+    assert cfg.get("gate.mode") == "block"
+    assert cfg.get("gate.skip_markers") == ["跳过记忆", "skip-memory"]
+    assert cfg.get("search.limit") == 5
+    assert cfg.get("vcs") == "auto"
+
+
+def test_empty_config_file_uses_defaults(tmp_path):
+    write_config(tmp_path, "")
+    assert Config.load(tmp_path).get("write.max_per_day_per_entity") == 5
+
+
+def test_invalid_gate_mode_is_rejected(tmp_path):
+    write_config(tmp_path, "gate: { mode: strict }\n")
+    with pytest.raises(ConfigError, match="gate.mode"):
+        Config.load(tmp_path)
+
+
+def test_find_root_walks_up(tmp_path):
+    write_config(tmp_path, "")
+    nested = tmp_path / "a" / "b"
+    nested.mkdir(parents=True)
+    assert find_root(nested) == tmp_path.resolve()
+
+
+def test_find_root_returns_none_outside_project(tmp_path):
+    assert find_root(tmp_path) is None
+
+
+def test_paths_and_cache_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
+    write_config(tmp_path, "")
+    cfg = Config.load(tmp_path)
+    assert cfg.entries_dir == tmp_path.resolve() / ".memory" / "entries"
+    assert cfg.modules_path == tmp_path.resolve() / ".memory" / "modules.yaml"
+    assert cfg.cache_dir.parent == tmp_path / "cache"
+    assert cfg.cache_dir == Config.load(tmp_path).cache_dir

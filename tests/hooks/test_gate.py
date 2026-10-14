@@ -3,7 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from pmem.hooks.gate import handle, shell_write_targets
+from pmem.core.config import Config
+from pmem.hooks.gate import cli_search_args, handle, shell_write_targets
+from pmem.metrics.events import read_events
 
 CONFIG = "project: {{ name: demo }}\nvcs: none\ngate: {{ mode: {mode} }}\n"
 MODULES = """
@@ -200,3 +202,52 @@ def test_stop_is_quiet_when_aborted(make_project):
     root = make_project()
     handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
     assert handle("stop", {"conversation_id": "c1", "status": "aborted"}, root) == {}
+
+
+@pytest.mark.parametrize(
+    ("command", "args"),
+    [
+        ("pmem search --module gameplay.Jigsaw", {"module": "gameplay.Jigsaw"}),
+        ("cd proj; uv run pmem search --path src/a.cs", {"path": "src/a.cs"}),
+        (r"C:\bin\pmem.exe search 奖励", {}),
+        ("pmem list", None),
+        ("echo pmem search", None),
+    ],
+)
+def test_cli_search_args(command, args):
+    assert cli_search_args(command) == args
+
+
+def test_cli_search_in_shell_counts_as_searched(make_project):
+    root = make_project("block")
+    shell = {"conversation_id": "c1", "tool_name": "Shell",
+             "tool_input": {"command": "pmem search --module gameplay.Jigsaw", "cwd": ""}}
+    assert handle("pre-tool", shell, root)["permission"] == "allow"
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+
+
+def test_search_injection_adds_conversation(make_project):
+    root = make_project()
+    payload = {"conversation_id": "c1", "tool_name": "MCP:search_memory", "tool_input": {"module": "gameplay.Jigsaw"}}
+    assert handle("pre-tool", payload, root)["updated_input"]["source_conversation"] == "c1"
+
+
+def test_events_are_logged_for_report(make_project):
+    root = make_project("warn")
+    handle("prompt", {"conversation_id": "c1", "prompt": "修一下", "composer_mode": "agent"}, root)
+    handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
+    handle("before-mcp", search_payload(module="gameplay.Jigsaw"), root)
+    after = {"conversation_id": "c1", "tool_name": "MCP:search_memory",
+             "result_json": json.dumps({"ok": True, "module": "gameplay.Jigsaw",
+                                        "items": [{"id": "01JA7K3M2X9F4Q8W6ZB1C2D3E4", "kind": "conclusion"}]})}
+    handle("after-mcp", after, root)
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Jigsaw/Board.cs")}, root)
+    handle("stop", {"conversation_id": "c1", "status": "completed", "input_tokens": 1000, "output_tokens": 50,
+                    "transcript_path": "t.jsonl"}, root)
+    events = list(read_events(Config.load(root).cache_dir))
+    assert [e["type"] for e in events] == ["prompt", "gate", "search_call", "mcp_search", "edit", "stop"]
+    assert all(e["conv"] == "c1" for e in events)
+    assert events[3]["ids"] == ["01JA7K3M2X9F4Q8W6ZB1C2D3E4"]
+    stop = events[-1]
+    assert stop["input_tokens"] == 1000 and stop["returned"] == ["01JA7K3M2X9F4Q8W6ZB1C2D3E4"]
+    assert stop["nudged"] == ["gameplay.Jigsaw"]

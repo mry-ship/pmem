@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import difflib
+import time
 from datetime import date
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from pmem.core.registry import ModuleRegistry, RegistryError
 from pmem.core.secrets import find_secrets
 from pmem.index.embedder import make_embedder
 from pmem.index.store import MemoryIndex
+from pmem.metrics.events import log_event
 from pmem.storage.files import FilesStorage, StorageError
 from pmem.vcs.detect import detect_vcs
 
@@ -24,10 +26,12 @@ def _fail(message: str, **extra) -> dict:
 class MemoryService:
     """三个工具背后的业务规则；MCP 与 CLI 共用。"""
 
-    def __init__(self, root: str | Path):
+    def __init__(self, root: str | Path, source: str = "cli"):
         self.config = Config.load(root)
         self.root = self.config.root
+        self.source = source
         self.vcs = detect_vcs(self.root, self.config.get("vcs"))
+        self._user: str | None = None
         self.storage = FilesStorage(self.root, self.vcs, bool(self.config.get("svn_auto_add")))
         self._registry: ModuleRegistry | None = None
         self._registry_stamp: tuple[int, int] | None = None
@@ -58,6 +62,15 @@ class MemoryService:
         if self._index is not None:
             self._index.close()
 
+    @property
+    def user(self) -> str:
+        if self._user is None:
+            self._user = self.vcs.current_user()
+        return self._user
+
+    def _log(self, event_type: str, **fields) -> None:
+        log_event(self.config.cache_dir, event_type, source=self.source, user=self.user, **fields)
+
     def _similar(self, name: str) -> list[str]:
         known = set(self.registry.modules) | set(self.index.module_stats())
         lowered = {k.lower(): k for k in known}
@@ -73,7 +86,27 @@ class MemoryService:
         entity: str | None = None,
         query: str | None = None,
         limit: int | None = None,
+        source_conversation: str | None = None,
     ) -> dict:
+        started = time.perf_counter()
+        response = self._search(module, path, entity, query, limit)
+        items = response.get("items") or []
+        self._log(
+            "search",
+            conv=source_conversation,
+            ok=response.get("ok"),
+            module=response.get("module"),
+            entity=entity or None,
+            query=(query or None) and query[:200],
+            ids=[i["id"] for i in items],
+            kinds=[i["kind"] for i in items],
+            authors=[i.get("author") for i in items],
+            fallback=response.get("fallback"),
+            ms=round((time.perf_counter() - started) * 1000),
+        )
+        return response
+
+    def _search(self, module, path, entity, query, limit) -> dict:
         limit = max(1, min(int(limit or self.config.get("search.limit")), MAX_LIMIT))
         response: dict = {"ok": True}
         module_id: str | None = None
@@ -224,6 +257,16 @@ class MemoryService:
             warnings.append(f"{resolved.id} 尚未登记在 modules.yaml；如是笔误请改用相近模块")
         if warnings:
             response["warnings"] = warnings
+        self._log(
+            "record",
+            conv=source_conversation,
+            id=written.entry.id,
+            module=resolved.id,
+            entity=entity_id,
+            kind=kind,
+            overwritten=written.overwritten,
+            supersedes=entry.supersedes or None,
+        )
         return response
 
     # ---- list_modules ----

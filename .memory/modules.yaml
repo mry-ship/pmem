@@ -47,6 +47,11 @@ modules:
     description: init / scan / doctor 与生成的规则、技能、配置
     paths: [src/pmem/cli/init_cmd.py, src/pmem/cli/doctor_cmd.py, src/pmem/generate/**, src/pmem/scan/**, tests/test_cli_flow.py]
     aliases: [Init, Doctor, Scan]
+  feature.Metrics:
+    description: 收益量化：本机事件日志、pmem report、引用识别、对照实验
+    paths: [src/pmem/metrics/**, src/pmem/bench/**, tests/metrics/**, tests/bench/**, scripts/calibrate_cite.py, bench/**]
+    aliases: [Report, Bench]
+    entities: [Events, Citation, Compare, Bench]
   infra.Model:
     description: 记忆条目、ULID 与配置
     paths: [src/pmem/core/entry.py, src/pmem/core/ids.py, src/pmem/core/config.py, tests/core/test_entry.py, tests/core/test_ids.py, tests/core/test_config.py]

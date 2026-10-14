@@ -31,18 +31,27 @@ def resolve_root(raw: str | None) -> Path | None:
 def build_server(root: Path | None) -> MCPServer:
     from pmem.service import MemoryService
 
-    service = MemoryService(root) if root is not None else None
+    service = MemoryService(root, source="mcp") if root is not None else None
     missing = {"ok": False, "error": "当前工作区还没有接入 pmem：请在项目根目录运行 pmem init"}
     server = MCPServer("pmem", instructions=INSTRUCTIONS)
 
     @server.tool()
-    def search_memory(module: str = "", path: str = "", entity: str = "", query: str = "", limit: int = 5) -> str:
+    def search_memory(
+        module: str = "",
+        path: str = "",
+        entity: str = "",
+        query: str = "",
+        limit: int = 5,
+        source_conversation: str = "",
+    ) -> str:
         """检索项目研发记忆。改代码前先查：传 path（要改的文件路径）或 module（category.Module）；
         entity 为模块内议题（如 Reward、Config），可省略；query 为关键词或问题描述。
-        都不确定时只传 query 做全局检索。返回按相关度排序的记忆，stale=true 表示关联代码已变。"""
+        都不确定时只传 query 做全局检索。返回按相关度排序的记忆，stale=true 表示关联代码已变。
+        source_conversation 由系统自动填写，无需传。"""
         if service is None:
             return _dump(missing)
-        return _dump(service.search(module or None, path or None, entity or None, query or None, limit))
+        return _dump(service.search(module or None, path or None, entity or None, query or None, limit,
+                                    source_conversation or None))
 
     @server.tool()
     def record_memory(

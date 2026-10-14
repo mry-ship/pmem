@@ -1,0 +1,254 @@
+"""pmem report：从本机事件日志与记忆库算出可量化的收益。"""
+from __future__ import annotations
+
+import json
+import statistics
+import time
+from collections import Counter, defaultdict
+from pathlib import Path
+
+from pmem.core.registry import RegistryError
+from pmem.index.store import ulid_ms
+from pmem.metrics.cite import assistant_text, judge
+from pmem.metrics.events import read_events
+from pmem.scan.lite import file_heat
+from pmem.service import MemoryService
+
+AVOID_KINDS = {"exclusion", "risk", "correction"}
+KIND_NAMES = {"conclusion": "结论", "exclusion": "排除", "correction": "更正", "risk": "风险", "decision": "决定"}
+MIN_GROUP = 5
+HOT_TOP = 10
+
+
+def _median(values: list[float]) -> float | None:
+    return statistics.median(values) if values else None
+
+
+def _conversations(events: list[dict]) -> dict[str, dict]:
+    convs: dict[str, dict] = defaultdict(lambda: {
+        "prompts": 0, "stops": 0, "edits": 0, "input_tokens": 0, "output_tokens": 0,
+        "returned": set(), "recorded": set(), "transcript": None, "start": None, "end": None,
+    })
+    for e in events:
+        conv = e.get("conv")
+        if not conv:
+            continue
+        c = convs[conv]
+        c["start"] = e["ts"] if c["start"] is None else min(c["start"], e["ts"])
+        c["end"] = e["ts"] if c["end"] is None else max(c["end"], e["ts"])
+        kind = e["type"]
+        if kind == "prompt":
+            c["prompts"] += 1
+        elif kind == "edit":
+            c["edits"] += 1
+        elif kind == "stop":
+            c["stops"] += 1
+            c["input_tokens"] += e.get("input_tokens") or 0
+            c["output_tokens"] += e.get("output_tokens") or 0
+            c["returned"].update(e.get("returned") or [])
+            c["recorded"].update(e.get("recorded") or [])
+            c["transcript"] = e.get("transcript") or c["transcript"]
+        elif kind in ("mcp_search", "search"):
+            c["returned"].update(e.get("ids") or [])
+        elif kind in ("mcp_record", "record"):
+            c["recorded"].update(e.get("ids") or ([e["id"]] if e.get("id") else []))
+    return convs
+
+
+def _citations(cache_dir: Path, convs: dict[str, dict], contents: dict[str, str]) -> dict:
+    cache_path = cache_dir / "cites.json"
+    try:
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        cache = {}
+    returned = cited = 0
+    cited_ids: Counter = Counter()
+    for conv, c in convs.items():
+        ids = sorted(i for i in c["returned"] - c["recorded"] if i in contents)
+        transcript = Path(c["transcript"]) if c["transcript"] else None
+        if not ids or transcript is None or not transcript.exists():
+            continue
+        stamp = f"{transcript.stat().st_mtime_ns}:{','.join(ids)}"
+        hit = cache.get(conv)
+        if not hit or hit.get("stamp") != stamp:
+            verdict = judge({i: contents[i] for i in ids}, assistant_text(transcript))
+            hit = {"stamp": stamp, "cited": [i for i, v in verdict.items() if v["cited"]]}
+            cache[conv] = hit
+        returned += len(ids)
+        cited += len(hit["cited"])
+        cited_ids.update(hit["cited"])
+    try:
+        cache_path.write_text(json.dumps(cache), encoding="utf-8")
+    except OSError:
+        pass
+    return {"returned": returned, "cited": cited, "top": cited_ids.most_common(5)}
+
+
+def _compare(convs: dict[str, dict]) -> dict:
+    groups: dict[str, list[dict]] = {"hit": [], "miss": []}
+    for c in convs.values():
+        if c["edits"] == 0 or c["stops"] == 0:
+            continue
+        groups["hit" if c["returned"] - c["recorded"] else "miss"].append(c)
+    out = {}
+    for name, rows in groups.items():
+        out[name] = {
+            "n": len(rows),
+            "input_tokens": _median([r["input_tokens"] for r in rows]),
+            "output_tokens": _median([r["output_tokens"] for r in rows]),
+            "turns": _median([max(r["prompts"], r["stops"]) for r in rows]),
+            "edits": _median([r["edits"] for r in rows]),
+            "minutes": _median([(r["end"] - r["start"]) / 60 for r in rows]),
+        }
+    out["enough"] = all(out[g]["n"] >= MIN_GROUP for g in ("hit", "miss"))
+    return out
+
+
+def build_report(root: Path, days: int = 30, now: float | None = None, heat: bool = True) -> dict:
+    now = now or time.time()
+    since = now - days * 86400
+    service = MemoryService(root)
+    try:
+        cache_dir = service.config.cache_dir
+        events = list(read_events(cache_dir, since))
+        entries = service.index.entries()
+        hidden = service.index.superseded()
+        registry = service.registry
+    finally:
+        service.close()
+    contents = {e.id: e.content for e in entries}
+
+    searches = [e for e in events if e["type"] == "search" and e.get("ok")]
+    hits = [e for e in searches if e.get("ids")]
+    avoided = [e for e in hits if AVOID_KINDS & set(e.get("kinds") or [])]
+    reused = [e for e in hits if any(a and a != e.get("user") for a in e.get("authors") or [])]
+    reused_authors = {a for e in reused for a in e.get("authors") or [] if a and a != e.get("user")}
+
+    records = [e for e in events if e["type"] == "record"]
+    record_kinds = Counter(e.get("kind") for e in records if not e.get("overwritten"))
+
+    calls = [e for e in events if e["type"] == "search_call"]
+    gates = [e for e in events if e["type"] == "gate"]
+    gate_converted = sum(
+        1 for g in gates
+        if any(c.get("conv") == g.get("conv") and c.get("module") == g.get("module") and c["ts"] >= g["ts"] for c in calls)
+    )
+    written = [e for e in events if e["type"] in ("record", "mcp_record") and e.get("conv")]
+    nudges = [(e, m) for e in events if e["type"] == "stop" for m in e.get("nudged") or []]
+    nudge_converted = sum(
+        1 for stop, module in nudges
+        if any(w["conv"] == stop.get("conv") and w.get("module") == module and w["ts"] >= stop["ts"] for w in written)
+    )
+
+    convs = _conversations(events)
+    visible = [e for e in entries if e.id not in hidden and e.status != "deprecated"]
+    authors_by_module: dict[str, set] = defaultdict(set)
+    for e in visible:
+        authors_by_module[e.module].add(e.author)
+    registered = [m for m, mod in registry.modules.items() if not mod.merged_into]
+
+    hot = []
+    if heat:
+        _, file_counts = file_heat(root)
+        module_heat: Counter = Counter()
+        for path, count in file_counts.items():
+            try:
+                match = registry.module_for_path(path)
+            except RegistryError:
+                continue
+            if match is not None:
+                module_heat[match.module_id] += count
+        hot = [(m, n, len([e for e in visible if e.module == m])) for m, n in module_heat.most_common(HOT_TOP)]
+
+    return {
+        "days": days,
+        "search": {
+            "total": len(searches),
+            "by_source": dict(Counter(e.get("source") for e in searches)),
+            "hits": len(hits),
+            "avoided": len(avoided),
+            "reused": len(reused),
+            "reused_authors": len(reused_authors),
+        },
+        "citations": _citations(cache_dir, convs, contents),
+        "records": {"total": sum(record_kinds.values()), "by_kind": dict(record_kinds)},
+        "habits": {
+            "gates": len(gates), "gate_converted": gate_converted,
+            "nudges": len(nudges), "nudge_converted": nudge_converted,
+            "conversations": len(convs),
+        },
+        "compare": _compare(convs),
+        "assets": {
+            "memories": len(visible),
+            "new": len([e for e in visible if ulid_ms(e.id) / 1000 >= since]),
+            "by_kind": dict(Counter(e.kind for e in visible)),
+            "modules_with_memory": len(authors_by_module),
+            "modules_registered": len(registered),
+            "single_author": sorted(m for m, a in authors_by_module.items() if len(a) == 1),
+            "hot": hot,
+        },
+    }
+
+
+def _pct(part: int, whole: int) -> str:
+    return f"{part / whole:.0%}" if whole else "—"
+
+
+def _num(value: float | None, unit: str = "") -> str:
+    if value is None:
+        return "—"
+    if value >= 10000:
+        return f"{value / 10000:.1f} 万{unit}"
+    return f"{value:.0f}{unit}" if value >= 10 else f"{value:.1f}{unit}"
+
+
+def render(report: dict) -> str:
+    s, c, r, h, a = (report[k] for k in ("search", "citations", "records", "habits", "assets"))
+    kinds = "、".join(f"{KIND_NAMES.get(k, k)} {n}" for k, n in sorted(r["by_kind"].items(), key=lambda kv: -kv[1]))
+    lines = [
+        f"pmem 收益报告（最近 {report['days']} 天，仅本机）",
+        "",
+        "【收益】",
+        f"  检索记忆 {s['total']} 次，命中 {s['hits']} 次（{_pct(s['hits'], s['total'])}）",
+        f"  避坑提示 {s['avoided']} 次：命中结果里含排除项、风险或更正",
+        f"  跨人复用 {s['reused']} 次：用到了 {s['reused_authors']} 位同事写的记忆",
+        (f"  记忆被采用：对话中返回 {c['returned']} 条，Agent 回复里明确用到 {c['cited']} 条"
+         f"（{_pct(c['cited'], c['returned'])}，按字面重合计，是保守下限）"),
+        f"  新写记忆 {r['total']} 条" + (f"（{kinds}）" if kinds else ""),
+        "",
+        "【习惯】",
+        f"  改代码前被提醒先查 {h['gates']} 次，随后真的查了 {h['gate_converted']} 次（{_pct(h['gate_converted'], h['gates'])}）",
+        f"  结束时被提醒记录 {h['nudges']} 次，随后写了 {h['nudge_converted']} 次（{_pct(h['nudge_converted'], h['nudges'])}）",
+    ]
+    cmp_ = report["compare"]
+    lines += ["", "【对话对照】改了代码的对话，按“是否用到他人/既有记忆”分组，取中位数"]
+    lines.append(f"  {'':<10}{'对话数':>6}{'输入 token':>12}{'输出 token':>12}{'轮数':>6}{'编辑':>6}{'时长(分)':>9}")
+    for name, label in (("hit", "用到记忆"), ("miss", "未用到")):
+        g = cmp_[name]
+        lines.append(f"  {label:<10}{g['n']:>6}{_num(g['input_tokens']):>12}{_num(g['output_tokens']):>12}"
+                     f"{_num(g['turns']):>6}{_num(g['edits']):>6}{_num(g['minutes']):>9}")
+    if not cmp_["enough"]:
+        lines.append(f"  样本不足（每组至少 {MIN_GROUP} 个对话才有参考意义）；两组任务难度也不同，只看趋势，严格对比用 pmem bench")
+    lines += [
+        "",
+        "【知识资产】",
+        (f"  有效记忆 {a['memories']} 条，本期新增 {a['new']} 条；"
+         f"{a['modules_with_memory']}/{a['modules_registered']} 个登记模块已有记忆"),
+    ]
+    if a["single_author"]:
+        lines.append(f"  只有一位作者的模块 {len(a['single_author'])} 个（知识集中在一个人）：" + "、".join(a["single_author"][:8]))
+    if a["hot"]:
+        bare = [m for m, _, n in a["hot"] if n == 0]
+        lines.append(f"  近半年改动最多的 {len(a['hot'])} 个模块中，{len(a['hot']) - len(bare)} 个已有记忆")
+        if bare:
+            lines.append("  值得优先补记忆：" + "、".join(bare))
+    return "\n".join(lines)
+
+
+def run_report(root: Path, days: int, as_json: bool) -> int:
+    report = build_report(root, days)
+    if as_json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print(render(report))
+    return 0

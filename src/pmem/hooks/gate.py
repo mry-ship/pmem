@@ -11,6 +11,7 @@ from pmem.core.config import Config
 from pmem.core.registry import ModuleRegistry, RegistryError
 from pmem.hooks.payload import fuzzy_contains, tool_input
 from pmem.hooks.state import SessionState
+from pmem.metrics.events import log_event
 
 WRITE_TOOLS = {"write", "strreplace", "edit", "multiedit", "editnotebook", "delete", "search_replace"}
 _GLOB = wglob.GLOBSTAR | wglob.BRACE | wglob.DOTGLOB | wglob.FORCEUNIX | wglob.IGNORECASE
@@ -19,6 +20,7 @@ _REDIRECT = re.compile(r"(?<![0-9&])>>?\s*([^\s|;&<>]+)")
 _PS_WRITERS = {"set-content", "add-content", "out-file", "new-item", "clear-content", "remove-item", "ri", "sc", "ac"}
 _RM = {"rm", "del", "erase", "rmdir", "rd"}
 _ULID = r"[0-9A-HJKMNP-TV-Z]{26}"
+TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens")
 ALLOW = {"permission": "allow"}
 
 
@@ -53,6 +55,25 @@ def shell_write_targets(command: str) -> list[str]:
         if target.lower() not in _NULL_TARGETS and not target.startswith("-") and target not in seen:
             seen.append(target)
     return seen
+
+
+def cli_search_args(command: str) -> dict | None:
+    """终端里的 `pmem search ...` 视同检索，返回其中的 module/path 参数。"""
+    for segment in re.split(r"\s*(?:\|\||&&|[;|])\s*", command or ""):
+        tokens = _tokens(segment)
+        heads = [re.split(r"[\\/]", t)[-1].lower().removesuffix(".exe") for t in tokens[:4]]
+        if heads[:2] == ["pmem", "search"]:
+            rest = tokens[2:]
+        elif heads[:4] == ["uv", "run", "pmem", "search"]:
+            rest = tokens[4:]
+        else:
+            continue
+        args: dict = {}
+        for i, token in enumerate(rest[:-1]):
+            if token in ("--module", "--path"):
+                args[token[2:]] = rest[i + 1]
+        return args
+    return None
 
 
 # ---- 主逻辑 ----
@@ -109,14 +130,19 @@ class Gate:
         if self.state is not None:
             self.state.save()
 
+    def log(self, event_type: str, **fields) -> None:
+        log_event(self.config.cache_dir, event_type, conv=self.conversation or None, **fields)
+
     # 事件
 
     def on_prompt(self) -> dict:
         text = str(self.payload.get("prompt") or "")
         markers = self.config.get("gate.skip_markers") or []
-        if self.state is not None and any(fuzzy_contains(text, str(m)) for m in markers):
+        skip = any(fuzzy_contains(text, str(m)) for m in markers)
+        if self.state is not None and skip:
             self.state.data["skip"] = True
             self.save()
+        self.log("prompt", mode=self.payload.get("composer_mode"), skip=skip or None)
         return {"continue": True}
 
     def _guard(self, rel: str | None) -> dict | None:
@@ -146,19 +172,25 @@ class Gate:
         retry = "然后重试本次修改" if mode == "warn" else "检索前不能修改该模块"
         # Cursor 只把 user_message 交给 Agent（实测），因此指引必须完整写在这里
         message = f"pmem：{rel} 属于 {module}（已有 {count} 条研发记忆）。请先调用 {call} 了解已有结论，{retry}。"
+        self.log("gate", module=module, file=rel, mode=mode)
         return {"permission": "deny", "user_message": message, "agent_message": message}
 
     def on_pre_tool(self) -> dict:
         name = str(self.payload.get("tool_name") or "")
         args = tool_input(self.payload)
         if "record_memory" in name:
-            return self._inject(args)
+            return self._inject(args, with_draft=True)
         if "search_memory" in name:
-            self._mark_searched(args)
-            return dict(ALLOW)
+            self._mark_searched(args, via="mcp")
+            return self._inject(args, with_draft=False)
         if name.lower() == "shell":
+            command = str(args.get("command") or "")
+            cli_search = cli_search_args(command)
+            if cli_search is not None:
+                self._mark_searched(cli_search, via="cli")
+                return dict(ALLOW)
             base = args.get("cwd") or str(self.root)
-            paths = [self.relative(t, base) for t in shell_write_targets(str(args.get("command") or ""))]
+            paths = [self.relative(t, base) for t in shell_write_targets(command)]
         elif name.lower() in WRITE_TOOLS:
             raw = args.get("file_path") or args.get("path") or args.get("target_file") or ""
             paths = [self.relative(str(raw))]
@@ -170,26 +202,27 @@ class Gate:
                 return verdict
         return dict(ALLOW)
 
-    def _inject(self, args: dict) -> dict:
+    def _inject(self, args: dict, with_draft: bool) -> dict:
         if not args or self.state is None:
             return dict(ALLOW)
         updated = dict(args)
         updated["source_conversation"] = self.conversation
-        module = self.module_from_args({"module": args.get("module")})
+        module = self.module_from_args({"module": args.get("module")}) if with_draft else None
         draft = self.state.data["written"].get(module) if module else None
         if draft and not args.get("draft_id"):
             updated["draft_id"] = draft
         return {"permission": "allow", "updated_input": updated}
 
-    def _mark_searched(self, args: dict) -> None:
+    def _mark_searched(self, args: dict, via: str) -> None:
         module = self.module_from_args(args)
         if module and self.state is not None:
             self.state.add("searched", module)
             self.save()
+        self.log("search_call", module=module, via=via)
 
     def on_before_mcp(self) -> dict:
         if "search_memory" in str(self.payload.get("tool_name") or ""):
-            self._mark_searched(tool_input(self.payload))
+            self._mark_searched(tool_input(self.payload), via="mcp")
         return dict(ALLOW)
 
     def on_after_mcp(self) -> dict:
@@ -201,20 +234,29 @@ class Gate:
             return {}
         module_match = re.search(r'\\*"module\\*"\s*:\s*\\*"([A-Za-z0-9_.]+)', blob)
         module = module_match.group(1) if module_match else None
+        ids = list(dict.fromkeys(re.findall(r'\\*"id\\*"\s*:\s*\\*"(' + _ULID + ")", blob)))
         if "record_memory" in name:
-            id_match = re.search(r'\\*"id\\*"\s*:\s*\\*"(' + _ULID + ")", blob)
-            if module and id_match:
-                self.state.data["written"][module] = id_match.group(1)
-        elif module:
-            self.state.add("searched", module)
+            if module and ids:
+                self.state.data["written"][module] = ids[0]
+                self.state.add("recorded", ids[0])
+            self.log("mcp_record", module=module, ids=ids[:1])
+        else:
+            if module:
+                self.state.add("searched", module)
+            for mid in ids:
+                self.state.add("returned", mid)
+            self.log("mcp_search", module=module, ids=ids)
         self.save()
         return {}
 
     def on_edited(self) -> dict:
-        module = self.module_of(self.relative(str(self.payload.get("file_path") or "")))
+        rel = self.relative(str(self.payload.get("file_path") or ""))
+        module = self.module_of(rel)
         if module and self.state is not None:
             self.state.add("edited", module)
             self.save()
+        if rel is not None:
+            self.log("edit", module=module, file=rel)
         return {}
 
     def on_compact(self) -> dict:
@@ -224,17 +266,33 @@ class Gate:
             self.save()
         return {}
 
+    def _pending_nudges(self, status) -> list[str]:
+        if status not in (None, "completed") or self.state.data["skip"]:
+            return []
+        if not self.config.get("gate.stop_reminder", True) or self.config.get("gate.mode") == "off":
+            return []
+        written = self.state.data["written"]
+        return [m for m in self.state.data["edited"] if m not in written and not self.state.has("nudged", m)]
+
     def on_stop(self) -> dict:
         if self.state is None:
             return {}
         self.state.cleanup_old()
         status = self.payload.get("status")
-        if status not in (None, "completed") or self.state.data["skip"]:
-            return {}
-        if not self.config.get("gate.stop_reminder", True) or self.config.get("gate.mode") == "off":
-            return {}
-        written = self.state.data["written"]
-        pending = [m for m in self.state.data["edited"] if m not in written and not self.state.has("nudged", m)]
+        pending = self._pending_nudges(status)
+        usage = {k: self.payload.get(k) for k in TOKEN_FIELDS if isinstance(self.payload.get(k), int)}
+        self.save()
+        self.log(
+            "stop",
+            status=status,
+            loops=self.payload.get("loop_count"),
+            transcript=self.payload.get("transcript_path"),
+            returned=self.state.data["returned"] or None,
+            recorded=self.state.data["recorded"] or None,
+            edited=self.state.data["edited"] or None,
+            nudged=pending or None,
+            **usage,
+        )
         if not pending:
             return {}
         for module in pending:

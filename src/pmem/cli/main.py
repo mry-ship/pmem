@@ -54,6 +54,11 @@ def build_parser():
 
     p = sub.add_parser("list", help="列出模块与记忆数量")
     p.add_argument("--root", default=".")
+
+    p = sub.add_parser("report", help="本机收益报告：检索命中、避坑、跨人复用、记忆采用率等")
+    p.add_argument("--days", type=int, default=30)
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--root", default=".")
     return parser
 
 
@@ -105,6 +110,10 @@ def main(argv: list[str] | None = None) -> int:
         from pmem.cli.doctor_cmd import run_doctor
 
         return run_doctor(_project_root(args.root))
+    if args.command == "report":
+        from pmem.metrics.report import run_report
+
+        return run_report(_project_root(args.root), args.days, args.json)
     if args.command in ("search", "list", "record"):
         from pmem.service import MemoryService
 

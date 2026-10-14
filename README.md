@@ -157,6 +157,18 @@ pmem bench                     # 每个用例：有记忆、无记忆各跑 repe
 - **Windows 上 Hook 收到的中文是乱码？** 这是 Cursor 在非 UTF-8 代码页下的转码问题，pmem 已经自动兼容。开启 Windows 设置里的“使用 Unicode UTF-8 提供全球语言支持”可以从根本上避免。
 - **第一次查询很慢？** 第一次使用会下载语义模型。运行一次 `pmem doctor` 可以提前下载好。
 - **`modules.yaml` 写错了？** 所有命令都会提示出错的行号；`pmem doctor` 还会检查模块覆盖率和路径重叠。
+- **检索结果不对劲，或者换了嵌入模型？** 运行 `pmem reindex` 清空本机缓存并重建，同时列出无法解析的记忆文件。
+- **查询明明没有相关记忆，为什么还返回了几条？** 检索总是返回得分最高的几条，由 Agent 读正文判断是否相关。用真实数据试过相关度阈值，相关和不相关的得分区间重叠，设阈值会把真命中也挡掉，所以没有加。写记忆时把常用叫法写全（如“闪退/崩溃”），比任何阈值都管用。
+- **已有一套研发记忆（LanceDB 版 tilematch-dev-memory 一类），能搬过来吗？** 可以只读导入，源库不会被修改，重复执行会跳过已导入的条目：
+
+  ```bash
+  uv tool install "pmem[embed,import] @ git+<pmem 仓库地址>"
+  pmem import --lancedb <源库目录> --catalog <源 modules.yaml> --author <团队名> --dry-run   # 先预览
+  pmem import --lancedb <源库目录> --catalog <源 modules.yaml> --author <团队名>
+  pmem reindex
+  ```
+
+  导入的类型默认都是 `conclusion`，`--guess-kind` 会按正文开头猜测排除、风险等类型。含疑似密钥的条目会被跳过并列出。`--catalog` 只在 `modules.yaml` 还没有模块时生效，导入后要给模块补上 `paths`，闸门才能按文件定位模块。
 - **用 SVN 可以吗？** 可以。作者和版本号取自 SVN，新记忆会自动 `svn add`。
 - **Hook 出错会不会卡住我？** 不会。Hook 任何异常都会直接放行，错误写入用户缓存目录的 `hook-errors.log`，`pmem doctor` 会显示最近的错误。
 

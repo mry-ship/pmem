@@ -55,6 +55,14 @@ def build_parser():
     p = sub.add_parser("list", help="列出模块与记忆数量")
     p.add_argument("--root", default=".")
 
+    p = sub.add_parser("import", help="从参考实现的 LanceDB 记忆库导入（只读源库，重复导入不会重复写）")
+    p.add_argument("--lancedb", required=True, help="LanceDB 目录")
+    p.add_argument("--catalog", default=None, help="参考实现的 modules.yaml，用于填充大类与议题")
+    p.add_argument("--author", default="imported", help="源库没有作者信息，统一记为此作者")
+    p.add_argument("--guess-kind", action="store_true", help="按正文开头的关键词推断类型（默认全部记为 conclusion）")
+    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--root", default=".")
+
     p = sub.add_parser("reindex", help="清空本机索引缓存并重建（换了嵌入模型或检索异常时用）")
     p.add_argument("--root", default=".")
 
@@ -123,6 +131,11 @@ def main(argv: list[str] | None = None) -> int:
         from pmem.cli.doctor_cmd import run_doctor
 
         return run_doctor(_project_root(args.root))
+    if args.command == "import":
+        from pmem.cli.import_cmd import run_import
+
+        return run_import(_project_root(args.root), Path(args.lancedb), Path(args.catalog) if args.catalog else None,
+                          args.author, args.dry_run, args.guess_kind)
     if args.command == "reindex":
         from pmem.cli.reindex_cmd import run_reindex
 

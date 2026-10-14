@@ -52,6 +52,10 @@ modules:
     paths: [src/pmem/metrics/**, src/pmem/bench/**, tests/metrics/**, tests/bench/**, scripts/calibrate_cite.py, bench/**]
     aliases: [Report, Bench]
     entities: [Events, Citation, Compare, Bench]
+  feature.Import:
+    description: 从既有记忆系统（LanceDB 参考实现）只读导入
+    paths: [src/pmem/importers/**, src/pmem/cli/import_cmd.py, tests/importers/**]
+    aliases: [Importer, LanceDB]
   infra.Model:
     description: 记忆条目、ULID 与配置
     paths: [src/pmem/core/entry.py, src/pmem/core/ids.py, src/pmem/core/config.py, tests/core/test_entry.py, tests/core/test_ids.py, tests/core/test_config.py]

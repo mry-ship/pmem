@@ -57,14 +57,14 @@ def shell_write_targets(command: str) -> list[str]:
     return seen
 
 
-def cli_search_args(command: str) -> dict | None:
-    """终端里的 `pmem search ...` 视同检索，返回其中的 module/path 参数。"""
+def cli_args(command: str, subcommand: str) -> dict | None:
+    """终端里的 `pmem search/record ...` 与对应 MCP 工具等价，返回其中的 module/path 参数。"""
     for segment in re.split(r"\s*(?:\|\||&&|[;|])\s*", command or ""):
         tokens = _tokens(segment)
         heads = [re.split(r"[\\/]", t)[-1].lower().removesuffix(".exe") for t in tokens[:4]]
-        if heads[:2] == ["pmem", "search"]:
+        if heads[:2] == ["pmem", subcommand]:
             rest = tokens[2:]
-        elif heads[:4] == ["uv", "run", "pmem", "search"]:
+        elif heads[:4] == ["uv", "run", "pmem", subcommand]:
             rest = tokens[4:]
         else:
             continue
@@ -185,9 +185,16 @@ class Gate:
             return self._inject(args, with_draft=False)
         if name.lower() == "shell":
             command = str(args.get("command") or "")
-            cli_search = cli_search_args(command)
+            cli_search = cli_args(command, "search")
             if cli_search is not None:
                 self._mark_searched(cli_search, via="cli")
+                return dict(ALLOW)
+            cli_record = cli_args(command, "record")
+            if cli_record is not None:
+                module = self.module_from_args(cli_record)
+                if module and self.state is not None:
+                    self.state.add("cli_recorded", module)
+                    self.save()
                 return dict(ALLOW)
             base = args.get("cwd") or str(self.root)
             paths = [self.relative(t, base) for t in shell_write_targets(command)]
@@ -271,7 +278,7 @@ class Gate:
             return []
         if not self.config.get("gate.stop_reminder", True) or self.config.get("gate.mode") == "off":
             return []
-        written = self.state.data["written"]
+        written = set(self.state.data["written"]) | set(self.state.data["cli_recorded"])
         return [m for m in self.state.data["edited"] if m not in written and not self.state.has("nudged", m)]
 
     def on_stop(self) -> dict:

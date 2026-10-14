@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from pmem.core.config import Config
-from pmem.hooks.gate import cli_search_args, handle, shell_write_targets
+from pmem.hooks.gate import cli_args, handle, shell_write_targets
 from pmem.metrics.events import read_events
 
 CONFIG = "project: {{ name: demo }}\nvcs: none\ngate: {{ mode: {mode} }}\n"
@@ -215,7 +215,17 @@ def test_stop_is_quiet_when_aborted(make_project):
     ],
 )
 def test_cli_search_args(command, args):
-    assert cli_search_args(command) == args
+    assert cli_args(command, "search") == args
+
+
+def test_cli_record_in_shell_silences_stop_reminder(make_project):
+    root = make_project()
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    shell = {"conversation_id": "c1", "tool_name": "Shell",
+             "tool_input": {"command": "pmem record --module economy.Shop --entity Price --kind risk "
+                                       "--content-file note.txt", "cwd": ""}}
+    assert handle("pre-tool", shell, root)["permission"] == "allow"
+    assert handle("stop", {"conversation_id": "c1", "status": "completed"}, root) == {}
 
 
 def test_cli_search_in_shell_counts_as_searched(make_project):

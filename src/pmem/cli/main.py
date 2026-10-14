@@ -55,6 +55,9 @@ def build_parser():
     p = sub.add_parser("list", help="列出模块与记忆数量")
     p.add_argument("--root", default=".")
 
+    p = sub.add_parser("reindex", help="清空本机索引缓存并重建（换了嵌入模型或检索异常时用）")
+    p.add_argument("--root", default=".")
+
     p = sub.add_parser("report", help="本机收益报告：检索命中、避坑、跨人复用、记忆采用率等")
     p.add_argument("--days", type=int, default=30)
     p.add_argument("--json", action="store_true")
@@ -120,6 +123,10 @@ def main(argv: list[str] | None = None) -> int:
         from pmem.cli.doctor_cmd import run_doctor
 
         return run_doctor(_project_root(args.root))
+    if args.command == "reindex":
+        from pmem.cli.reindex_cmd import run_reindex
+
+        return run_reindex(_project_root(args.root))
     if args.command == "report":
         from pmem.metrics.report import run_report
 

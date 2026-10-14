@@ -179,6 +179,14 @@ class MemoryIndex:
             for module, s in stats.items()
         }
 
+    def warm(self) -> int:
+        """重新扫描全部记忆文件并补齐向量，返回已有向量的条目数。"""
+        self.refresh(force=True)
+        items = list(self._items.values())
+        if self.embedder is None or not items:
+            return 0
+        return len(self._vectors_for(items))
+
     # ---- 检索 ----
 
     def _vectors_for(self, items: list[Indexed]) -> dict[str, np.ndarray]:

@@ -108,6 +108,27 @@ def test_record_and_search_from_cli(tmp_path, capsys, monkeypatch):
     assert json.loads(capsys.readouterr().out)["items"][0]["id"] == written["id"]
 
 
+def test_reindex_rebuilds_cache_and_reports_bad_files(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("PMEM_AUTHOR", "alice")
+    main(["init", "--root", str(tmp_path), "--type", "generic"])
+    (tmp_path / ".memory" / "config.yaml").write_text("vcs: none\nembedding: { backend: none }\n", encoding="utf-8")
+    main(["record", "--root", str(tmp_path), "--module", "feature.Login", "--entity", "Token",
+          "--kind", "conclusion", "--content", "登录令牌过期后由拦截器静默刷新，失败才跳登录页。"])
+    from pmem.core.config import Config
+
+    cache = Config.load(tmp_path).cache_dir
+    (cache / "cites.json").write_text("{}", encoding="utf-8")
+    capsys.readouterr()
+    assert main(["reindex", "--root", str(tmp_path)]) == 0
+    assert "记忆 1 条" in capsys.readouterr().out
+    assert not (cache / "cites.json").exists()
+
+    (tmp_path / ".memory" / "entries" / "feature.Login" / "broken.md").write_text("不是记忆", encoding="utf-8")
+    assert main(["reindex", "--root", str(tmp_path)]) == 1
+    assert "broken.md" in capsys.readouterr().out
+
+
 def test_hook_outside_project_allows(tmp_path, capsys, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(b"{}")))

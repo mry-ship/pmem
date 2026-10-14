@@ -1,0 +1,70 @@
+"""写入时的质量提示：只提示、不拦截，帮助 Agent 把记忆写成下一个人用得上的结论。"""
+from __future__ import annotations
+
+import difflib
+import re
+
+_REASON = re.compile(
+    r"根因|原因|因为|由于|所以|导致|结论|排除|风险|注意|不要|不能|勿|禁止|决定|边界|坑|前提|证据|实测|验证|否则|因此"
+    r"|为了|目的|口径|差在|区别|澄清"
+    r"|because|root cause|risk|don't|must not"
+)
+# 相似度 0.5–0.8 的实体名几乎都是无关议题；2–3 个字母的短名（如 UI）被包含多是巧合
+SIMILAR_ENTITY_RATIO = 0.8
+SAME_ENTITY_RATIO = 0.85
+MIN_CONTAINED_LEN = 4
+_CHANGELOG_START = re.compile(r"^(已经?|新增|修复|改为|调整|重做|实现|完成|落地|删除|补充|更新|优化)")
+
+
+def content_hints(content: str, recommend_max: int) -> list[str]:
+    hints = []
+    text = content.strip()
+    has_reason = bool(_REASON.search(text.lower()))
+    if _CHANGELOG_START.match(text) and not has_reason:
+        hints.append("读起来像变更记录：改了什么版本库里都有，记忆应写为什么这么改、排除了哪些方向、留下什么风险。")
+    elif not has_reason:
+        hints.append("没看到原因、结论或风险：下一个人最需要的是“为什么”和“别怎么做”。")
+    if len(text) > recommend_max:
+        hints.append(f"正文 {len(text)} 字，超过建议的 {recommend_max} 字：只留下一个人最需要的结论，细节放进文档或提交说明。")
+    return hints
+
+
+def entity_hint(entity: str, known: list[str]) -> str | None:
+    """实体在模块里从未出现过、且有相近的已有实体时提示，避免同一议题起多个名字；真正的新议题不打扰。"""
+    if not known or entity.lower() in {k.lower() for k in known}:
+        return None
+    scored = sorted((-ratio, k) for k in known if (ratio := _related(entity, k)) is not None)
+    if not scored:
+        return None
+    names = [k for _, k in scored[:3]]
+    return f"实体 {entity} 在该模块里是第一次出现；相近的已有：{'、'.join(names)}。如果是同一议题，请改用已有名字。"
+
+
+def similar_entity_pairs(names: list[str]) -> list[tuple[str, str]]:
+    """同一模块里很可能是同一议题的实体对（只差大小写、复数、符号，或几乎相同）。"""
+    first: dict[str, str] = {}
+    for name in names:
+        first.setdefault(name.lower(), name)
+    unique = sorted(first.values())
+    return [(a, b) for i, a in enumerate(unique) for b in unique[i + 1:]
+            if _norm(a) == _norm(b) or _ratio(a, b) >= SAME_ENTITY_RATIO]
+
+
+def _norm(name: str) -> str:
+    return re.sub(r"s$", "", re.sub(r"[^0-9a-z\u4e00-\u9fff]", "", name.lower()))
+
+
+def _ratio(a: str, b: str) -> float:
+    return difflib.SequenceMatcher(None, _norm(a), _norm(b)).ratio()
+
+
+def _related(a: str, b: str) -> float | None:
+    """写入时值得提一句的相近名字：规整后相同、互相包含（短名不算）、或相似度高。"""
+    x, y = _norm(a), _norm(b)
+    if x == y:
+        return 1.0
+    shorter, longer = sorted((x, y), key=len)
+    ratio = _ratio(a, b)
+    if (len(shorter) >= MIN_CONTAINED_LEN and shorter in longer) or ratio >= SIMILAR_ENTITY_RATIO:
+        return ratio
+    return None

@@ -70,6 +70,25 @@ def test_doctor_reports_coverage(tmp_path, capsys, monkeypatch):
     assert "feature.Ghost" in out
 
 
+def test_doctor_flags_uncommitted_and_scattered_entities(git_repo, capsys, monkeypatch):
+    monkeypatch.setenv("PMEM_CACHE_DIR", str(git_repo / ".." / "cache"))
+    main(["init", "--root", str(git_repo), "--type", "generic"])
+    config = git_repo / ".memory" / "config.yaml"
+    config.write_text(config.read_text(encoding="utf-8").replace("backend: auto", "backend: none"), encoding="utf-8")
+    folder = git_repo / ".memory" / "entries" / "feature.Login"
+    folder.mkdir(parents=True)
+    for i, entity in enumerate(["AutoPop", "AutoPopup", "Captcha"]):
+        entry_id = f"01JA7K3M2X9F4Q8W6ZB1C2D{i:03d}"
+        (folder / f"{entry_id}.md").write_text(
+            f"---\nid: {entry_id}\nmodule: feature.Login\nentity: {entity}\nkind: conclusion\n"
+            "author: a\nnote_date: '2026-10-01'\n---\n登录令牌过期后要静默刷新\n", encoding="utf-8")
+    capsys.readouterr()
+    main(["doctor", "--root", str(git_repo)])
+    out = capsys.readouterr().out
+    assert "本机有 3 条记忆未提交" in out
+    assert "1 组实体名字相近" in out and "feature.Login：AutoPop / AutoPopup" in out
+
+
 def test_hook_command_reads_bom_stdin_and_writes_ascii(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
     main(["init", "--root", str(tmp_path), "--type", "generic", "--gate", "block"])
@@ -106,6 +125,10 @@ def test_record_and_search_from_cli(tmp_path, capsys, monkeypatch):
     written = json.loads(capsys.readouterr().out)
     main(["search", "令牌刷新", "--root", str(tmp_path)])
     assert json.loads(capsys.readouterr().out)["items"][0]["id"] == written["id"]
+    main(["record", "--root", str(tmp_path), "--module", "feature.Login", "--entity", "Token", "--kind", "conclusion",
+          "--content", "登录令牌过期后由拦截器静默刷新，原因是避免用户中途被踢回登录页。", "--draft-id", written["id"]])
+    again = json.loads(capsys.readouterr().out)
+    assert again["id"] == written["id"] and again["overwritten"] is True
 
 
 def test_reindex_rebuilds_cache_and_reports_bad_files(tmp_path, capsys, monkeypatch):

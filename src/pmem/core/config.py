@@ -28,6 +28,7 @@ DEFAULTS: dict = {
         "default_status": "active",
         "content_min": 20,
         "content_max": 1200,
+        "recommend_max": 600,
         "max_per_day_per_entity": 5,
         "secret_patterns": [],
     },

@@ -104,13 +104,31 @@ def test_report_counts_benefits(project, tmp_path, monkeypatch):
     assert report["search"]["reused"] >= 1 and report["search"]["reused_authors"] == 1
     assert report["citations"]["cited"] == 1, report["citations"]
     assert report["citations"]["top"] == [(other_id, 1)]
-    assert report["records"]["by_kind"] == {"exclusion": 1, "conclusion": 1}
+    assert report["records"]["by_kind"] == {"conclusion": 1}
     assert report["habits"]["gates"] == 1 and report["habits"]["gate_converted"] == 1
     assert report["habits"]["nudges"] == 1 and report["habits"]["nudge_converted"] == 0
     assert report["compare"]["hit"]["n"] == 1 and report["compare"]["enough"] is False
     assert report["assets"]["memories"] == 2 and report["assets"]["modules_registered"] == 2
     text = render(report)
     assert "跨人复用" in text and "样本不足" in text
+
+
+def test_records_are_counted_from_files_even_without_events(project, monkeypatch):
+    monkeypatch.setenv("PMEM_NO_EVENTS", "1")
+    record_as(project, monkeypatch, "me", "risk", MEMORY)
+    record_as(project, monkeypatch, "me", "decision", MEMORY)
+    monkeypatch.delenv("PMEM_NO_EVENTS")
+    report = build_report(project, days=7, heat=False)
+    assert report["records"]["by_kind"] == {"risk": 1, "decision": 1}
+    assert report["assets"]["uncommitted"] is None
+
+
+def test_cli_record_after_nudge_counts_as_converted(project):
+    cache = Config.load(project).cache_dir
+    log_event(cache, "stop", conv="c2", status="completed", nudged=["gameplay.Jigsaw"])
+    log_event(cache, "record_call", conv="c2", module="gameplay.Jigsaw", via="cli")
+    report = build_report(project, days=7, heat=False)
+    assert report["habits"]["nudges"] == 1 and report["habits"]["nudge_converted"] == 1
 
 
 def test_cli_search_is_linked_to_conversation(project, monkeypatch):

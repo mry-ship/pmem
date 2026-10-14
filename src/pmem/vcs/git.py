@@ -24,3 +24,9 @@ class GitVCS(VCS):
     def is_uncommitted(self, path: Path) -> bool:
         out = self._git("status", "--porcelain", "--untracked-files=all", "--", str(path))
         return bool(out)
+
+    def uncommitted_count(self, folder: Path, suffix: str = ".md") -> int | None:
+        out = self._git("status", "--porcelain", "--untracked-files=all", "--", str(folder))
+        if out is None:
+            return None
+        return sum(1 for line in out.splitlines() if line.rstrip().strip('"').endswith(suffix))

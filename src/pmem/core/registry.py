@@ -195,6 +195,9 @@ class ModuleRegistry:
             return ResolvedModule(cand, category, cand.split(".", 1)[1], known=False, candidate=True)
         return ResolvedModule(f"{category}.{name}", category, name, known=False)
 
+    def is_global_entity(self, name: str) -> bool:
+        return self._entity_vocab.get(name.lower()) == name
+
     def resolve_entity(self, module_id: str, raw: str) -> str:
         text = (raw or "").strip()
         key = text.lower()

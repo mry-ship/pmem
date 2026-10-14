@@ -126,6 +126,8 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
         entries = service.index.entries()
         hidden = service.index.superseded()
         registry = service.registry
+        user = service.user
+        uncommitted = service.vcs.uncommitted_count(service.config.entries_dir)
     finally:
         service.close()
     contents = {e.id: e.content for e in entries}
@@ -136,8 +138,9 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
     reused = [e for e in hits if any(a and a != e.get("user") for a in e.get("authors") or [])]
     reused_authors = {a for e in reused for a in e.get("authors") or [] if a and a != e.get("user")}
 
-    records = [e for e in events if e["type"] == "record"]
-    record_kinds = Counter(e.get("kind") for e in records if not e.get("overwritten"))
+    # 写入数以记忆文件为准：事件日志可以被关闭，文件不会
+    mine = [e for e in entries if e.author == user and ulid_ms(e.id) / 1000 >= since]
+    record_kinds = Counter(e.kind for e in mine)
 
     calls = [e for e in events if e["type"] == "search_call"]
     gates = [e for e in events if e["type"] == "gate"]
@@ -145,11 +148,17 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
         1 for g in gates
         if any(c.get("conv") == g.get("conv") and c.get("module") == g.get("module") and c["ts"] >= g["ts"] for c in calls)
     )
-    written = [e for e in events if e["type"] in ("record", "mcp_record") and e.get("conv")]
+    written = [
+        {"conv": e["conv"], "module": e.get("module"), "ts": e["ts"]}
+        for e in events if e["type"] in ("record", "mcp_record", "record_call") and e.get("conv")
+    ] + [
+        {"conv": e.source_conversation, "module": e.module, "ts": ulid_ms(e.id) / 1000}
+        for e in mine if e.source_conversation
+    ]
     nudges = [(e, m) for e in events if e["type"] == "stop" for m in e.get("nudged") or []]
     nudge_converted = sum(
         1 for stop, module in nudges
-        if any(w["conv"] == stop.get("conv") and w.get("module") == module and w["ts"] >= stop["ts"] for w in written)
+        if any(w["conv"] == stop.get("conv") and w["module"] == module and w["ts"] >= stop["ts"] for w in written)
     )
 
     convs = _conversations(events)
@@ -198,6 +207,7 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
             "modules_registered": len(registered),
             "single_author": sorted(m for m, a in authors_by_module.items() if len(a) == 1),
             "hot": hot,
+            "uncommitted": uncommitted,
         },
     }
 
@@ -247,6 +257,8 @@ def render(report: dict) -> str:
         (f"  有效记忆 {a['memories']} 条，本期新增 {a['new']} 条；"
          f"{a['modules_with_memory']}/{a['modules_registered']} 个登记模块已有记忆"),
     ]
+    if a.get("uncommitted"):
+        lines.append(f"  本机还有 {a['uncommitted']} 条记忆未提交，队友看不到")
     if a["single_author"]:
         lines.append(f"  只有一位作者的模块 {len(a['single_author'])} 个（知识集中在一个人）：" + "、".join(a["single_author"][:8]))
     if a["hot"]:

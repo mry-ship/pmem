@@ -22,6 +22,7 @@ _RM = {"rm", "del", "erase", "rmdir", "rd"}
 _ULID = r"[0-9A-HJKMNP-TV-Z]{26}"
 TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens")
 ALLOW = {"permission": "allow"}
+MAX_AUTO_ANCHORS = 5
 
 
 # ---- 终端命令里的写文件目标 ----
@@ -194,6 +195,7 @@ class Gate:
                 if module and self.state is not None:
                     self.state.add("cli_recorded", module)
                     self.save()
+                self.log("record_call", module=module, via="cli")
             if searches or records:
                 return dict(ALLOW)
             base = args.get("cwd") or str(self.root)
@@ -218,6 +220,10 @@ class Gate:
         draft = self.state.data["written"].get(module) if module else None
         if draft and not args.get("draft_id"):
             updated["draft_id"] = draft
+        if module and not args.get("anchors"):
+            files = [item.split("|", 1)[1] for item in self.state.data["edited_files"] if item.startswith(module + "|")]
+            if files:
+                updated["anchors"] = files[-MAX_AUTO_ANCHORS:]
         return {"permission": "allow", "updated_input": updated}
 
     def _mark_searched(self, args: dict, via: str) -> None:
@@ -261,6 +267,7 @@ class Gate:
         module = self.module_of(rel)
         if module and self.state is not None:
             self.state.add("edited", module)
+            self.state.add("edited_files", f"{module}|{rel}")
             self.save()
         if rel is not None:
             self.log("edit", module=module, file=rel)

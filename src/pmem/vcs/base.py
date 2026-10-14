@@ -36,5 +36,9 @@ class VCS:
     def is_uncommitted(self, path: Path) -> bool:
         return True
 
+    def uncommitted_count(self, folder: Path, suffix: str = ".md") -> int | None:
+        """folder 下未提交（新增/修改/未纳入版本库）的文件数；不在版本控制下返回 None。"""
+        return None
+
     def add(self, path: Path) -> None:
         return None

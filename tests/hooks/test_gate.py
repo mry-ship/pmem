@@ -240,6 +240,27 @@ def test_every_cli_record_in_one_command_counts(make_project):
     assert handle("stop", {"conversation_id": "c1", "status": "completed"}, root) == {}
 
 
+def test_cli_record_is_logged_for_report(make_project):
+    root = make_project()
+    shell = {"conversation_id": "c1", "tool_name": "Shell",
+             "tool_input": {"command": "pmem record --module economy.Shop --entity Price --kind risk "
+                                       "--content-file note.txt", "cwd": ""}}
+    handle("pre-tool", shell, root)
+    events = list(read_events(Config.load(root).cache_dir))
+    assert [(e["type"], e["module"], e["conv"]) for e in events] == [("record_call", "economy.Shop", "c1")]
+
+
+def test_record_injection_adds_files_edited_in_module(make_project):
+    root = make_project()
+    for path in ("src/Shop/Shop.cs", "src/Jigsaw/Board.cs", "src/Shop/Price.cs"):
+        handle("edited", {"conversation_id": "c1", "file_path": str(root / path)}, root)
+    payload = {"conversation_id": "c1", "tool_name": "MCP:record_memory",
+               "tool_input": {"module": "economy.Shop", "entity": "Price", "kind": "risk", "content": "x"}}
+    assert handle("pre-tool", payload, root)["updated_input"]["anchors"] == ["src/Shop/Shop.cs", "src/Shop/Price.cs"]
+    payload["tool_input"]["anchors"] = ["src/Shop/Shop.cs#Buy"]
+    assert handle("pre-tool", payload, root)["updated_input"]["anchors"] == ["src/Shop/Shop.cs#Buy"]
+
+
 def test_cli_search_in_shell_counts_as_searched(make_project):
     root = make_project("block")
     shell = {"conversation_id": "c1", "tool_name": "Shell",

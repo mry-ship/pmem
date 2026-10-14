@@ -130,6 +130,20 @@ def test_content_length_is_checked(svc):
     assert record(svc, content="长" * 1300)["ok"] is False
 
 
+def test_good_memory_has_no_hints(svc):
+    assert "hints" not in record(svc)
+    assert "hints" not in record(svc, content="奖励弹窗的根因：动画回调里重复调用了 Claim。")
+
+
+def test_changelog_and_new_entity_get_hints_but_are_written(svc):
+    record(svc)
+    result = record(svc, entity="RewardPopup", content="新增了奖励弹窗的关闭按钮和动画。")
+    assert result["ok"] is True
+    hints = "\n".join(result["hints"])
+    assert "变更记录" in hints and "RewardPopup" in hints and "相近的已有：Reward" in hints
+    assert "draft_id" in hints
+
+
 def test_invalid_kind_is_rejected(svc):
     result = record(svc, kind="note")
     assert result["ok"] is False

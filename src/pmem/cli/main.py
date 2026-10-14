@@ -50,6 +50,7 @@ def build_parser():
     body.add_argument("--content-file", help="从 UTF-8 文件读取正文（正文含引号或较长时推荐）")
     p.add_argument("--supersedes", action="append", default=[])
     p.add_argument("--anchor", action="append", default=[])
+    p.add_argument("--draft-id", default="", help="上次写入返回的 draft_id：同一任务再次写入时覆盖那一条")
     p.add_argument("--root", default=".")
 
     p = sub.add_parser("list", help="列出模块与记忆数量")
@@ -171,7 +172,8 @@ def main(argv: list[str] | None = None) -> int:
                     content = Path(args.content_file).read_text(encoding="utf-8-sig")
                 else:
                     content = sys.stdin.read() if args.content == "-" else args.content
-                result = service.record(args.module, args.entity, args.kind, content, args.supersedes, args.anchor)
+                result = service.record(args.module, args.entity, args.kind, content, args.supersedes, args.anchor,
+                                        args.draft_id or None)
                 _print_json(result)
                 return 0 if result.get("ok") else 1
             else:

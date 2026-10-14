@@ -8,6 +8,7 @@ from pathlib import Path
 from pmem.core.config import Config, user_cache_base
 from pmem.core.entry import KINDS, Entry
 from pmem.core.ids import new_ulid
+from pmem.core.quality import content_hints, entity_hint
 from pmem.core.registry import ModuleRegistry, RegistryError
 from pmem.core.secrets import find_secrets
 from pmem.index.embedder import make_embedder
@@ -201,6 +202,14 @@ class MemoryService:
 
         today = date.today().isoformat()
         author = self.vcs.current_user()
+        module_def = self.registry.modules.get(resolved.id) or self.registry.candidates.get(resolved.id)
+        declared = [*module_def.entities, *module_def.components, *module_def.variants] if module_def else []
+        known_entities = list(dict.fromkeys(
+            [*declared, *(e.entity for e in self.index.entries() if e.module == resolved.id)]
+        ))
+        hints = content_hints(content, int(self.config.get("write.recommend_max")))
+        if not self.registry.is_global_entity(entity_id) and (new_entity := entity_hint(entity_id, known_entities)):
+            hints.append(new_entity)
         if not draft_id:
             same_day = [
                 e.id
@@ -260,6 +269,8 @@ class MemoryService:
             warnings.append(f"{resolved.id} 尚未登记在 modules.yaml；如是笔误请改用相近模块")
         if warnings:
             response["warnings"] = warnings
+        if hints:
+            response["hints"] = hints + ["以上只是提示，已写入；如需修改，带上 draft_id 再写一次即可覆盖。"]
         self._log(
             "record",
             conv=source_conversation,

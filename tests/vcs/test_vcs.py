@@ -1,6 +1,12 @@
+import subprocess
+
 import pytest
 
 from pmem.vcs.detect import detect_vcs
+
+
+def run(cmd: list[str], cwd) -> None:
+    subprocess.run(cmd, cwd=cwd, check=True, capture_output=True)
 
 
 def test_plain_directory_is_none(tmp_path, monkeypatch):
@@ -36,6 +42,20 @@ def test_git_revision_user_and_uncommitted(git_repo):
     assert vcs.is_uncommitted(git_repo / "README.md") is True
 
 
+def test_git_counts_uncommitted_memories(git_repo):
+    vcs = detect_vcs(git_repo)
+    entries = git_repo / ".memory" / "entries"
+    assert vcs.uncommitted_count(entries) == 0
+    for name in ("a.md", "b.md", "c.txt"):
+        path = entries / "infra.Common" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("x", encoding="utf-8")
+    assert vcs.uncommitted_count(entries) == 2
+    run(["git", "add", "-A"], git_repo)
+    run(["git", "commit", "-q", "-m", "mem"], git_repo)
+    assert vcs.uncommitted_count(entries) == 0
+
+
 def test_git_detected_from_subdirectory(git_repo):
     sub = git_repo / "src" / "deep"
     sub.mkdir(parents=True)
@@ -56,3 +76,15 @@ def test_svn_revision_add_and_uncommitted(svn_wc, monkeypatch):
     vcs.add(new_file)
     assert vcs.status_code(new_file) == "A"
     assert vcs.is_uncommitted(new_file) is True
+
+
+def test_svn_counts_uncommitted_memories(svn_wc):
+    vcs = detect_vcs(svn_wc)
+    entries = svn_wc / ".memory" / "entries"
+    folder = entries / "infra.Common"
+    folder.mkdir(parents=True)
+    for name in ("a.md", "b.md"):
+        (folder / name).write_text("x", encoding="utf-8")
+    assert vcs.uncommitted_count(entries) == 2
+    run(["svn", "add", "-q", "--parents", str(folder / "a.md")], svn_wc)
+    assert vcs.uncommitted_count(entries) == 2

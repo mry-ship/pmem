@@ -66,9 +66,10 @@ def build_server(root: Path | None) -> MCPServer:
     ) -> str:
         """记录一条研发记忆。只在三个时机写：根因确认、方向被排除或方案确定、改完并验证通过。
         module：category.Module；entity：模块内议题；kind：conclusion / exclusion / correction / risk / decision；
-        content：自包含的结论（为什么、证据、影响范围），不要写“改了哪个方法”这类版本库已有的信息。
-        推翻旧结论时在 supersedes 写旧记忆 id；anchors 写相关代码位置（相对路径#符号）。
-        同一任务对同一模块再次写入时，带上次返回的 draft_id 覆盖，避免重复。"""
+        content：自包含的结论（为什么、证据、影响范围），不要写“改了哪个方法”这类版本库已有的信息；
+        现象写上常用的不同叫法（如“闪退/崩溃”），以后换个说法也能搜到。
+        推翻旧结论时在 supersedes 写旧记忆 id；anchors 写相关代码位置（相对路径#符号），不填时系统按本次对话改过的该模块文件补上。
+        同一任务对同一模块再次写入时，带上次返回的 draft_id 覆盖，避免重复。返回里的 hints 是写作提示，可按提示改写后覆盖。"""
         if service is None:
             return _dump(missing)
         return _dump(

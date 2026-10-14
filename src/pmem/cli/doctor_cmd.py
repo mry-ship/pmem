@@ -8,12 +8,14 @@ from collections import Counter
 from pathlib import Path
 
 from pmem.core.config import Config
+from pmem.core.quality import similar_entity_pairs
 from pmem.core.registry import ModuleRegistry, RegistryError
 from pmem.scan.lite import iter_code_files
 from pmem.storage.files import FilesStorage
 from pmem.vcs.detect import detect_vcs
 
 OK, WARN, BAD = "✔", "!", "✘"
+MAX_LISTED_PAIRS = 10
 
 
 def coverage_report(root: Path, registry: ModuleRegistry) -> dict:
@@ -90,6 +92,17 @@ def run_doctor(root: Path) -> int:
     line(OK if not storage.warnings else WARN, f"记忆 {len(entries)} 条")
     for warning in storage.warnings[:5]:
         print(f"      {warning}")
+    pending = vcs.uncommitted_count(config.entries_dir)
+    if pending:
+        line(WARN, f"本机有 {pending} 条记忆未提交，队友看不到；请连同 .memory/ 一起提交")
+    by_module: dict[str, list[str]] = {}
+    for _, e in entries:
+        by_module.setdefault(e.module, []).append(e.entity)
+    pairs = [(m, a, b) for m, names in sorted(by_module.items()) for a, b in similar_entity_pairs(names)]
+    if pairs:
+        line(WARN, f"{len(pairs)} 组实体名字相近，可能是同一议题起了多个名字（检索按实体加分会失效）：")
+        for module, a, b in pairs[:MAX_LISTED_PAIRS]:
+            print(f"      {module}：{a} / {b}")
 
     cursor = root / ".cursor"
     mcp = _load(cursor / "mcp.json").get("mcpServers", {})

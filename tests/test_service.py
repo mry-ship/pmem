@@ -1,0 +1,203 @@
+from pathlib import Path
+
+import pytest
+
+from pmem.service import MemoryService
+
+CONFIG = """
+project: { name: demo }
+vcs: none
+embedding: { backend: none }
+write: { content_min: 10, max_per_day_per_entity: 2 }
+"""
+
+MODULES = """
+categories:
+  activity: {}
+  gameplay: {}
+  economy: {}
+  infra: {}
+entities:
+  Reward: [奖励, reward]
+modules:
+  gameplay.Jigsaw:
+    paths: [src/Jigsaw/**]
+    aliases: [Puzzle]
+  economy.Shop:
+    paths: [src/Shop/**]
+  infra.Save:
+    paths: [src/Save/**]
+candidates:
+  activity.Ladybug:
+    paths: [src/Ladybug/**]
+"""
+
+LONG = "拼图奖励重复发放的根因是领取按钮没有防连点。"
+
+
+@pytest.fixture
+def project(tmp_path, monkeypatch) -> Path:
+    monkeypatch.setenv("PMEM_AUTHOR", "alice")
+    monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
+    root = tmp_path / "proj"
+    (root / ".memory").mkdir(parents=True)
+    (root / ".memory" / "config.yaml").write_text(CONFIG, encoding="utf-8")
+    (root / ".memory" / "modules.yaml").write_text(MODULES, encoding="utf-8")
+    return root
+
+
+@pytest.fixture
+def svc(project) -> MemoryService:
+    service = MemoryService(project)
+    yield service
+    service.close()
+
+
+def record(svc, **kw):
+    args = {"module": "gameplay.Jigsaw", "entity": "Reward", "kind": "conclusion", "content": LONG}
+    args.update(kw)
+    return svc.record(**args)
+
+
+def test_record_then_search_by_module(svc, project):
+    written = record(svc)
+    assert written["ok"] is True
+    assert (project / ".memory" / "entries" / "gameplay.Jigsaw" / f"{written['id']}.md").exists()
+    found = svc.search(module="gameplay.Jigsaw", query="奖励重复")
+    assert [i["id"] for i in found["items"]] == [written["id"]]
+    assert found["module"] == "gameplay.Jigsaw"
+
+
+def test_alias_and_entity_are_normalised(svc):
+    written = record(svc, module="puzzle", entity="奖励")
+    assert written["module"] == "gameplay.Jigsaw"
+    assert written["entity"] == "Reward"
+
+
+def test_search_by_path_maps_to_module(svc):
+    written = record(svc)
+    found = svc.search(path="src/Jigsaw/Board.cs")
+    assert found["module"] == "gameplay.Jigsaw"
+    assert found["resolved_from"] == "path"
+    assert found["items"][0]["id"] == written["id"]
+
+
+def test_search_unmapped_path_says_so(svc):
+    found = svc.search(path="tools/build.py")
+    assert found["ok"] is True
+    assert found["module"] is None
+    assert "未登记" in found["hint"]
+
+
+def test_search_unknown_module_reports_similar(svc):
+    found = svc.search(module="gameplay.Jigsow")
+    assert found["module_exists"] is False
+    assert "gameplay.Jigsaw" in found["similar_modules"]
+
+
+def test_search_requires_module_path_or_query(svc):
+    assert svc.search()["ok"] is False
+
+
+def test_global_search_with_query(svc):
+    written = record(svc)
+    found = svc.search(query="防连点")
+    assert found["items"][0]["id"] == written["id"]
+    assert found["items"][0]["module"] == "gameplay.Jigsaw"
+
+
+def test_unknown_category_is_rejected(svc):
+    result = record(svc, module="ui.Button")
+    assert result["ok"] is False
+    assert "activity / gameplay / economy / infra" in result["error"]
+
+
+def test_new_module_is_written_and_flagged(svc):
+    result = record(svc, module="activity.WorldCup", entity="Schedule")
+    assert result["ok"] is True
+    assert result["new_module"] is True
+
+
+def test_candidate_module_is_flagged(svc):
+    result = record(svc, module="activity.ladybug", entity="Schedule")
+    assert result["ok"] is True
+    assert result["module"] == "activity.Ladybug"
+    assert result["candidate_module"] is True
+
+
+def test_content_length_is_checked(svc):
+    assert record(svc, content="太短")["ok"] is False
+    assert record(svc, content="长" * 1300)["ok"] is False
+
+
+def test_invalid_kind_is_rejected(svc):
+    result = record(svc, kind="note")
+    assert result["ok"] is False
+    assert "kind" in result["error"]
+
+
+def test_secret_is_rejected_with_location(svc):
+    result = record(svc, content="接口调用需要 api_key = sk_live_abcdefghijklmnop 才能访问后台")
+    assert result["ok"] is False
+    assert "敏感" in result["error"]
+
+
+def test_daily_cap_rejects_and_lists_existing(svc):
+    first = record(svc)
+    second = record(svc, content=LONG + "补充一")
+    third = record(svc, content=LONG + "补充二")
+    assert third["ok"] is False
+    assert set(third["existing_ids"]) == {first["id"], second["id"]}
+
+
+def test_draft_overwrite_keeps_id(svc):
+    first = record(svc)
+    again = record(svc, content=LONG + "更新", draft_id=first["id"])
+    assert again["ok"] is True
+    assert again["id"] == first["id"]
+    assert again["overwritten"] is True
+    found = svc.search(module="gameplay.Jigsaw")
+    assert len(found["items"]) == 1
+    assert found["items"][0]["content"].endswith("更新")
+
+
+def test_draft_overwrite_is_exempt_from_daily_cap(svc):
+    first = record(svc)
+    record(svc, content=LONG + "补充一")
+    again = record(svc, content=LONG + "更新", draft_id=first["id"])
+    assert again["ok"] is True
+
+
+def test_supersedes_hides_old(svc):
+    old = record(svc)
+    new = record(svc, kind="correction", content="更正：" + LONG, supersedes=[old["id"]])
+    ids = [i["id"] for i in svc.search(module="gameplay.Jigsaw")["items"]]
+    assert ids == [new["id"]]
+
+
+def test_unknown_supersedes_id_warns(svc):
+    result = record(svc, supersedes=["01JA7K3M2X9F4Q8W6ZB1C2D3E9"])
+    assert result["ok"] is True
+    assert any("01JA7K3M2X9F4Q8W6ZB1C2D3E9" in w for w in result["warnings"])
+
+
+def test_list_modules(svc):
+    record(svc)
+    record(svc, module="activity.WorldCup", entity="Schedule")
+    listing = svc.list_modules()
+    by_id = {m["module"]: m for m in listing["modules"]}
+    assert by_id["gameplay.Jigsaw"]["count"] == 1
+    assert by_id["gameplay.Jigsaw"]["aliases"] == ["Puzzle"]
+    assert by_id["activity.WorldCup"]["registered"] is False
+    assert "economy.Shop" in listing["registered_empty"]
+    assert "economy.Shop" not in by_id
+
+
+def test_modules_yaml_changes_are_picked_up(svc, project):
+    path = project / ".memory" / "modules.yaml"
+    path.write_text(path.read_text(encoding="utf-8").replace("Puzzle", "PuzzleGame"), encoding="utf-8")
+    import os
+    import time
+
+    os.utime(path, (time.time() + 5, time.time() + 5))
+    assert record(svc, module="PuzzleGame")["module"] == "gameplay.Jigsaw"

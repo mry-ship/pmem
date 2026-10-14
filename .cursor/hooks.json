@@ -4,7 +4,10 @@
     "sessionStart":        [{ "command": "python spike/cursor_hooks/record.py sessionStart" }],
     "sessionEnd":          [{ "command": "python spike/cursor_hooks/record.py sessionEnd" }],
     "beforeSubmitPrompt":  [{ "command": "python spike/cursor_hooks/record.py beforeSubmitPrompt" }],
-    "preToolUse":          [{ "command": "python spike/cursor_hooks/record.py preToolUse", "failClosed": false }],
+    "preToolUse": [
+      { "command": "python spike/cursor_hooks/record.py preToolUse", "failClosed": false },
+      { "command": "python spike/cursor_hooks/record.py preToolUse_matchWS", "matcher": "Write|Shell" }
+    ],
     "postToolUse":         [{ "command": "python spike/cursor_hooks/record.py postToolUse" }],
     "postToolUseFailure":  [{ "command": "python spike/cursor_hooks/record.py postToolUseFailure" }],
     "beforeShellExecution":[{ "command": "python spike/cursor_hooks/record.py beforeShellExecution" }],

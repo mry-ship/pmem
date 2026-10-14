@@ -41,6 +41,17 @@ def build_parser():
     p.add_argument("--limit", type=int, default=5)
     p.add_argument("--root", default=".")
 
+    p = sub.add_parser("record", help="命令行写入一条记忆（规则与 MCP 的 record_memory 相同）")
+    p.add_argument("--module", required=True)
+    p.add_argument("--entity", required=True)
+    p.add_argument("--kind", required=True, choices=("conclusion", "exclusion", "correction", "risk", "decision"))
+    body = p.add_mutually_exclusive_group(required=True)
+    body.add_argument("--content", help="正文；传 - 表示从标准输入读取")
+    body.add_argument("--content-file", help="从 UTF-8 文件读取正文（正文含引号或较长时推荐）")
+    p.add_argument("--supersedes", action="append", default=[])
+    p.add_argument("--anchor", action="append", default=[])
+    p.add_argument("--root", default=".")
+
     p = sub.add_parser("list", help="列出模块与记忆数量")
     p.add_argument("--root", default=".")
     return parser
@@ -94,13 +105,21 @@ def main(argv: list[str] | None = None) -> int:
         from pmem.cli.doctor_cmd import run_doctor
 
         return run_doctor(_project_root(args.root))
-    if args.command in ("search", "list"):
+    if args.command in ("search", "list", "record"):
         from pmem.service import MemoryService
 
         service = MemoryService(_project_root(args.root))
         try:
             if args.command == "list":
                 _print_json(service.list_modules())
+            elif args.command == "record":
+                if args.content_file:
+                    content = Path(args.content_file).read_text(encoding="utf-8-sig")
+                else:
+                    content = sys.stdin.read() if args.content == "-" else args.content
+                result = service.record(args.module, args.entity, args.kind, content, args.supersedes, args.anchor)
+                _print_json(result)
+                return 0 if result.get("ok") else 1
             else:
                 _print_json(service.search(args.module or None, args.path or None, args.entity or None,
                                            args.query or None, args.limit))

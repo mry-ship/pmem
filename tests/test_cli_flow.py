@@ -54,6 +54,8 @@ def test_scan_lists_directories_and_third_party(tmp_path, capsys):
 def test_doctor_reports_coverage(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
     main(["init", "--root", str(tmp_path), "--type", "generic"])
+    config = tmp_path / ".memory" / "config.yaml"
+    config.write_text(config.read_text(encoding="utf-8").replace("backend: auto", "backend: none"), encoding="utf-8")
     src = tmp_path / "src" / "Login"
     src.mkdir(parents=True)
     (src / "Login.ts").write_text("x", encoding="utf-8")
@@ -90,6 +92,20 @@ def test_hook_command_reads_bom_stdin_and_writes_ascii(tmp_path, capsys, monkeyp
     out = capsys.readouterr().out
     assert out.isascii()
     assert json.loads(out)["permission"] == "deny"
+
+
+def test_record_and_search_from_cli(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("PMEM_AUTHOR", "alice")
+    main(["init", "--root", str(tmp_path), "--type", "generic"])
+    (tmp_path / ".memory" / "config.yaml").write_text("vcs: none\nembedding: { backend: none }\n", encoding="utf-8")
+    capsys.readouterr()
+    code = main(["record", "--root", str(tmp_path), "--module", "feature.Login", "--entity", "Token",
+                 "--kind", "conclusion", "--content", "登录令牌过期后由拦截器静默刷新，失败才跳登录页。"])
+    assert code == 0
+    written = json.loads(capsys.readouterr().out)
+    main(["search", "令牌刷新", "--root", str(tmp_path)])
+    assert json.loads(capsys.readouterr().out)["items"][0]["id"] == written["id"]
 
 
 def test_hook_outside_project_allows(tmp_path, capsys, monkeypatch):

@@ -91,6 +91,21 @@ def test_search_by_path_counts_as_searched(make_project):
     assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
 
 
+def test_successful_search_result_counts_as_searched(make_project):
+    root = make_project("block")
+    after = {"conversation_id": "c1", "tool_name": "MCP:search_memory",
+             "result_json": json.dumps({"ok": True, "module": "gameplay.Jigsaw", "items": []})}
+    handle("after-mcp", after, root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+
+
+def test_deny_message_shown_to_agent_is_actionable(make_project):
+    root = make_project("warn")
+    verdict = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
+    assert 'search_memory(module="gameplay.Jigsaw")' in verdict["user_message"]
+    assert "重试" in verdict["user_message"]
+
+
 def test_off_mode_allows(make_project):
     root = make_project("off")
     assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"

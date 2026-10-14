@@ -143,16 +143,10 @@ class Gate:
             self.state.add("warned", module)
             self.save()
         call = f'search_memory(module="{module}")'
-        retry = "检索后重试本操作即可。" if mode == "warn" else "检索前无法修改该模块的文件。"
-        return {
-            "permission": "deny",
-            "user_message": f"pmem：修改 {module} 前先检索记忆",
-            "agent_message": (
-                f"[pmem] 你要修改的 {rel} 属于模块 {module}，该模块有 {count} 条研发记忆，"
-                f"请先调用 {call} 了解已有的根因、排除项与决定，再继续修改。{retry}"
-                "（用户说跳过记忆时可忽略。）"
-            ),
-        }
+        retry = "然后重试本次修改" if mode == "warn" else "检索前不能修改该模块"
+        # Cursor 只把 user_message 交给 Agent（实测），因此指引必须完整写在这里
+        message = f"pmem：{rel} 属于 {module}（已有 {count} 条研发记忆）。请先调用 {call} 了解已有结论，{retry}。"
+        return {"permission": "deny", "user_message": message, "agent_message": message}
 
     def on_pre_tool(self) -> dict:
         name = str(self.payload.get("tool_name") or "")

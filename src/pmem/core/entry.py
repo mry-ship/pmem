@@ -8,7 +8,7 @@ import yaml
 KINDS = ("conclusion", "exclusion", "correction", "risk", "decision")
 STATUSES = ("draft", "seed", "active", "archived")
 
-_FRONT_MATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.S)
+_FRONT_MATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
 
 
 @dataclass

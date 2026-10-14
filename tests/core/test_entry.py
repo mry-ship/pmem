@@ -4,19 +4,19 @@ from pmem.core.entry import Entry
 
 
 def make_entry(**overrides):
-    fields = dict(
-        id="01JA7K3M2X9F4Q8W6ZB1C2D3E4",
-        module="gameplay.Jigsaw",
-        entity="Reward",
-        kind="exclusion",
-        content="排除：奖励重复发放不是网络重试导致的，日志中重试次数为 0。",
-        note_date="2026-10-14",
-        author="zhangsan",
-        revision="git:3f2a9c1",
-        supersedes=["01J9ZZ0000000000000000000A"],
-        anchors=["Assets/Game/Jigsaw/JigsawReward.cs#Grant"],
-        source_conversation="conv-1",
-    )
+    fields = {
+        "id": "01JA7K3M2X9F4Q8W6ZB1C2D3E4",
+        "module": "gameplay.Jigsaw",
+        "entity": "Reward",
+        "kind": "exclusion",
+        "content": "排除：奖励重复发放不是网络重试导致的，日志中重试次数为 0。",
+        "note_date": "2026-10-14",
+        "author": "zhangsan",
+        "revision": "git:3f2a9c1",
+        "supersedes": ["01J9ZZ0000000000000000000A"],
+        "anchors": ["Assets/Game/Jigsaw/JigsawReward.cs#Grant"],
+        "source_conversation": "conv-1",
+    }
     fields.update(overrides)
     return Entry(**fields)
 

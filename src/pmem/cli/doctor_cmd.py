@@ -65,7 +65,11 @@ def run_doctor(root: Path) -> int:
     vcs = detect_vcs(root, config.get("vcs"))
     line(OK, f"配置可读；版本控制 {vcs.name}；作者 {vcs.current_user()}；闸门 {config.get('gate.mode')}")
 
-    registry = ModuleRegistry.load(config.modules_path) if config.modules_path.exists() else ModuleRegistry({})
+    try:
+        registry = ModuleRegistry.load(config.modules_path) if config.modules_path.exists() else ModuleRegistry({})
+    except RegistryError as exc:
+        line(BAD, str(exc))
+        return 1
     n_modules = len(registry.modules)
     line(OK if n_modules else WARN, f"模块 {n_modules} 个、候选 {len(registry.candidates)} 个、大类 {' / '.join(registry.categories)}")
     if n_modules == 0:

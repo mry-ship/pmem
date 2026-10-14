@@ -201,3 +201,11 @@ def test_modules_yaml_changes_are_picked_up(svc, project):
 
     os.utime(path, (time.time() + 5, time.time() + 5))
     assert record(svc, module="PuzzleGame")["module"] == "gameplay.Jigsaw"
+
+
+def test_broken_modules_yaml_gives_readable_error(svc, project):
+    path = project / ".memory" / "modules.yaml"
+    path.write_text("modules:\n  gameplay.Jigsaw:\n    label: a  b: c\n", encoding="utf-8")
+    for result in (svc.list_modules(), svc.search(query="奖励", entity="Reward"), record(svc)):
+        assert result["ok"] is False
+        assert "modules.yaml 第 3 行格式错误" in result["error"]

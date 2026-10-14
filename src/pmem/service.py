@@ -89,7 +89,10 @@ class MemoryService:
         source_conversation: str | None = None,
     ) -> dict:
         started = time.perf_counter()
-        response = self._search(module, path, entity, query, limit)
+        try:
+            response = self._search(module, path, entity, query, limit)
+        except RegistryError as exc:
+            response = _fail(str(exc))
         items = response.get("items") or []
         self._log(
             "search",
@@ -272,8 +275,11 @@ class MemoryService:
     # ---- list_modules ----
 
     def list_modules(self, category: str | None = None) -> dict:
+        try:
+            registry = self.registry
+        except RegistryError as exc:
+            return _fail(str(exc))
         stats = self.index.module_stats()
-        registry = self.registry
         rows, empty = [], []
         for module_id in sorted(set(registry.modules) | set(stats)):
             if category and not module_id.lower().startswith(category.lower() + "."):

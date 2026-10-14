@@ -137,8 +137,16 @@ class ModuleRegistry:
 
     @classmethod
     def load(cls, path: str | Path) -> ModuleRegistry:
-        text = Path(path).read_text(encoding="utf-8")
-        return cls(yaml.safe_load(text))
+        try:
+            data = yaml.safe_load(Path(path).read_text(encoding="utf-8-sig"))
+        except UnicodeDecodeError as exc:
+            raise RegistryError(f"{Path(path).name} 不是 UTF-8 编码，请用 UTF-8 保存") from exc
+        except yaml.YAMLError as exc:
+            mark = getattr(exc, "problem_mark", None)
+            where = f"第 {mark.line + 1} 行" if mark is not None else ""
+            problem = getattr(exc, "problem", None) or str(exc)
+            raise RegistryError(f"{Path(path).name} {where}格式错误：{problem}") from exc
+        return cls(data)
 
     # ---- 名称解析 ----
 

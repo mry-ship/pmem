@@ -92,22 +92,34 @@ class OpenAIEmbedder(Embedder):
         return _normalise(np.array([row["embedding"] for row in rows], dtype=np.float32))
 
 
-def make_embedder(settings: dict, cache_dir: Path | None = None) -> tuple[Embedder | None, str | None]:
+class LazyOnnxEmbedder(Embedder):
+    """首次真正需要向量时才加载模型（可能触发下载），避免拖慢不需要语义检索的调用。"""
+
+    def __init__(self, model: str, model_path: str = "", cache_dir: Path | None = None):
+        self._args = (model, model_path, cache_dir)
+        self._inner: OnnxEmbedder | None = None
+        self.id = f"onnx:{model}"
+
+    def embed(self, texts: list[str]) -> np.ndarray:
+        if self._inner is None:
+            self._inner = OnnxEmbedder(*self._args)
+        return self._inner.embed(texts)
+
+
+def make_embedder(settings: dict, models_dir: Path | None = None) -> tuple[Embedder | None, str | None]:
     """按配置创建嵌入器；不可用时返回 (None, 原因)，调用方退化为纯关键词检索。"""
+    import importlib.util
+
     backend = settings.get("backend") or "auto"
     model = settings.get("model") or ""
-    try:
-        if backend == "none":
-            return None, "配置为不使用嵌入"
-        if backend == "ollama":
-            return OllamaEmbedder(model or "bge-m3", settings.get("base_url") or ""), None
-        if backend == "openai":
-            if not settings.get("base_url"):
-                return None, "openai 后端需要配置 embedding.base_url"
-            return OpenAIEmbedder(model, settings["base_url"]), None
-        model_dir = cache_dir / "models" if cache_dir else None
-        return OnnxEmbedder(model or DEFAULT_ONNX_MODEL, settings.get("model_path") or "", model_dir), None
-    except ImportError:
+    if backend == "none":
+        return None, "配置为不使用嵌入"
+    if backend == "ollama":
+        return OllamaEmbedder(model or "bge-m3", settings.get("base_url") or ""), None
+    if backend == "openai":
+        if not settings.get("base_url"):
+            return None, "openai 后端需要配置 embedding.base_url"
+        return OpenAIEmbedder(model, settings["base_url"]), None
+    if importlib.util.find_spec("fastembed") is None:
         return None, "未安装 fastembed（uv tool install 'pmem[embed]' 可启用语义检索）"
-    except Exception as exc:  # noqa: BLE001
-        return None, f"嵌入后端初始化失败：{exc}"
+    return LazyOnnxEmbedder(model or DEFAULT_ONNX_MODEL, settings.get("model_path") or "", models_dir), None

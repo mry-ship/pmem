@@ -100,7 +100,18 @@ def run_doctor(root: Path) -> int:
     if backend == "none" or (backend == "auto" and not has_fastembed):
         line(OK, "检索：关键词（安装 pmem[embed] 可启用语义检索）")
     else:
-        line(OK, f"检索：关键词 + 语义（{backend}）")
+        from pmem.core.config import user_cache_base
+        from pmem.index.embedder import make_embedder
+
+        print("  … 准备语义模型（首次会下载约 90 MB）", flush=True)
+        embedder, problem = make_embedder(config.get("embedding") or {}, user_cache_base() / "models")
+        try:
+            if embedder is None:
+                raise RuntimeError(problem)
+            embedder.embed(["预热"])
+            line(OK, f"检索：关键词 + 语义（{embedder.id}）")
+        except Exception as exc:  # noqa: BLE001
+            line(WARN, f"语义模型不可用，将只用关键词检索：{exc}")
 
     errors = config.cache_dir / "hook-errors.log"
     if errors.exists() and errors.stat().st_size:

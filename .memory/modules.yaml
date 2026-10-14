@@ -31,7 +31,7 @@ modules:
     entities: [Ranking, Embedding, Tokenize]
   feature.Tools:
     description: MCP 服务与 3 个工具背后的业务规则（写入校验、检索参数）
-    paths: [src/pmem/server/**, src/pmem/service.py, src/pmem/core/secrets.py, tests/test_service.py, tests/test_server.py]
+    paths: [src/pmem/server/**, src/pmem/service.py, src/pmem/core/secrets.py, tests/test_service.py, tests/test_server.py, scripts/smoke_mcp.py]
     aliases: [Mcp, Server, Service]
     entities: [Record, Search, Secrets]
   feature.ModuleCatalog:

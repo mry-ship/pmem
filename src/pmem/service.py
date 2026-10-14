@@ -4,7 +4,7 @@ import difflib
 from datetime import date
 from pathlib import Path
 
-from pmem.core.config import Config
+from pmem.core.config import Config, user_cache_base
 from pmem.core.entry import KINDS, Entry
 from pmem.core.ids import new_ulid
 from pmem.core.registry import ModuleRegistry, RegistryError
@@ -48,7 +48,7 @@ class MemoryService:
     def index(self) -> MemoryIndex:
         if self._index is None:
             settings = self.config.get("embedding") or {}
-            embedder, problem = make_embedder(settings, self.config.cache_dir)
+            embedder, problem = make_embedder(settings, user_cache_base() / "models")
             if settings.get("backend") in ("auto", "none"):
                 problem = None
             self._index = MemoryIndex(self.storage, self.config.cache_dir, embedder, problem)

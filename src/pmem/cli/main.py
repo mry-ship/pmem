@@ -59,6 +59,16 @@ def build_parser():
     p.add_argument("--days", type=int, default=30)
     p.add_argument("--json", action="store_true")
     p.add_argument("--root", default=".")
+
+    p = sub.add_parser("bench", help="对照实验：同一任务有/无记忆各跑一遍（需要 Cursor SDK 与 CURSOR_API_KEY）")
+    p.add_argument("cases", nargs="?", default="bench/cases.yaml")
+    p.add_argument("--arms", default="on,off", help="要跑的组，逗号分隔：on,off")
+    p.add_argument("--repeats", type=int, default=None)
+    p.add_argument("--model", default=None)
+    p.add_argument("--only", action="append", default=[], help="只跑指定用例 id，可重复")
+    p.add_argument("--out", default="bench-results")
+    p.add_argument("--dry-run", action="store_true", help="不调用 Agent，只验证起始提交上验收确实失败")
+    p.add_argument("--root", default=".")
     return parser
 
 
@@ -114,6 +124,21 @@ def main(argv: list[str] | None = None) -> int:
         from pmem.metrics.report import run_report
 
         return run_report(_project_root(args.root), args.days, args.json)
+    if args.command == "bench":
+        from pmem.bench.runner import dry_run_executor, run_bench
+
+        root = _project_root(args.root)
+        arms = tuple(a.strip() for a in args.arms.split(",") if a.strip())
+        records = run_bench(
+            root, root / args.cases, root / args.out, arms=arms, repeats=1 if args.dry_run else args.repeats,
+            model=args.model, executor=dry_run_executor if args.dry_run else None, only=args.only or None,
+        )
+        if args.dry_run:
+            bad = sorted({r.case for r in records if r.passed})
+            print("用例有效：起始提交上验收均失败" if not bad else f"这些用例在起始提交上已能通过，需要调整：{'、'.join(bad)}")
+            return 1 if bad else 0
+        print(f"结果见 {root / args.out / 'summary.md'}")
+        return 0
     if args.command in ("search", "list", "record"):
         from pmem.service import MemoryService
 

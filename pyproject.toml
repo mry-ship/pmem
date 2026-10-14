@@ -17,6 +17,9 @@ pmem = "pmem.cli.main:main"
 embed = [
     "fastembed>=0.9.0",
 ]
+bench = [
+    "cursor-sdk",
+]
 
 [dependency-groups]
 dev = [

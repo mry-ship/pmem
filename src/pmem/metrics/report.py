@@ -18,10 +18,21 @@ AVOID_KINDS = {"exclusion", "risk", "correction"}
 KIND_NAMES = {"conclusion": "结论", "exclusion": "排除", "correction": "更正", "risk": "风险", "decision": "决定"}
 MIN_GROUP = 5
 HOT_TOP = 10
+CLI_LINK_SECONDS = 30
 
 
 def _median(values: list[float]) -> float | None:
     return statistics.median(values) if values else None
+
+
+def _link_cli_searches(events: list[dict]) -> None:
+    """Agent 在终端里跑 pmem search 时，检索事件本身不知道对话 id，按紧邻的 search_call 补上。"""
+    calls = [e for e in events if e["type"] == "search_call" and e.get("via") == "cli" and e.get("conv")]
+    for e in events:
+        if e["type"] == "search" and not e.get("conv"):
+            match = next((c for c in reversed(calls) if 0 <= e["ts"] - c["ts"] <= CLI_LINK_SECONDS), None)
+            if match is not None:
+                e["conv"] = match["conv"]
 
 
 def _conversations(events: list[dict]) -> dict[str, dict]:
@@ -111,6 +122,7 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
     try:
         cache_dir = service.config.cache_dir
         events = list(read_events(cache_dir, since))
+        _link_cli_searches(events)
         entries = service.index.entries()
         hidden = service.index.superseded()
         registry = service.registry

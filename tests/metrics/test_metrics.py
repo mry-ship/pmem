@@ -111,3 +111,19 @@ def test_report_counts_benefits(project, tmp_path, monkeypatch):
     assert report["assets"]["memories"] == 2 and report["assets"]["modules_registered"] == 2
     text = render(report)
     assert "跨人复用" in text and "样本不足" in text
+
+
+def test_cli_search_is_linked_to_conversation(project, monkeypatch):
+    other_id = record_as(project, monkeypatch, "alice", "risk", MEMORY)
+    cache = Config.load(project).cache_dir
+    log_event(cache, "search_call", conv="c9", module="gameplay.Jigsaw", via="cli")
+    monkeypatch.setenv("PMEM_AUTHOR", "me")
+    service = MemoryService(project)
+    try:
+        service.search(module="gameplay.Jigsaw")
+    finally:
+        service.close()
+    log_event(cache, "edit", conv="c9", module="gameplay.Jigsaw", file="src/Jigsaw/A.cs")
+    log_event(cache, "stop", conv="c9", status="completed", input_tokens=10, output_tokens=1)
+    report = build_report(project, days=7, heat=False)
+    assert report["compare"]["hit"]["n"] == 1, other_id

@@ -207,11 +207,12 @@ def test_stop_is_quiet_when_aborted(make_project):
 @pytest.mark.parametrize(
     ("command", "args"),
     [
-        ("pmem search --module gameplay.Jigsaw", {"module": "gameplay.Jigsaw"}),
-        ("cd proj; uv run pmem search --path src/a.cs", {"path": "src/a.cs"}),
-        (r"C:\bin\pmem.exe search 奖励", {}),
-        ("pmem list", None),
-        ("echo pmem search", None),
+        ("pmem search --module gameplay.Jigsaw", [{"module": "gameplay.Jigsaw"}]),
+        ("cd proj; uv run pmem search --path src/a.cs", [{"path": "src/a.cs"}]),
+        (r"C:\bin\pmem.exe search 奖励", [{}]),
+        ("pmem search --module a.B; pmem search --module c.D", [{"module": "a.B"}, {"module": "c.D"}]),
+        ("pmem list", []),
+        ("echo pmem search", []),
     ],
 )
 def test_cli_search_args(command, args):
@@ -224,6 +225,17 @@ def test_cli_record_in_shell_silences_stop_reminder(make_project):
     shell = {"conversation_id": "c1", "tool_name": "Shell",
              "tool_input": {"command": "pmem record --module economy.Shop --entity Price --kind risk "
                                        "--content-file note.txt", "cwd": ""}}
+    assert handle("pre-tool", shell, root)["permission"] == "allow"
+    assert handle("stop", {"conversation_id": "c1", "status": "completed"}, root) == {}
+
+
+def test_every_cli_record_in_one_command_counts(make_project):
+    root = make_project()
+    for path in ("src/Shop/Shop.cs", "src/Jigsaw/Board.cs"):
+        handle("edited", {"conversation_id": "c1", "file_path": str(root / path)}, root)
+    command = ("$t=$env:TEMP; uv run pmem record --module economy.Shop --entity A --kind risk --content-file a.md; "
+               "uv run pmem record --module gameplay.Jigsaw --entity B --kind risk --content-file b.md")
+    shell = {"conversation_id": "c1", "tool_name": "Shell", "tool_input": {"command": command, "cwd": ""}}
     assert handle("pre-tool", shell, root)["permission"] == "allow"
     assert handle("stop", {"conversation_id": "c1", "status": "completed"}, root) == {}
 

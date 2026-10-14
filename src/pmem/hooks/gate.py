@@ -57,8 +57,9 @@ def shell_write_targets(command: str) -> list[str]:
     return seen
 
 
-def cli_args(command: str, subcommand: str) -> dict | None:
-    """终端里的 `pmem search/record ...` 与对应 MCP 工具等价，返回其中的 module/path 参数。"""
+def cli_args(command: str, subcommand: str) -> list[dict]:
+    """终端里的 `pmem search/record ...` 与对应 MCP 工具等价，按出现顺序返回每一处的 module/path 参数。"""
+    found: list[dict] = []
     for segment in re.split(r"\s*(?:\|\||&&|[;|])\s*", command or ""):
         tokens = _tokens(segment)
         heads = [re.split(r"[\\/]", t)[-1].lower().removesuffix(".exe") for t in tokens[:4]]
@@ -72,8 +73,8 @@ def cli_args(command: str, subcommand: str) -> dict | None:
         for i, token in enumerate(rest[:-1]):
             if token in ("--module", "--path"):
                 args[token[2:]] = rest[i + 1]
-        return args
-    return None
+        found.append(args)
+    return found
 
 
 # ---- 主逻辑 ----
@@ -185,16 +186,15 @@ class Gate:
             return self._inject(args, with_draft=False)
         if name.lower() == "shell":
             command = str(args.get("command") or "")
-            cli_search = cli_args(command, "search")
-            if cli_search is not None:
+            searches, records = cli_args(command, "search"), cli_args(command, "record")
+            for cli_search in searches:
                 self._mark_searched(cli_search, via="cli")
-                return dict(ALLOW)
-            cli_record = cli_args(command, "record")
-            if cli_record is not None:
+            for cli_record in records:
                 module = self.module_from_args(cli_record)
                 if module and self.state is not None:
                     self.state.add("cli_recorded", module)
                     self.save()
+            if searches or records:
                 return dict(ALLOW)
             base = args.get("cwd") or str(self.root)
             paths = [self.relative(t, base) for t in shell_write_targets(command)]

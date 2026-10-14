@@ -1,0 +1,43 @@
+# 检索评测集：全局检索（不限模块），看期望记忆是否排在前 1 / 前 3。
+memories:
+  - { key: m01, module: gameplay.Jigsaw, entity: Reward, content: "拼图完成奖励重复发放的根因：领取按钮没有防连点，快速点击两次会触发两次 GrantReward。已加 isClaiming 标记。" }
+  - { key: m02, module: gameplay.Jigsaw, entity: Reward, kind: exclusion, content: "排除：奖励重复发放不是网络重试导致的，服务器日志中重试次数为 0。" }
+  - { key: m03, module: gameplay.Jigsaw, entity: Loading, content: "拼图关卡首次进入卡顿 2 秒，原因是碎片图集未压缩且同步加载，改为异步加载 + ASTC 压缩。" }
+  - { key: m04, module: gameplay.Jigsaw, entity: Config, content: "Jigsaw 配置表 pieceCount 表示碎片总数，不是行数；改难度时要同时改 gridSize。" }
+  - { key: m05, module: economy.Shop, entity: Refresh, content: "商店每日刷新按服务器时区 UTC+0 计算，不是玩家本地时区；跨时区玩家看到的刷新时间不同是预期行为。" }
+  - { key: m06, module: economy.Shop, entity: Price, content: "礼包价格从 SDK 的本地化价格字符串读取，不能自己拼货币符号，否则土耳其里拉会显示错误。" }
+  - { key: m07, module: economy.Coin, entity: Balance, kind: risk, content: "风险：金币余额在离线时只写本地存档，联网后以服务器为准覆盖，期间本地消费可能被回滚。" }
+  - { key: m08, module: activity.ClimbBeanstalk, entity: Schedule, content: "爬豆藤活动开启时间由远端配置 startTime/endTime 决定，客户端只做展示；时间判断统一用 ServerTime.Now。" }
+  - { key: m09, module: activity.ClimbBeanstalk, entity: Level, content: "爬豆藤第 30 层之后难度曲线由 DDA 接管，活动自身的层级配置只覆盖前 30 层。" }
+  - { key: m10, module: activity.ClimbBeanstalk, entity: Reward, kind: decision, content: "决定：爬豆藤终点大奖改为邮件发放，避免玩家在活动结束瞬间离线导致领不到。" }
+  - { key: m11, module: system.Ads, entity: Rewarded, content: "激励视频回调在部分安卓机型上在主线程之外触发，必须切回主线程再发奖励，否则 UI 不刷新。" }
+  - { key: m12, module: system.Ads, entity: Frequency, content: "插屏广告频控：两次插屏间隔至少 90 秒，新用户前 3 关不展示。配置在 AdConfig.interstitialCooldown。" }
+  - { key: m13, module: infra.Save, entity: Migration, content: "存档版本从 v3 升到 v4 时字段 levelStars 由数组改成字典，读取旧档必须走 MigrateV3ToV4。" }
+  - { key: m14, module: infra.Save, entity: Corruption, kind: exclusion, content: "排除：存档损坏不是磁盘写满导致，而是写入过程中被系统杀进程；已改为先写临时文件再原子替换。" }
+  - { key: m15, module: infra.Network, entity: Timeout, content: "网络请求默认超时 10 秒，登录接口单独设为 20 秒，因为首登需要创建账号。" }
+  - { key: m16, module: infra.UI, entity: Popup, content: "弹窗队列 PopupQueue 同时只展示一个，优先级高的插队；活动弹窗优先级统一为 50。" }
+  - { key: m17, module: level.DDA, entity: Difficulty, content: "动态难度：连续失败 3 次后下一局减少一种花色，成功后恢复。" }
+  - { key: m18, module: gameplay.MysteryTile, entity: Reveal, content: "神秘方块翻开时机是在上层方块全部移走后，而不是被点击时；动画结束前不可交互。" }
+  - { key: m19, module: economy.Coin, entity: Source, content: "金币产出来源统计用 CoinSource 枚举，新增来源必须同步打点表，否则数据看板缺项。" }
+  - { key: m20, module: system.Login, entity: Account, content: "游客账号绑定 Google 后 userId 不变，但需要重新拉取云存档；绑定失败时保持游客身份。" }
+queries:
+  - { q: "奖励领取两次", expect: m01 }
+  - { q: "重复发奖是不是网络重试", expect: m02 }
+  - { q: "拼图进关卡很卡", expect: m03 }
+  - { q: "pieceCount 是什么意思", expect: m04 }
+  - { q: "商店刷新时间不对 时区", expect: m05 }
+  - { q: "货币符号显示错误", expect: m06 }
+  - { q: "离线花的金币被回滚", expect: m07 }
+  - { q: "豆藤活动什么时候开", expect: m08 }
+  - { q: "beanstalk 高层难度", expect: m09 }
+  - { q: "终点奖励怎么发", expect: m10 }
+  - { q: "rewarded video callback thread", expect: m11 }
+  - { q: "插屏多久弹一次", expect: m12 }
+  - { q: "老存档读取报错 字段类型变了", expect: m13 }
+  - { q: "存档坏了 磁盘空间", expect: m14 }
+  - { q: "登录请求超时时间", expect: m15 }
+  - { q: "两个弹窗同时出现", expect: m16 }
+  - { q: "玩家一直输 难度降低", expect: m17 }
+  - { q: "问号块什么时候翻开", expect: m18 }
+  - { q: "新加金币来源要注意什么", expect: m19 }
+  - { q: "游客绑定谷歌账号", expect: m20 }

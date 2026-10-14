@@ -79,6 +79,11 @@ class VectorCache:
                     found[digest] = vec
         return found
 
+    def close(self) -> None:
+        if self._db is not None:
+            self._db.close()
+            self._db = None
+
     def put_many(self, model: str, items: dict[str, np.ndarray]) -> None:
         for digest, vec in items.items():
             self._memory[(model, digest)] = vec
@@ -109,6 +114,9 @@ class MemoryIndex:
         self._items: dict[Path, Indexed] = {}
         self._last_refresh = -math.inf
         self.warnings: list[str] = []
+
+    def close(self) -> None:
+        self.vectors.close()
 
     # ---- 增量刷新 ----
 

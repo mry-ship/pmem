@@ -12,6 +12,11 @@ dependencies = [
 [project.scripts]
 pmem = "pmem.cli.main:main"
 
+[project.optional-dependencies]
+embed = [
+    "fastembed>=0.9.0",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart":        [{ "command": "python spike/cursor_hooks/record.py sessionStart" }],
+    "sessionEnd":          [{ "command": "python spike/cursor_hooks/record.py sessionEnd" }],
+    "beforeSubmitPrompt":  [{ "command": "python spike/cursor_hooks/record.py beforeSubmitPrompt" }],
+    "preToolUse":          [{ "command": "python spike/cursor_hooks/record.py preToolUse", "failClosed": false }],
+    "postToolUse":         [{ "command": "python spike/cursor_hooks/record.py postToolUse" }],
+    "postToolUseFailure":  [{ "command": "python spike/cursor_hooks/record.py postToolUseFailure" }],
+    "beforeShellExecution":[{ "command": "python spike/cursor_hooks/record.py beforeShellExecution" }],
+    "afterShellExecution": [{ "command": "python spike/cursor_hooks/record.py afterShellExecution" }],
+    "beforeMCPExecution":  [{ "command": "python spike/cursor_hooks/record.py beforeMCPExecution" }],
+    "afterMCPExecution":   [{ "command": "python spike/cursor_hooks/record.py afterMCPExecution" }],
+    "afterFileEdit": [
+      { "command": "python spike/cursor_hooks/record.py afterFileEdit" },
+      { "command": "cmd /c python spike/cursor_hooks/record.py afterFileEdit_cmd" },
+      { "command": "[Console]::InputEncoding=[System.Text.Encoding]::UTF8; python spike/cursor_hooks/record.py afterFileEdit_psenc" },
+      { "command": "spike/cursor_hooks/record.cmd afterFileEdit_bat" }
+    ],
+    "preCompact":          [{ "command": "python spike/cursor_hooks/record.py preCompact" }],
+    "stop":                [{ "command": "python spike/cursor_hooks/record.py stop" }]
+  }
+}

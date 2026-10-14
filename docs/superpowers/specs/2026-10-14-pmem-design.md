@@ -1,0 +1,708 @@
+# pmem：面向项目与团队的 AI 研发记忆系统 · 设计文档
+
+- 状态：设计稿，待评审
+- 日期：2026-10-14
+- 产品名：`pmem`（暂定，发布前再定）
+- 来源：在《AI 研发记忆系统 · 模式指南》（TileMatch 自用版）和其参考实现（`TileMatch_iLar/tools/dev-memory`、`.cursor/hooks/*`）基础上产品化
+
+---
+
+## 1. 背景与目标
+
+### 1.1 背景
+
+参考实现是作者在一个手游项目里自用的外接记忆：Python MCP 服务 + LanceDB + Ollama 嵌入 + Cursor 规则 + Hooks 闸门。6 周数据表明模式有效（所查模块有 30 条以上记忆时回退率约降到 1/3，被纠正率一上线就降一半以上），但它是**单人、单项目、手工配置**的：
+
+- 项目名写死在环境变量、服务名、工具说明、Hooks 路径与提示、模块扫描脚本里；
+- 记忆存在个人机器的向量库里，团队无法共享，换嵌入模型会丢数据；
+- 接入时没有模块划分流程，库从空开始，头两周几乎无效；
+- 读代码发现若干缺陷（见附录 A），其中几条直接导致命中率低和写入静默丢失。
+
+### 1.2 目标
+
+把这套模式做成**别人能引入自己项目使用**的产品：
+
+1. **通用**：任何项目类型（游戏、App、后端、工具）、任何语言，项目特有信息只存在项目配置里。
+2. **适合团队**：v0.1 面向 1–20 人团队，记忆随仓库共享；为大团队的中心服务预留存储接口。
+3. **适合 Cursor**：规则 + MCP + Hooks + 项目技能，团队成员拉下代码、装一次工具即可用。
+4. **可持续**：接入时有一套初始化划分流程；日常有同步、健康报告、收口与迁移工具，模块体系能长期演化而不乱。
+5. **零额外大模型费用**：工具本身不调用任何大模型 API；需要判断的步骤交给引入方自己的 Cursor Agent。
+
+### 1.3 非目标（v0.1 不做）
+
+- 中心服务后端、权限、看板（v0.3+）
+- 自动从对话中用大模型抽取事实（Mem0/Zep 式）
+- 非 Cursor IDE 的专门适配（MCP 工具本身通用，规则/Hooks 只生成 Cursor 版）
+- 面向终端用户的“个人偏好记忆”
+
+### 1.4 已确定的决策
+
+| 决策 | 结论 |
+|---|---|
+| 版本控制 | Git 与 SVN 都支持 |
+| 第一版规模 | 小/中团队：仓库文件 + 本地索引；存储接口为中心服务预留 |
+| 记忆是否进仓库 | 可以，所有有仓库权限的人可见 |
+| 实现语言 | Python（`uv tool install` / `pipx` 分发） |
+| 验证项目 | 自建小型合成仓库（自动化测试）+ 一个开源项目（真实验证）；不在 TileMatch 上首发 |
+
+---
+
+## 2. 用户与使用旅程
+
+### 2.1 角色
+
+| 角色 | 频率 | 做什么 | 目标耗时 |
+|---|---|---|---|
+| 引入者（技术负责人） | 接入时一次 | 安装、`pmem init`、确认模块划分、提交 | 1–2 小时 |
+| 日常使用者 | 每天 | 装一次工具，之后正常用 Cursor | 首次 5 分钟，之后无感 |
+| 模块负责人 | 每 1–2 周 | 看健康报告、确认合并与登记 | 每次约 30 分钟 |
+
+**设计底线：日常使用者几乎什么都不用做。**
+
+### 2.2 引入者旅程
+
+```text
+uv tool install pmem
+cd <repo>
+pmem init                       # 问答 → 生成配置骨架
+pmem scan                       # 确定性扫描 → 模块草案 + 待决清单
+# 在 Cursor 里："按记忆初始化流程划分模块"   ← 项目技能 pmem-bootstrap
+pmem doctor --coverage          # 覆盖率与自检，必须全绿
+# 可选，在 Cursor 里："为热点模块提炼种子记忆"  ← 项目技能 pmem-seed
+提交 .memory/ 与 .cursor/ 下的生成文件
+把生成的《团队接入说明》贴给成员
+```
+
+### 2.3 日常使用者旅程
+
+```text
+uv tool install pmem            # 一次
+拉取代码 → 打开 Cursor → 启用项目 MCP 服务（Cursor 提示时确认）
+有问题时：pmem doctor
+```
+
+### 2.4 模块负责人旅程
+
+```text
+pmem report                     # 健康报告
+# 在 Cursor 里："按收口流程处理本周报告"      ← 项目技能 pmem-consolidate
+pmem migrate ...                # 改名 / 合并 / 拆分 / 废弃
+pmem sync                       # 新目录 → 新模块候选（只追加）
+```
+
+---
+
+## 3. 总体架构
+
+### 3.1 三层划分
+
+| 层 | 归属 | 内容 | 是否进版本控制 |
+|---|---|---|---|
+| 通用引擎 | pmem 包 | CLI、MCP 服务、存储、索引、扫描器、Hooks 逻辑、模板 | 否（安装的包） |
+| 项目配置与数据 | 引入方仓库 `.memory/` | `config.yaml`、`modules.yaml`、`entries/` | 是 |
+| 生成文件 | 引入方仓库 `.cursor/` 等 | 规则、`hooks.json`、`mcp.json`、项目技能、启动包装脚本 | 是 |
+
+**硬约束：通用引擎代码里不得出现任何具体项目的名字、路径或模块。**
+
+### 3.2 分工原则
+
+- **CLI 做确定性的事**：扫描、校验、建索引、生成文件、迁移、报告。
+- **Cursor Agent 做判断性的事**：模块划分、种子记忆提炼、重复合并建议。通过随包生成的项目技能执行，使用引入方自己的模型额度。
+
+### 3.3 组件关系
+
+```text
+Cursor
+ ├─ 规则文件（始终加载）       —— 何时查、何时写、怎么写
+ ├─ Hooks → pmem hook <事件>   —— 闸门、本对话状态、草稿注入
+ ├─ MCP → pmem serve           —— search_memory / record_memory / list_modules
+ └─ 项目技能                   —— bootstrap / seed / consolidate
+
+pmem serve
+ ├─ ModuleRegistry   ← .memory/modules.yaml（别名归一、路径→模块）
+ ├─ Storage(接口)    ← FilesStorage: .memory/entries/**.md   （将来 RemoteStorage）
+ ├─ Index            ← 用户缓存目录 SQLite（向量 + trigram 全文）
+ ├─ Embedder(接口)   ← onnx（默认）/ ollama / openai 兼容
+ └─ VCS(接口)        ← git / svn / none
+```
+
+### 3.4 关键原则：MCP 服务不知道当前对话
+
+MCP 服务拿不到对话 id。**所有“本对话”相关的逻辑只放在 Hooks 里**（是否已检索某模块、改过哪些模块、本对话的草稿 id、是否“跳过记忆”）。Hooks 通过 `preToolUse` 的 `updated_input` 把需要的信息注入到 MCP 调用参数中（见 8.2、9.2；是否生效需按 13.2 实测）。
+
+---
+
+## 4. 数据模型
+
+### 4.1 目录布局（引入方仓库）
+
+```text
+.memory/
+  config.yaml
+  modules.yaml
+  entries/
+    <category>.<Module>/
+      <ULID>.md
+  bootstrap/                # 初始化中间产物，可提交也可忽略
+    scan-report.json
+    decisions.md
+  bin/
+    pmem-hook               # 启动包装脚本（POSIX）
+    pmem-hook.cmd           # 启动包装脚本（Windows）
+```
+
+### 4.2 记忆文件格式
+
+一条记忆一个 Markdown 文件，YAML 头 + 正文：
+
+```markdown
+---
+id: 01JA7K3M2X9F4Q8W6ZB1C2D3E4
+module: gameplay.Jigsaw
+entity: Reward
+kind: exclusion
+status: active
+supersedes: [01J9ZZ0000000000000000000A]
+anchors:
+  - Assets/Game/Jigsaw/JigsawReward.cs#Grant
+revision: "git:3f2a9c1"
+author: zhangsan
+note_date: 2026-10-14
+source:
+  conversation: 2635c1a0-46e1-46fa-b833-1fab18bc2a1a
+---
+排除：奖励重复发放不是网络重试导致的……
+```
+
+| 字段 | 必填 | 谁填 | 约束 |
+|---|---|---|---|
+| `id` | 是 | 服务端 | ULID，按时间可排序，同时是文件名 |
+| `module` | 是 | AI | 写入时按别名归一为标准写法 |
+| `entity` | 是 | AI | 别名归一；比较不区分大小写，存标准写法 |
+| `kind` | 是 | AI | `conclusion` / `exclusion` / `correction` / `risk` / `decision` |
+| `status` | 是 | 服务端 | `draft` / `seed` / `active` / `archived`；“已被替代”由索引推算，不写入文件 |
+| `supersedes` | 否 | AI | 被本条推翻的记忆 id 列表 |
+| `anchors` | 否 | AI | `相对路径` 或 `相对路径#符号` |
+| `revision` | 是 | 服务端 | `git:<短哈希>` / `svn:r<号>` / `none` |
+| `author` | 是 | 服务端 | 见 6.2 |
+| `note_date` | 是 | 服务端 | 写入当天，`YYYY-MM-DD` |
+| `source.conversation` | 否 | Hook 注入 | 用于“同一批”判定与追溯 |
+| 正文 | 是 | AI | 默认 100–1200 字，建议 200–600 字 |
+
+### 4.3 不可变原则
+
+- 记忆文件**写入后不再修改**，唯一例外：
+  1. 同一对话内覆盖**本人尚未提交**的草稿（`draft_id` 覆盖，见 8.2）；
+  2. 负责人通过 CLI 归档（`status: archived`）。
+- 推翻旧结论 = 新建一条并在 `supersedes` 里写旧 id；旧文件不动。
+- 这样 Git 与 SVN 下都几乎不会产生合并冲突（每个文件名唯一，且基本只增不改）。
+
+### 4.4 `config.yaml`
+
+```yaml
+schema_version: 1
+project:
+  name: my-game                 # 仅用于展示与缓存目录区分
+  type: game                    # game / app / backend / tool / generic
+  language: zh                  # 规则与提示语言：zh / en
+vcs: auto                       # auto / git / svn / none
+svn_auto_add: true              # SVN 下写入新记忆时自动 svn add
+embedding:
+  backend: onnx                 # onnx / ollama / openai
+  model: <待评测确定的多语言小模型>
+  model_path: ""                # 离线环境可指定本地模型目录
+  base_url: ""                  # ollama / openai 后端使用
+gate:
+  mode: warn                    # off / warn / block
+  watch: ["Assets/Game/**", "src/**"]
+  ignore: ["**/*.md", "docs/**"]
+  skip_markers: ["跳过记忆", "skip-memory"]
+write:
+  default_status: active        # active（小团队）/ draft（需审阅）
+  content_min: 100
+  content_max: 1200
+  max_per_day_per_entity: 5     # 超出时拒绝并要求合并，不静默删除
+  secret_patterns: default      # 默认规则集，可追加正则
+search:
+  limit: 5
+  max_per_batch: 2
+  recency_half_life_days: 90
+```
+
+### 4.5 `modules.yaml`
+
+> 完整结构以《模块目录结构与接入初始化划分》（`2026-10-14-pmem-modules-bootstrap-design.md`）第 2 节为准，下面是精简示意。
+
+```yaml
+schema_version: 1
+categories:
+  system:   { label: 平台与商业化, include: "...", exclude: "..." }
+  activity: { label: 限时运营活动, include: "...", exclude: "..." }
+  gameplay: { label: 核心与常驻玩法 }
+  level:    { label: 关卡与难度 }
+  economy:  { label: 货币与数值 }
+  infra:    { label: 技术底座 }
+decision_order: [activity, gameplay, level, economy, system, infra]
+boundaries:
+  - "广告接入与策略 → system.Ads；看广告领奖励的数值 → economy.Rewards"
+entities:                       # 全局标准词表 + 别名
+  Config: [config, settings, 开关, 配置]
+  Flow: [flow, 流程, 状态机]
+  Reward: [reward, 奖励]
+modules:
+  gameplay.Jigsaw:
+    paths: ["Assets/Game/Jigsaw/**", "Config/Jigsaw*.json"]
+    owners: [zhangsan]
+    aliases: [Puzzle, activity.Jigsaw]
+    entities: [Config, Flow, Reward, Balance]
+    status: active              # active / deprecated / merged_into:<module>
+```
+
+规则：
+
+- 大类在初始化确认后冻结；新增大类只能通过 `pmem migrate` 并经负责人确认。
+- 模块名与议题名比较不区分大小写，存储用标准写法。
+- 路径重叠时“更具体的路径优先”；同等具体时报错，必须人工解决。
+
+---
+
+## 5. 存储与索引
+
+### 5.1 存储接口
+
+```python
+class Storage(Protocol):
+    def write(self, entry: Entry, draft_id: str | None) -> WriteResult: ...
+    def get(self, entry_id: str) -> Entry | None: ...
+    def iter_all(self) -> Iterable[Entry]: ...
+    def changes_since(self, cursor: str | None) -> tuple[list[Change], str]: ...
+    def archive(self, entry_id: str, by: str) -> None: ...
+```
+
+v0.1 只实现 `FilesStorage`（`.memory/entries/**.md`）；v0.3 增加 `RemoteStorage`，工具接口、文件格式、模块目录不变。
+
+### 5.2 索引
+
+- 位置：`<用户缓存目录>/pmem/<仓库路径哈希>/<嵌入模型标识>/index.db`，不进版本控制。
+- 引擎：SQLite（WAL 模式）。
+  - `entries` 表：元信息 + 文件路径、修改时间、内容哈希；
+  - `vectors` 表：向量（BLOB）；检索时把目标模块的向量载入 numpy 暴力计算；
+  - `fts` 虚表：FTS5 trigram 分词，支持中文关键词。
+- 模块隔离为**逻辑过滤**（按 `module` 列），不再一个模块一张物理表；这也彻底避开表名大小写在不同操作系统上不一致的问题。
+- “已被替代”集合 = 所有 `active`/`seed` 记忆的 `supersedes` 并集，建索引时推算。
+
+### 5.3 增量更新
+
+- 不依赖版本控制的 Hook（`svn update` 没有可靠的客户端 Hook）。
+- 每次检索前做增量检查（节流：同一进程 10 秒内最多一次）：遍历 `entries/` 比对修改时间与内容哈希，只为变化的文件重算向量。
+- 本地未提交的记忆同样进索引，作者立即受益。
+- 多个 Cursor 窗口各起一个服务进程：SQLite WAL + 重建时文件锁。
+
+### 5.4 嵌入后端
+
+| 后端 | 用途 | 说明 |
+|---|---|---|
+| `onnx`（默认） | 进程内推理 | 无常驻服务；首次下载模型；支持 `model_path` 离线 |
+| `ollama` | 已有 Ollama 的团队 | 兼容参考实现 |
+| `openai` | 兼容 OpenAI 接口的嵌入服务 | 内网自建服务 |
+
+- 默认模型须为**多语言/中文友好的小模型**（约 100 MB 量级）。具体型号用评测集对比后确定（见 13.3）。参考实现使用的 `nomic-embed-text` 以英文为主，不作为中文项目默认。
+- 嵌入不可用时**退化为纯关键词检索**，返回中注明 `degraded: keyword_only`，不报错。
+
+---
+
+## 6. 版本控制适配
+
+### 6.1 接口
+
+```python
+class VCS(Protocol):
+    def detect(self, root: Path) -> bool: ...
+    def revision(self) -> str: ...                 # "git:3f2a9c1" / "svn:r48213"
+    def current_user(self) -> str | None: ...
+    def is_uncommitted(self, path: Path) -> bool: ...
+    def add(self, path: Path) -> None: ...         # SVN 下纳入版本控制
+    def churn(self, since_days: int) -> dict[str, ChurnStat]: ...   # 扫描器用
+```
+
+### 6.2 差异处理
+
+| 事项 | Git | SVN |
+|---|---|---|
+| 代码版本 | 当前提交短哈希 | 工作副本修订号 |
+| 作者 | `git config user.name` | 配置项 `PMEM_AUTHOR` → 系统用户名（SVN 无可靠的“当前用户”） |
+| 新文件纳入版本控制 | 由开发者提交时处理 | `svn_auto_add: true` 时写入即 `svn add` |
+| 未提交判定（草稿覆盖） | `git status` 未跟踪或已修改 | `svn status` 为 `?` 或 `A` |
+| 审阅 | 正常合并请求 | 无合并请求：小团队直接生效 + 健康报告兜底；可选 CI 校验格式 |
+| 修改热度 | `git log --numstat` | `svn log -v`（按路径计数） |
+
+都检测不到时为 `none`：版本号记 `none`，不支持草稿覆盖的“未提交”判定（退化为同一对话内允许覆盖）。
+
+---
+
+## 7. MCP 工具接口（给 AI 用）
+
+只暴露 3 个工具。删除、全量列出、迁移只在 CLI 中提供，**不暴露给 AI**。
+
+### 7.1 `search_memory`
+
+| 参数 | 说明 |
+|---|---|
+| `module` | `category.Module`；与 `path` 二选一 |
+| `path` | 文件路径，服务端按 `paths` 映射为模块 |
+| `entity` | 可选；别名归一、不区分大小写 |
+| `query` | 可选；关键词或自然语言 |
+| `limit` | 默认 5，上限 10 |
+
+返回（紧凑 JSON）：
+
+```json
+{"ok":true,"module":"gameplay.Jigsaw","resolved_from":"path","fallback":"module",
+ "items":[{"id":"01JA...","entity":"Reward","kind":"exclusion","date":"2026-10-14",
+           "author":"zhangsan","stale":false,"content":"..."}],
+ "degraded":null}
+```
+
+- 模块不存在：`items: []`、`module_exists: false`、`similar_modules`，不建模块。
+- 指定议题无结果：**真正退回整模块检索**，并标 `fallback: "module"`。
+
+### 7.2 排序规则（初始值，按评测集调参）
+
+```text
+rel     = 0.6 * vec_sim_norm + 0.4 * bm25_norm        # 无嵌入时 rel = bm25_norm
+bonus   = 0.15 * entity_match + 0.05 * (kind in {exclusion, correction})
+recency = 0.5 ** (age_days / recency_half_life_days)
+score   = (rel + bonus) * (0.7 + 0.3 * recency)
+```
+
+- 默认排除已被替代与已归档的记忆。
+- 多样性：同一批（同 `source.conversation`；缺失时为同作者 + 同模块 + 90 分钟窗口）最多 `max_per_batch` 条。
+- 对返回的每条记忆校验 `anchors`：文件不存在，或文件里找不到符号名 → `stale: true`。
+
+### 7.3 `record_memory`
+
+| 参数 | 说明 |
+|---|---|
+| `module`、`entity`、`kind`、`content` | 必填 |
+| `supersedes` | 可选，推翻的旧记忆 id |
+| `anchors` | 可选，相关代码位置 |
+| `draft_id` | 可选；通常由 Hook 自动注入 |
+| `source_conversation` | 可选；由 Hook 自动注入 |
+
+服务端行为：
+
+1. 归一化模块与议题；大类不存在 → 报错并列出允许的大类。
+2. 校验字数；敏感信息扫描命中 → 拒绝并指出命中片段的位置。
+3. 同模块 + 议题 + 当天已达上限 → **拒绝**，返回当天已有记忆的 id，要求带 `draft_id` 合并。
+4. 带 `draft_id` 且该文件为本人未提交 → 覆盖；否则拒绝并提示改用 `supersedes` 新建。
+5. 写文件；SVN 且 `svn_auto_add` → `svn add`；更新索引。
+6. 新模块 → 照常写入，返回 `new_module: true` 与 `similar_modules`。
+7. 返回 `warnings` 数组，任何非致命问题都明确告知 AI。
+
+### 7.4 `list_modules`
+
+- 参数：`category` 可选。
+- 每个模块返回：名字、条数、前 10 个已用议题、别名、是否登记。
+- 不显示既无记忆也未登记的模块；登记但为空的模块合并为一行计数，节省 token。
+
+---
+
+## 8. 写入与检索的行为约定（规则文件内容要点）
+
+### 8.1 何时写
+
+只在三个时机写，且一个任务一个模块只保留一条（后续写入覆盖草稿）：
+
+1. 根因确认；
+2. 方向被排除，或方案确定；
+3. 改完并验证通过。
+
+只描述“改了哪个方法”的不写（交给版本控制）。
+
+### 8.2 草稿覆盖
+
+- 由 Hook 在 `record_memory` 调用前注入 `draft_id`（本对话已在该模块写过、且文件未提交）。
+- 如果实测 `updated_input` 对 MCP 工具无效，退回方案：写入返回中带 `draft_id`，规则要求 AI 在同一任务的后续写入中携带。
+
+### 8.3 何时查
+
+- 改受守护代码前，按文件所属模块查一次；一个对话通常 1–3 次。
+- 新对话的第一次检索，议题留空，关键词放进 `query`。
+- 上下文压缩后、切换到新模块时重新查。
+
+---
+
+## 9. 闸门（Hooks）
+
+### 9.1 生成的 `hooks.json`（示意）
+
+```json
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [{ "command": ".memory/bin/pmem-hook prompt" }],
+    "preToolUse": [
+      { "command": ".memory/bin/pmem-hook pre-edit", "matcher": "Write|StrReplace|EditNotebook|Delete|Shell", "failClosed": false },
+      { "command": ".memory/bin/pmem-hook pre-record", "matcher": "MCP:.*record_memory", "failClosed": false }
+    ],
+    "afterMCPExecution": [{ "command": ".memory/bin/pmem-hook track", "matcher": "search_memory|record_memory" }],
+    "afterFileEdit": [{ "command": ".memory/bin/pmem-hook edited" }],
+    "preCompact": [{ "command": ".memory/bin/pmem-hook compact" }],
+    "stop": [{ "command": ".memory/bin/pmem-hook stop", "loop_limit": 1 }]
+  }
+}
+```
+
+（matcher 写法、Windows 下命令执行方式需按实测调整，见 13.2。）
+
+### 9.2 各事件行为
+
+| 事件 | 行为 |
+|---|---|
+| `beforeSubmitPrompt` | 用户原话含跳过标记 → 本对话 `skip=true` |
+| `preToolUse` 改文件 | 路径不在 `watch` 或在 `ignore` → 放行。否则算出模块；本对话未检索该模块且未跳过 → 按 `gate.mode`：`warn` 放行并给 `agent_message`，`block` 拒绝。提示中给出准确的 `search_memory(module="...")` |
+| `preToolUse` 终端命令 | 识别明显写文件的模式（重定向、`Set-Content`、`Out-File`、`sed -i`、`tee` 等）并提取路径，同上处理；无法提取路径则放行 |
+| `preToolUse` `record_memory` | 注入 `draft_id`（满足 8.2 条件时）与 `source_conversation` |
+| `afterMCPExecution` | 仅当返回 `ok:true`：检索 → 记录已检索模块；写入 → 记录模块与记忆 id |
+| `afterFileEdit` | 记录本对话改过的模块 |
+| `preCompact` | 清空已检索模块集合 |
+| `stop` | 改过但未写记忆的模块 → 追加一次提醒并点名模块；其他情况不提醒 |
+
+### 9.3 本对话状态
+
+- 位置：`<用户缓存目录>/pmem/<仓库路径哈希>/sessions/<对话id>.json`，7 天过期清理。
+- 内容：`searched_modules`、`edited_modules`、`written`（模块 → 记忆 id）、`skip`、`compacted_at`。
+- 拿不到对话 id：不写共享状态；`block` 档降级为放行 + 提醒。
+
+### 9.4 兜底
+
+- Hook 自身异常：放行，写错误日志；`pmem doctor` 展示最近错误。
+- 启动包装脚本找不到 `pmem`：输出提示“请安装 pmem”（作为 `agent_message`/`user_message`），而不是静默放行。
+
+### 9.5 力度档位与推广建议
+
+| 档位 | 行为 | 建议使用时机 |
+|---|---|---|
+| `off` | 只有规则文件 | 试用观察 |
+| `warn`（新项目默认） | 放行 + 提醒 AI 先查 | 前两周 |
+| `block` | 未检索则拒绝修改 | 库攒起来、团队习惯后 |
+
+---
+
+## 10. 接入初始化流程
+
+> 扫描流水线、目录角色判定、粒度门槛、待决清单与提问预算的细化设计见《模块目录结构与接入初始化划分》（`2026-10-14-pmem-modules-bootstrap-design.md`）第 3–6 节，以该文档为准。
+
+### 10.1 第 0 步：项目画像（`pmem init` 问答）
+
+问 5 项：项目类型、主要语言/引擎、团队规模、界面语言、闸门力度。支持非交互参数（`--type game --lang zh --gate warn`），便于测试。
+
+### 10.2 第 1 步：确定性扫描
+
+通用信号：
+
+- 目录树（默认深度 4）、各目录文件数与代码行数；
+- 文档目录、配置表目录；
+- 近 6 个月修改热度与主要作者（VCS 适配器）。
+
+语言/引擎适配器（v0.1：Unity、Node；v0.2：Java、.NET、Go、Python）：
+
+| 适配器 | 边界信号 |
+|---|---|
+| Unity | `*.asmdef`、命名空间、`Assets/` 下业务目录 |
+| Node | 工作区配置（`workspaces`、`pnpm-workspace.yaml`）、各包 `package.json` |
+
+内置处理：
+
+- **默认忽略**：`node_modules`、`Library`、`Temp`、`Plugins`、`ThirdParty`、`vendor`、`Generated`、`dist`、`build` 等。
+- **容器目录穿透**：`Framework`、`Core`、`Common`、`Base`、`Runtime`、`Editor`、`Scripts`、`src`、`lib`、`app`、`packages` 等只作为容器，向下一层找业务单元。
+
+输出 `.memory/bootstrap/scan-report.json`：
+
+```json
+{"candidates":[{"path":"Assets/Game/Jigsaw","name":"Jigsaw","adapter":"unity",
+  "signals":{"files":84,"loc":12034,"churn_6m":312,"authors":["zhangsan","lisi"],
+             "has_config":true,"has_docs":false,"asmdef":"Game.Jigsaw"},
+  "container":false}]}
+```
+
+### 10.3 第 2 步：划分草案（技能 `pmem-bootstrap`，由 Cursor Agent 执行）
+
+- 输入：扫描报告、大类预设、判定顺序模板。
+- 产出：`modules.yaml` 草案（含 `paths`、`aliases`、`entities`、负责人候选）与 `.memory/bootstrap/decisions.md`（争议清单）。
+- 粒度目标：大类 4–8 个；初始模块 15–40 个；每个模块必须有 `paths`；预计少于 5 条记忆的候选降为议题。
+
+### 10.4 第 3 步：人工确认
+
+技能引导 Agent 每次只问一个争议项；结束时冻结大类，写入 3–5 条 `boundaries`。
+
+### 10.5 第 4 步：覆盖率校验（`pmem doctor --coverage`）
+
+- 每个受守护文件恰好映射到一个模块，或被 `ignore`；
+- 路径重叠按“更具体优先”，同等具体时报错；
+- 业务代码覆盖率目标 ≥ 95%；不达标不能完成初始化。
+
+### 10.6 第 5 步：种子记忆（可选，技能 `pmem-seed`）
+
+- 按修改热度取前 5–10 个模块；
+- Agent 从文档、提交说明、关键代码注释中，为每个模块提炼 10–20 条，`status: seed`；
+- 引入者确认后转为 `active`（`pmem seed --accept`）。
+
+### 10.7 第 6 步：生成接入文件
+
+- `.cursor/rules/pmem.mdc`（约 1k token：协议、大类表每类 2–3 个示例、写入规范）
+- `.cursor/hooks.json`、`.cursor/mcp.json`
+- `.cursor/skills/pmem-bootstrap|pmem-seed|pmem-consolidate/SKILL.md`
+- `.memory/bin/pmem-hook`、`.memory/bin/pmem-hook.cmd`
+- 每个生成文件头部写明“由 pmem 生成，请勿手改”与 `schema_version`
+
+`.cursor/mcp.json`（示意）：
+
+```json
+{ "mcpServers": { "pmem": { "command": "pmem", "args": ["serve"] } } }
+```
+
+`pmem serve` 从当前工作目录向上查找 `.memory/config.yaml` 定位仓库根（是否可用 `${workspaceFolder}` 变量待实测）。
+
+### 10.8 第 7 步：团队接入说明
+
+生成一段可直接贴给成员的说明：安装命令、启用 MCP、`pmem doctor`。
+
+---
+
+## 11. 日常维护
+
+| 命令 | 作用 |
+|---|---|
+| `pmem sync` | 重新扫描，列出新目录与新模块候选；只追加，不改已有名字；`--apply` 才写入（细则见模块与初始化设计文档第 7.1 节） |
+| `pmem report` | 健康报告：未登记模块、疑似重复模块、检索落空热点（模块 × 议题）、无归属新目录、可能过时的记忆、60 天无人检索的模块、被拒绝的写入统计 |
+| `pmem migrate rename A B` | 改名，旧名自动成为别名 |
+| `pmem migrate merge A B` | A 标为 `merged_into:B`，读写自动转到 B；`--rewrite` 时才物理移动文件 |
+| `pmem migrate split A --by path\|entity` | 拆分，按路径或议题重新分配 |
+| `pmem migrate deprecate A` | 废弃：只读，拒绝新写入 |
+| `pmem archive <id>` | 负责人归档单条记忆 |
+| `pmem reindex` | 删除并重建本地索引 |
+| `pmem import --lancedb <路径>` | 从参考实现的 LanceDB 库导入 |
+| `pmem upgrade` | 升级后重新生成接入文件、迁移配置格式 |
+
+### 11.1 本地统计
+
+服务端在用户缓存目录记录（不进仓库、不上传）：每次检索的模块、议题、是否命中、是否退回；每次写入的结果与拒绝原因。`pmem report` 基于它生成。
+
+### 11.2 收口节奏
+
+- 小团队：一人每两周看一次报告，约 30 分钟。
+- 中团队：各模块负责人处理自己模块，每周一次。
+
+---
+
+## 12. 定死与可配置
+
+| 定死（模式核心） | 可配置 |
+|---|---|
+| 三级地址：大类.模块 + 议题 | 大类、模块、路径、负责人、别名、议题词表 |
+| 记忆文件不可变；更正靠新建 + `supersedes` | 字数与条数上限、检索条数、时间衰减 |
+| 改代码前先查的闸门机制 | 闸门力度、受守护路径、跳过标记 |
+| 记忆类型五分类 | 嵌入后端与模型 |
+| AI 不能删除记忆 | 规则语言、默认写入状态 |
+
+---
+
+## 13. 质量保障
+
+### 13.1 测试
+
+- 单元测试（pytest）：别名归一、路径映射与重叠判定、替代关系推算、排序与多样性、写入校验（上限拒绝、草稿覆盖条件、敏感信息）、增量索引。
+- 合成样例仓库（测试中生成）：Unity 风格、Node 单仓多包；分别初始化为 Git 与 SVN 工作副本（本机无 `svn` 时跳过 SVN 用例）。
+- Hook 契约测试：录制真实 Cursor Hook 输入作为测试数据。
+- 检索评测集：问题 → 期望命中的记忆 id，计算前 5 条召回率，用于调参与选模型。
+- 三系统 CI：Windows / macOS / Linux。
+
+### 13.2 必须先实测的 Cursor 行为（v0.1 第一项任务）
+
+1. 各事件输入里对话 id 的字段名；`preToolUse` 对 MCP 工具的输入结构。
+2. `preToolUse` 返回 `updated_input` 对 MCP 工具参数是否生效。
+3. MCP 工具的 matcher 写法（`MCP:...`）。
+4. `beforeSubmitPrompt`、`preCompact`、`afterFileEdit` 的输入字段。
+5. Windows 下 Hook 命令由哪种 shell 执行，`.cmd` 包装是否需要。
+6. 项目级 `.cursor/mcp.json` 的工作目录与变量支持。
+
+`pmem doctor` 需检测 Hook 是否真的被触发（例如写入心跳文件），格式变化时明确报错而非静默失效。
+
+### 13.3 嵌入模型选型
+
+用合成评测集 +（经作者同意后）参考实现已有记忆的离线副本，对比 2–3 个多语言小模型的前 5 条召回率、体积与速度，选定默认模型。
+
+### 13.4 安全
+
+- 写入前敏感信息扫描（密钥、令牌、私钥、口令赋值等）。
+- 记忆进仓库后所有有权限者可见，规则与文档中明确说明。
+
+---
+
+## 14. 版本规划
+
+| 版本 | 范围 |
+|---|---|
+| v0.1 | `init`（通用扫描 + Unity/Node 适配）、带路径与别名的模块目录、文件存储 + SQLite 混合索引、3 个 MCP 工具、闸门全套事件、Git/SVN 适配、`doctor`、`reindex`、`import --lancedb`、bootstrap 技能 |
+| v0.2 | seed 与 consolidate 技能、`report`、`sync`、`migrate`、`archive`、代码锚点过时校验完善、Java/.NET/Go/Python 适配器 |
+| v0.3+ | `RemoteStorage` 中心服务、身份与权限、审计、看板 |
+
+### 14.1 v0.1 验收标准
+
+- 在合成仓库与选定开源项目上，`init` 全流程 1 小时内完成，覆盖率 ≥ 95%；
+- Windows 与 macOS 上 `pmem doctor` 全绿；
+- 写入零静默丢失（所有拒绝都有明确返回）；
+- 闸门三档行为与 13.2 实测结论一致，契约测试通过；
+- 检索评测集前 5 条召回率达到设定目标（基线由 13.3 确定）。
+
+---
+
+## 15. 产品仓库结构
+
+```text
+Cursor-Project-Memory/
+  pyproject.toml
+  src/pmem/
+    cli/          # init / doctor / serve / hook / sync / report / migrate / archive / reindex / import / upgrade
+    server/       # MCP 工具定义
+    core/         # Entry、ModuleRegistry、别名归一、路径映射、替代关系
+    storage/      # base.py、files.py（将来 remote.py）
+    index/        # sqlite 索引、embedder/（onnx、ollama、openai）、排序与多样性
+    vcs/          # git.py、svn.py、none.py
+    scan/         # generic.py、adapters/（unity.py、node.py …）
+    hooks/        # prompt、pre_edit、pre_record、track、edited、compact、stop
+    templates/    # presets/、vocab/、rules/、hooks/、mcp/、skills/、bin/
+  tests/
+    fixtures/     # 合成仓库生成器、录制的 Hook 输入、检索评测集
+  docs/
+```
+
+---
+
+## 16. 待定问题
+
+1. 产品正式名称。
+2. 用于真实验证的开源项目（Unity 或 Node 单仓多包，各选一个候选后再定）。
+3. 默认嵌入模型型号（13.3 评测后确定）。
+4. 开源许可证。
+5. 13.2 中的 Cursor 行为实测结论，可能影响 9.1 与 8.2 的具体实现。
+
+---
+
+## 附录 A：参考实现中发现的问题与对应设计
+
+| 问题 | 位置 | 本设计中的处理 |
+|---|---|---|
+| 指定议题无结果时退回整模块检索，但随后又按议题过滤掉，退回无效 | `store.py` 第 573–598 行 | 7.1：真正退回并标注 `fallback` |
+| 同议题同日超过 5 条时静默删除最早的，返回仍为成功 | `store.py` 第 513–531 行 | 7.3：拒绝并要求合并 |
+| 语义召回后按日期取前 5，新压过相关 | `store.py` 第 611–618 行 | 7.2：相关度为主、时间衰减、批内多样性 |
+| 拿不到对话 id 时共用 `default` 状态 | `memory_gate_track.py`、`memory_gate_pre_edit.py` | 9.3：不共享状态，降级处理 |
+| 闸门只拦 `Write/StrReplace/EditNotebook`，终端命令可绕过 | `hooks.json` | 9.2：覆盖 `Delete` 与终端写文件模式 |
+| “跳过记忆”依赖改文件 Hook 里的 `prompt` 字段，可能拿不到 | `memory_gate_pre_edit.py` | 9.2：改在 `beforeSubmitPrompt` 识别 |
+| 模块名区分大小写且直接用作表名，跨操作系统行为不一致 | `registry.py`、`store.py` | 4.5、5.2：归一化 + 逻辑过滤 |
+| `delete_memory` 作为 MCP 工具暴露，靠规则禁止 | `server.py` | 7：不暴露给 AI |
+| 扫描脚本写死项目目录、别名与前缀，并扫出按技术层划分的空模块 | `sync_modules.py` | 10.2：通用扫描 + 适配器 + 容器目录穿透 |
+| LanceDB 目录登记问题需要大量兼容代码与修复工具 | `store.py` | 5.2：SQLite 单文件索引，索引仅为可重建缓存 |
+| 换嵌入模型需换库，曾丢失约 160 条未迁移记忆 | 模式指南 7.2 | 3.1、5.2：文件为准，索引可随时重建 |
+| 英文为主的嵌入模型处理中文记忆 | `mcp.json` | 5.4：默认多语言小模型，评测后选定 |

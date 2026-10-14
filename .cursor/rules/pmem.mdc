@@ -1,0 +1,24 @@
+---
+description: 项目研发记忆（pmem）使用约定
+alwaysApply: true
+---
+<!-- 由 pmem init 生成，重新运行 pmem init 会覆盖；如需调整请改 .memory/config.yaml -->
+# 项目研发记忆（pmem）
+
+本项目用 pmem MCP 按模块（`category.Module`）沉淀研发结论，团队共享。
+
+## 何时查
+- 修改代码前，按要改的文件查一次：`search_memory(path="<文件路径>")`；同一模块一个对话查一次即可。
+- 排查问题时把现象写进 `query`；不确定模块名时先 `list_modules()`。
+- 返回中 `stale: true` 表示关联代码已变化，参考时需核实。
+
+## 何时写（只在这三个时机）
+1. 根因确认；2. 某个方向被排除，或方案确定；3. 改完并验证通过。
+
+- `kind`：conclusion 结论 / exclusion 排除项 / correction 更正 / risk 风险 / decision 决定。
+- 正文自包含：现象、原因、证据、影响范围；不写“改了哪个方法”这类版本库已有的信息。
+- 同一任务对同一模块只留一条：再次写入时带上次返回的 `draft_id` 覆盖。
+- 推翻旧结论：新写一条，`supersedes` 填旧记忆 id。
+- 不写密码、密钥、个人信息。
+
+用户说“跳过记忆”时，本对话不查也不写。

@@ -1,0 +1,60 @@
+# pmem 模块目录：模块是“业务单元”而不是目录，一个模块可以拥有多个路径。
+# 首次划分：在 Cursor 里对 Agent 说“按 pmem-bootstrap 技能划分模块”。之后新增模块直接在这里加。
+#
+# modules:
+#   gameplay.Jigsaw:
+#     paths: ["Assets/Game/Jigsaw/**", "Assets/UI/JigsawPanel/**"]
+#     aliases: [Puzzle]            # 别名，写入/检索时自动归一
+#     entities: [Reward, Config]   # 模块内常用议题
+# candidates: 冷门目录，先登记路径，有记忆写入后再转为正式模块
+# third_party / ignored: 第三方 SDK、示例、生成代码，不参与闸门
+schema_version: 1
+categories:
+  feature:
+    label: 业务功能
+  infra:
+    label: 技术底座
+entities:
+  Encoding: [编码, 乱码, gbk, bom]
+  Performance: [性能, 耗时, latency]
+  Ranking: [排序, 打分, score]
+modules:
+  feature.Gate:
+    description: Cursor Hooks 闸门：按模块提醒先查记忆、注入草稿、结束提醒
+    paths: [src/pmem/hooks/**, src/pmem/cli/hook_cmd.py, tests/hooks/**, tests/fixtures/hook_payloads/**, spike/cursor_hooks/**]
+    aliases: [Hooks, Hook]
+    entities: [Encoding, Payload, State, ShellParse]
+  feature.Retrieval:
+    description: 索引、分词、嵌入与排序
+    paths: [src/pmem/index/**, tests/index/**, scripts/eval_retrieval.py, tests/fixtures/eval/**]
+    aliases: [Index, Search]
+    entities: [Ranking, Embedding, Tokenize]
+  feature.Tools:
+    description: MCP 服务与 3 个工具背后的业务规则（写入校验、检索参数）
+    paths: [src/pmem/server/**, src/pmem/service.py, src/pmem/core/secrets.py, tests/test_service.py, tests/test_server.py]
+    aliases: [Mcp, Server, Service]
+    entities: [Record, Search, Secrets]
+  feature.ModuleCatalog:
+    description: modules.yaml 的解析、别名归一与路径映射
+    paths: [src/pmem/core/registry.py, tests/core/test_registry_*.py, tests/core/conftest.py]
+    aliases: [Registry]
+  feature.Storage:
+    description: 记忆文件存储与 Git/SVN 适配
+    paths: [src/pmem/storage/**, src/pmem/vcs/**, tests/storage/**, tests/vcs/**, tests/conftest.py]
+    aliases: [Vcs, Files]
+    components: [Files, Git, Svn]
+  feature.Onboarding:
+    description: init / scan / doctor 与生成的规则、技能、配置
+    paths: [src/pmem/cli/init_cmd.py, src/pmem/cli/doctor_cmd.py, src/pmem/generate/**, src/pmem/scan/**, tests/test_cli_flow.py]
+    aliases: [Init, Doctor, Scan]
+  infra.Model:
+    description: 记忆条目、ULID 与配置
+    paths: [src/pmem/core/entry.py, src/pmem/core/ids.py, src/pmem/core/config.py, tests/core/test_entry.py, tests/core/test_ids.py, tests/core/test_config.py]
+    aliases: [Entry, Config]
+  infra.Common:
+    description: 命令行入口与其余零散文件
+    paths: [src/pmem/**, tests/**]
+    aliases: [Cli]
+candidates: {}
+third_party: []
+ignored: []

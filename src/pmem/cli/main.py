@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -10,7 +8,9 @@ from pmem import __version__
 HOOK_EVENTS = ("prompt", "pre-tool", "before-mcp", "after-mcp", "edited", "compact", "stop")
 
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser():
+    import argparse
+
     parser = argparse.ArgumentParser(prog="pmem", description="面向项目与团队的 AI 研发记忆系统")
     parser.add_argument("--version", action="version", version=f"pmem {__version__}")
     sub = parser.add_subparsers(dest="command")
@@ -57,10 +57,17 @@ def _project_root(raw: str) -> Path:
 
 
 def _print_json(data: dict) -> None:
+    import json
+
     print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
 def main(argv: list[str] | None = None) -> int:
+    args_list = sys.argv[1:] if argv is None else argv
+    if len(args_list) == 2 and args_list[0] == "hook" and args_list[1] in HOOK_EVENTS:
+        from pmem.cli.hook_cmd import run_hook
+
+        return run_hook(args_list[1])
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     parser = build_parser()

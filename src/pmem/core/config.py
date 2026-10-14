@@ -22,6 +22,7 @@ DEFAULTS: dict = {
         "watch": [],
         "ignore": ["**/*.md", "docs/**", ".memory/**", ".cursor/**"],
         "skip_markers": ["跳过记忆", "skip-memory"],
+        "stop_reminder": True,
     },
     "write": {
         "default_status": "active",
@@ -78,6 +79,9 @@ class Config:
     def __init__(self, root: Path, data: dict):
         self.root = root
         self.data = data
+        gate = data.get("gate") or {}
+        if isinstance(gate.get("mode"), bool):
+            gate["mode"] = "warn" if gate["mode"] else "off"
         for key, allowed in _CHOICES.items():
             value = self.get(key)
             if value not in allowed:

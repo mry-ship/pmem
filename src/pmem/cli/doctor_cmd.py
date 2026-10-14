@@ -1,0 +1,133 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+import shutil
+import sys
+from collections import Counter
+from pathlib import Path
+
+from pmem.core.config import Config
+from pmem.core.registry import ModuleRegistry, RegistryError
+from pmem.scan.lite import iter_code_files
+from pmem.storage.files import FilesStorage
+from pmem.vcs.detect import detect_vcs
+
+OK, WARN, BAD = "✔", "!", "✘"
+
+
+def coverage_report(root: Path, registry: ModuleRegistry) -> dict:
+    files = list(iter_code_files(root))
+    mapped = excluded = 0
+    unmapped: Counter = Counter()
+    conflicts: set[str] = set()
+    used: Counter = Counter()
+    for rel in files:
+        if registry.is_excluded(rel):
+            excluded += 1
+            continue
+        try:
+            match = registry.module_for_path(rel)
+        except RegistryError as exc:
+            conflicts.add(str(exc).split("，")[0])
+            continue
+        if match is None:
+            unmapped["/".join(rel.split("/")[:3]) if "/" in rel else "（根目录）"] += 1
+        else:
+            mapped += 1
+            used[match.module_id] += 1
+    shells = [
+        mid for mid, m in {**registry.modules, **registry.candidates}.items()
+        if m.paths and not m.merged_into and used[mid] == 0
+    ]
+    total = len(files) - excluded
+    return {
+        "files": len(files),
+        "excluded": excluded,
+        "mapped": mapped,
+        "coverage": mapped / total if total else 1.0,
+        "unmapped": unmapped.most_common(10),
+        "conflicts": sorted(conflicts)[:10],
+        "shells": shells,
+    }
+
+
+def run_doctor(root: Path) -> int:
+    problems = 0
+
+    def line(mark: str, text: str) -> None:
+        nonlocal problems
+        problems += mark == BAD
+        print(f"  {mark} {text}")
+
+    print(f"pmem 自检：{root}")
+    config = Config.load(root)
+    vcs = detect_vcs(root, config.get("vcs"))
+    line(OK, f"配置可读；版本控制 {vcs.name}；作者 {vcs.current_user()}；闸门 {config.get('gate.mode')}")
+
+    registry = ModuleRegistry.load(config.modules_path) if config.modules_path.exists() else ModuleRegistry({})
+    n_modules = len(registry.modules)
+    line(OK if n_modules else WARN, f"模块 {n_modules} 个、候选 {len(registry.candidates)} 个、大类 {' / '.join(registry.categories)}")
+    if n_modules == 0:
+        print("      还没有划分模块：在 Cursor 里对 Agent 说“按 pmem-bootstrap 技能划分模块”")
+
+    cov = coverage_report(root, registry)
+    pct = cov["coverage"] * 100
+    line(OK if pct >= 95 else WARN, f"模块覆盖率 {pct:.1f}%（代码文件 {cov['files']}，第三方/忽略 {cov['excluded']}）")
+    for folder, count in cov["unmapped"]:
+        print(f"      未覆盖：{folder}（{count} 个文件）")
+    for conflict in cov["conflicts"]:
+        line(BAD, f"路径重叠：{conflict}")
+    if cov["shells"]:
+        line(WARN, f"空壳模块（路径匹配不到任何代码文件）：{', '.join(cov['shells'][:10])}")
+
+    storage = FilesStorage(root, vcs)
+    entries = list(storage.iter_all())
+    line(OK if not storage.warnings else WARN, f"记忆 {len(entries)} 条")
+    for warning in storage.warnings[:5]:
+        print(f"      {warning}")
+
+    cursor = root / ".cursor"
+    mcp = _load(cursor / "mcp.json").get("mcpServers", {})
+    line(OK if "pmem" in mcp else BAD, ".cursor/mcp.json 已注册 pmem" if "pmem" in mcp else ".cursor/mcp.json 缺少 pmem，请运行 pmem init")
+    hooks = json.dumps(_load(cursor / "hooks.json"))
+    line(OK if "pmem hook" in hooks else WARN, "Hooks 已接入" if "pmem hook" in hooks else "Hooks 未接入（闸门不生效），请运行 pmem init")
+    line(OK if (cursor / "rules" / "pmem.mdc").exists() else WARN, "规则文件 .cursor/rules/pmem.mdc")
+    line(OK if shutil.which("pmem") else BAD, "PATH 中可以找到 pmem 命令" if shutil.which("pmem") else "PATH 中找不到 pmem，Cursor 无法启动服务")
+
+    backend = config.get("embedding.backend")
+    has_fastembed = importlib.util.find_spec("fastembed") is not None
+    if backend == "none" or (backend == "auto" and not has_fastembed):
+        line(OK, "检索：关键词（安装 pmem[embed] 可启用语义检索）")
+    else:
+        line(OK, f"检索：关键词 + 语义（{backend}）")
+
+    errors = config.cache_dir / "hook-errors.log"
+    if errors.exists() and errors.stat().st_size:
+        tail = errors.read_text(encoding="utf-8", errors="replace").strip().splitlines()[-3:]
+        line(WARN, f"最近的 Hook 错误（{errors}）：")
+        for text in tail:
+            print(f"      {text}")
+    log = config.cache_dir / "hooks.log"
+    if log.exists():
+        recent = log.read_text(encoding="utf-8", errors="replace").strip().splitlines()[-1:]
+        line(OK, f"Hook 最近一次介入：{recent[0][:120] if recent else '无'}")
+
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            if ctypes.windll.kernel32.GetACP() != 65001:
+                print("  i Windows 非 UTF-8 代码页：Cursor 传给 Hook 的中文会被转码，pmem 已自动兼容")
+        except Exception:  # noqa: BLE001, S110
+            pass
+
+    print("自检完成" + ("，有需要处理的问题" if problems else "，一切正常"))
+    return 1 if problems else 0
+
+
+def _load(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig")) if path.exists() else {}
+    except json.JSONDecodeError:
+        return {}

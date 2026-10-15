@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>pmem 使用手册：项目研发记忆</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --card: #ffffff;
+    --text: #1f2328;
+    --muted: #59636e;
+    --border: #d8dee4;
+    --accent: #2f6feb;
+    --accent-soft: #e8f0fe;
+    --ok: #1a7f37;
+    --ok-soft: #e6f4ea;
+    --warn: #9a6700;
+    --warn-soft: #fff8e1;
+    --danger: #cf222e;
+    --code-bg: #f1f3f5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 15px;
+    line-height: 1.75;
+    color: var(--text);
+    background: var(--bg);
+  }
+  .layout { display: flex; max-width: 1280px; margin: 0 auto; }
+  nav {
+    position: sticky; top: 0; align-self: flex-start;
+    width: 240px; height: 100vh; overflow-y: auto;
+    padding: 28px 16px 28px 24px;
+    border-right: 1px solid var(--border);
+  }
+  nav .brand { font-weight: 700; font-size: 18px; margin-bottom: 4px; }
+  nav .ver { color: var(--muted); font-size: 12px; margin-bottom: 20px; }
+  nav a {
+    display: block; padding: 4px 10px; margin: 2px 0;
+    color: var(--muted); text-decoration: none; border-radius: 6px; font-size: 14px;
+  }
+  nav a:hover { background: var(--accent-soft); color: var(--accent); }
+  main { flex: 1; min-width: 0; padding: 32px 48px 80px; }
+  h1 { font-size: 30px; margin: 0 0 8px; }
+  .subtitle { color: var(--muted); margin: 0 0 28px; font-size: 16px; }
+  section {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px 32px; margin-bottom: 24px;
+  }
+  h2 { font-size: 22px; margin: 0 0 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 17px; margin: 24px 0 8px; }
+  p { margin: 8px 0; }
+  code {
+    font-family: Consolas, "JetBrains Mono", "Courier New", monospace;
+    font-size: 13px; background: var(--code-bg); padding: 1px 6px; border-radius: 4px;
+  }
+  pre {
+    background: #0d1117; color: #e6edf3; padding: 14px 18px; border-radius: 8px;
+    overflow-x: auto; font-size: 13px; line-height: 1.6; margin: 10px 0;
+  }
+  pre code { background: none; padding: 0; color: inherit; }
+  pre .c { color: #8b949e; }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+  th, td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: #f6f8fa; font-weight: 600; white-space: nowrap; }
+  .callout { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 10px 16px; border-radius: 0 8px 8px 0; margin: 12px 0; }
+  .callout.ok { border-color: var(--ok); background: var(--ok-soft); }
+  .callout.warn { border-color: var(--warn); background: var(--warn-soft); }
+  .steps { counter-reset: step; list-style: none; padding: 0; margin: 0; }
+  .steps > li { position: relative; padding: 4px 0 16px 48px; }
+  .steps > li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 0; top: 2px; width: 32px; height: 32px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .steps > li > strong { font-size: 16px; }
+  .tag { display: inline-block; font-size: 12px; padding: 0 8px; border-radius: 10px; margin-left: 6px; vertical-align: middle; }
+  .tag.once { background: var(--accent-soft); color: var(--accent); }
+  .tag.each { background: var(--ok-soft); color: var(--ok); }
+  .tag.manual { background: var(--warn-soft); color: var(--warn); }
+  .flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin: 14px 0; }
+  .flow .node {
+    flex: 1; min-width: 150px; border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 14px; background: #fbfcfd; font-size: 14px;
+  }
+  .flow .node b { display: block; margin-bottom: 4px; color: var(--accent); }
+  .flow .arrow { align-self: center; color: var(--muted); font-size: 20px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card { border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; background: #fbfcfd; }
+  .card h4 { margin: 0 0 6px; font-size: 15px; }
+  .kind { font-weight: 600; }
+  ul { padding-left: 22px; margin: 6px 0; }
+  li { margin: 3px 0; }
+  .muted { color: var(--muted); font-size: 13px; }
+  @media (max-width: 900px) {
+    nav { display: none; }
+    main { padding: 20px; }
+    .grid2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav>
+  <div class="brand">pmem 使用手册</div>
+  <div class="ver">v0.1.0.dev0 · 项目研发记忆</div>
+  <a href="#what">pmem 是什么</a>
+  <a href="#concepts">核心概念</a>
+  <a href="#onboard">在其他项目接入</a>
+  <a href="#daily">日常使用</a>
+  <a href="#gate">闸门（Hooks）</a>
+  <a href="#mcp">MCP 工具</a>
+  <a href="#cli">命令行</a>
+  <a href="#config">配置</a>
+  <a href="#storage">存储与资源开销</a>
+  <a href="#ranking">检索与排序</a>
+  <a href="#curation">整理与维护</a>
+  <a href="#metrics">衡量收益</a>
+  <a href="#import">迁移旧记忆</a>
+  <a href="#faq">常见问题</a>
+  <a href="#limits">已知限制</a>
+</nav>
+
+<main>
+<h1>pmem：项目研发记忆</h1>
+<p class="subtitle">让 AI 改代码前先查这个模块以前踩过的坑，改完后把新结论留给下一个人。适用于 Cursor、Claude Code、Codex。</p>
+
+<!-- ============ 是什么 ============ -->
+<section id="what">
+  <h2>pmem 是什么</h2>
+  <p>pmem 把研发过程中得出的结论（根因、排除过的方向、方案决定、风险）按<strong>业务模块</strong>存成 Markdown 文件，放在仓库的 <code>.memory/</code> 目录里，跟代码一起提交、评审，整个团队共享。</p>
+  <ul>
+    <li><strong>不需要服务器和数据库</strong>：记忆就是仓库里的文件；检索索引只是本机缓存，删了能重建。</li>
+    <li><strong>按模块寻址</strong>：改哪个文件，就自动查那个文件所属模块的记忆。</li>
+    <li><strong>Agent 主动 + Hooks 兜底</strong>：规则告诉 AI 何时查、何时写；它漏了，Hooks（工具调用前后的拦截脚本）会提醒，任何异常都直接放行，不会卡住开发。</li>
+    <li><strong>收益可量化</strong>：<code>pmem report</code> 统计命中率、避坑次数、跨人复用；<code>pmem bench</code> 做有记忆 / 无记忆对照实验。</li>
+  </ul>
+  <pre><code>你：修一下拼图奖励重复发放
+Agent：（自动查 gameplay.Jigsaw 的记忆）
+       已有排除项：不要在客户端去重，根因是服务端 Claim 没有按关卡做幂等……
+       我按这个方向修改服务端，并补测试。</code></pre>
+</section>
+
+<!-- ============ 核心概念 ============ -->
+<section id="concepts">
+  <h2>核心概念</h2>
+  <div class="grid2">
+    <div class="card">
+      <h4>模块 module</h4>
+      <p>格式 <code>category.Module</code>，如 <code>gameplay.Jigsaw</code>。模块是业务单元而不是目录，可以包含多个路径、起别名。定义在 <code>.memory/modules.yaml</code>。</p>
+    </div>
+    <div class="card">
+      <h4>议题 entity</h4>
+      <p>模块内的子话题，如 <code>Reward</code>、<code>Config</code>。检索时议题匹配会加分。</p>
+    </div>
+    <div class="card">
+      <h4>记忆条目</h4>
+      <p>一条记忆一个文件：<code>.memory/entries/&lt;模块&gt;/&lt;ULID&gt;.md</code>。ULID 是按时间排序的唯一编号。写入后正文不再修改。</p>
+    </div>
+    <div class="card">
+      <h4>替代 supersedes</h4>
+      <p>要推翻旧结论就新写一条，在 <code>supersedes</code> 里填旧 id。旧的自动从检索中隐藏，但文件仍保留在版本库，可按时间回溯。</p>
+    </div>
+    <div class="card">
+      <h4>关联代码 anchors 与过期 stale</h4>
+      <p><code>anchors</code> 记录相关代码（<code>文件#方法</code>）。代码在记忆写下后改过或被删，检索结果标 <code>stale: true</code>，提示用前先核对。</p>
+    </div>
+    <div class="card">
+      <h4>别名 aliases 与同义词 synonyms</h4>
+      <p>写记忆时把现象的其他叫法填进 <code>aliases</code>；团队常用同义叫法登记在 <code>modules.yaml</code> 的 <code>synonyms</code>，检索时自动扩展。</p>
+    </div>
+  </div>
+
+  <h3>五种记忆类型（kind）</h3>
+  <table>
+    <tr><th>kind</th><th>含义</th><th>典型场景</th></tr>
+    <tr><td class="kind">conclusion</td><td>结论</td><td>根因确认、改完验证通过后的结论</td></tr>
+    <tr><td class="kind">exclusion</td><td>排除项</td><td>某个方向试过不行，别再走（检索时略微加分）</td></tr>
+    <tr><td class="kind">correction</td><td>更正</td><td>旧结论已不成立，配合 <code>supersedes</code>（检索时略微加分）</td></tr>
+    <tr><td class="kind">risk</td><td>风险</td><td>改动这里要注意的坑</td></tr>
+    <tr><td class="kind">decision</td><td>决定</td><td>方案选型和取舍理由</td></tr>
+  </table>
+
+  <h3>一条记忆长什么样</h3>
+  <pre><code>---
+id: 01M4X6AZN6N1AX9M6E6P34SRX4
+module: gameplay.Jigsaw
+entity: Reward
+kind: exclusion
+author: zhangsan
+note_date: '2026-10-14'
+anchors: [Assets/Game/Jigsaw/JigsawReward.cs#Claim]
+---
+拼图奖励在断线重连时会重复发放：服务端 Claim 接口没有按关卡做幂等校验……不要在客户端做去重。</code></pre>
+</section>
+
+<!-- ============ 接入 ============ -->
+<section id="onboard">
+  <h2>在其他项目接入</h2>
+  <div class="callout">
+    前提：已安装 <a href="https://docs.astral.sh/uv/">uv</a>（Python 包管理工具）、Python ≥ 3.10，以及 Cursor、Claude Code、Codex 中至少一个。项目用 Git、SVN 或都不用均可。
+  </div>
+
+  <ol class="steps">
+    <li>
+      <strong>安装 pmem</strong><span class="tag once">每人一次</span>
+      <p>本机已经装好（以可编辑模式从本仓库安装，改本仓库代码立即生效），可以跳过。其他同事按下面任一方式安装：</p>
+      <pre><code><span class="c"># 方式 A：从 GitHub 安装（推荐团队使用）</span>
+uv tool install "pmem[embed] @ git+https://github.com/mry-ship/pmem"
+
+<span class="c"># 以后升级到最新版（不生效时用第二行强制重装）</span>
+uv tool upgrade pmem
+uv tool install --reinstall "pmem[embed] @ git+https://github.com/mry-ship/pmem"
+
+<span class="c"># 方式 B：拿到本仓库源码目录后，在该目录里执行</span>
+uv tool install --editable ".[embed]"
+
+<span class="c"># 验证</span>
+pmem --version</code></pre>
+      <p class="muted"><code>[embed]</code> 启用中文语义检索，首次使用下载约 90 MB 模型，所有项目共用。去掉它则只用关键词检索。</p>
+    </li>
+    <li>
+      <strong>在目标项目根目录初始化</strong><span class="tag each">每个项目一次</span>
+      <pre><code>cd D:\Work\MyGame
+pmem init --type game                     <span class="c"># 项目类型：game / app / backend / generic，决定默认模块大类</span>
+pmem init --agents cursor,claude,codex    <span class="c"># 指定接入哪些工具；默认 auto</span>
+pmem init --gate warn                     <span class="c"># 闸门力度：block（默认）/ warn / off</span></code></pre>
+      <p><code>auto</code> 总会接入 Cursor；项目里已有 <code>.claude/</code> 或 <code>CLAUDE.md</code> 时接入 Claude Code，已有 <code>.codex/</code> 或 <code>AGENTS.md</code> 时接入 Codex。已有配置只合并不覆盖。</p>
+      <table>
+        <tr><th>工具</th><th>生成的文件</th></tr>
+        <tr><td>公共</td><td><code>.memory/config.yaml</code>、<code>.memory/modules.yaml</code>、<code>.memory/entries/</code></td></tr>
+        <tr><td>Cursor</td><td><code>.cursor/rules/pmem.mdc</code>、<code>.cursor/skills/pmem-*</code>、<code>.cursor/hooks.json</code>、<code>.cursor/mcp.json</code></td></tr>
+        <tr><td>Claude Code</td><td><code>CLAUDE.md</code> 中的 pmem 段落、<code>.claude/skills/pmem-*</code>、<code>.claude/settings.json</code>、<code>.mcp.json</code></td></tr>
+        <tr><td>Codex</td><td><code>AGENTS.md</code> 中的 pmem 段落、<code>.codex/hooks.json</code>、<code>.codex/config.toml</code></td></tr>
+      </table>
+    </li>
+    <li>
+      <strong>在工具里启用 MCP</strong><span class="tag manual">每人一次，手动</span>
+      <ul>
+        <li><strong>Cursor</strong>：设置 → MCP，把 <code>pmem</code> 打开。这一步只能手动完成。</li>
+        <li><strong>Claude Code</strong>：首次打开项目时批准 <code>.mcp.json</code> 里的 pmem 服务；<code>/hooks</code> 可查看已接入的 Hook。</li>
+        <li><strong>Codex</strong>：先信任本项目，再在 <code>/hooks</code> 里审阅并信任 pmem 的 Hook。</li>
+      </ul>
+    </li>
+    <li>
+      <strong>划分模块</strong><span class="tag each">每个项目一次</span>
+      <p>在 Cursor 里对 Agent 说：<strong>“按 pmem-bootstrap 技能划分模块”</strong>。它会运行 <code>pmem scan</code> 扫描目录和近 180 天提交热度，先用表格给你确认，再写入 <code>.memory/modules.yaml</code>，并用 <code>pmem doctor</code> 把覆盖率做到 95% 以上。</p>
+      <pre><code>modules:
+  gameplay.Jigsaw:
+    paths: ["Assets/Game/Jigsaw/**", "Assets/UI/JigsawPanel/**"]
+    aliases: [Puzzle]
+    entities: [Reward, Config]
+synonyms:
+  - [闪退, 崩溃, crash]
+third_party: []   <span class="c"># 第三方 SDK，不参与闸门</span>
+ignored: []       <span class="c"># 生成代码等</span></code></pre>
+    </li>
+    <li>
+      <strong>自检并提交</strong><span class="tag each">每个项目一次</span>
+      <pre><code>pmem doctor     <span class="c"># 检查配置、模块覆盖率、各工具接入、语义模型（顺便预下载模型）</span>
+git add .memory .cursor
+git commit -m "接入 pmem"</code></pre>
+      <p>接入了 Claude Code 或 Codex 的话，把对应文件一并提交。SVN 项目同理用 <code>svn add</code> / <code>svn commit</code>。</p>
+    </li>
+  </ol>
+
+  <div class="callout ok">
+    <strong>团队其他人</strong>拉下代码后只需要做第 1 步（安装）和第 3 步（启用 MCP）。
+  </div>
+  <div class="callout warn">
+    <strong>已有旧的记忆系统</strong>（比如 LanceDB 版的 tilematch-dev-memory）？先完成第 1～5 步，再看 <a href="#import">迁移旧记忆</a>。
+  </div>
+</section>
+
+<!-- ============ 日常使用 ============ -->
+<section id="daily">
+  <h2>日常使用</h2>
+  <p>正常写需求、修 bug 即可，基本不用手动操作。一次典型对话的流程：</p>
+  <div class="flow">
+    <div class="node"><b>1. 改代码前查</b>Agent 按要改的文件调用 <code>search_memory(path=...)</code>，同一模块一个对话查一次。</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>2. 用之前核对</b>结果带 <code>stale: true</code> 的，打开关联代码核对；仍成立就 <code>confirm_memory</code>，不成立写 correction。</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>3. 只在三个时机写</b>根因确认；方向被排除或方案确定；改完并验证通过。</div>
+    <div class="arrow">→</div>
+    <div class="node"><b>4. 结束提醒</b>改了模块却没写记忆，对话结束时提醒一次；没有新结论回复“无需记录”。</div>
+  </div>
+
+  <h3>写记忆的约定</h3>
+  <ul>
+    <li>正文自包含：现象、原因、证据、影响范围。不写“改了哪个方法”这类版本库已有的信息。</li>
+    <li>正文 20～1200 字，超过 600 字会提示精简。不写密码、密钥、个人信息，含疑似密钥会被拒绝。</li>
+    <li>写入会返回 <code>similar</code>（同模块最相近的已有记忆）：重复或推翻了某条，就带 <code>draft_id</code> 重写并在 <code>supersedes</code> 填旧 id。</li>
+    <li>同一任务对同一模块只留一条：再次写入时带上次返回的 <code>draft_id</code> 覆盖。</li>
+    <li>同一议题每天最多写 5 条，防止刷屏。</li>
+  </ul>
+
+  <h3>常用说法</h3>
+  <table>
+    <tr><th>你对 Agent 说</th><th>效果</th></tr>
+    <tr><td>跳过记忆</td><td>本次对话不查也不写，闸门放行</td></tr>
+    <tr><td>无需记录</td><td>回应结束提醒，表示没有新结论</td></tr>
+    <tr><td>按 pmem-bootstrap 技能划分模块</td><td>首次生成 <code>modules.yaml</code></td></tr>
+    <tr><td>按 pmem-compact 技能合并记忆</td><td>把同一议题的零碎记忆合并成一两条现状</td></tr>
+    <tr><td>按 pmem-normalize 技能整理同义词</td><td>找出同一件事的不同叫法，登记同义词组</td></tr>
+  </table>
+</section>
+
+<!-- ============ 闸门 ============ -->
+<section id="gate">
+  <h2>闸门（Hooks）</h2>
+  <p>闸门是兜底机制：Agent 忘了查记忆就去改“已有记忆的模块”时，Hooks 会拦下这次修改，告诉它该调用什么。</p>
+  <table>
+    <tr><th>模式</th><th>行为</th></tr>
+    <tr><td><code>block</code>（默认）</td><td>本对话没查过该模块就一直拒绝修改，查过（哪怕检索报错）即放行；只放行查过的那个模块</td></tr>
+    <tr><td><code>warn</code></td><td>首次修改时拒绝一次，之后放行</td></tr>
+    <tr><td><code>off</code></td><td>不拦截，只靠规则</td></tr>
+  </table>
+  <ul>
+    <li>拦截范围：写文件类工具（Write / StrReplace / Edit / Delete 等）和终端里的写命令。</li>
+    <li>“查过”的判定：MCP 的 <code>search_memory</code>，或终端里运行 <code>pmem search --module &lt;模块&gt;</code>。MCP 不可用时用终端也行，不会把 Agent 卡死。</li>
+    <li>上下文压缩后状态清零；会话状态 7 天过期。</li>
+    <li>Hook 出任何异常都直接放行，错误写入用户缓存目录的 <code>hook-errors.log</code>，<code>pmem doctor</code> 会显示最近的错误。</li>
+  </ul>
+  <p class="muted">Cursor 接入的 Hook 事件：beforeSubmitPrompt、preToolUse、beforeMCPExecution、afterMCPExecution、afterFileEdit、preCompact、stop。三个工具共用同一套闸门逻辑，统一调用 <code>pmem hook &lt;事件&gt; --agent &lt;工具&gt;</code>。</p>
+</section>
+
+<!-- ============ MCP ============ -->
+<section id="mcp">
+  <h2>MCP 工具</h2>
+  <p>MCP（Model Context Protocol，AI 调用外部工具的协议）服务由 <code>pmem serve</code> 提供，Agent 通过下面 5 个工具读写记忆。</p>
+  <table>
+    <tr><th>工具</th><th>用途</th><th>主要参数</th></tr>
+    <tr><td><code>search_memory</code></td><td>检索记忆。改代码前按文件或模块查一次</td><td><code>path</code> 或 <code>module</code>；可选 <code>entity</code>、<code>query</code>、<code>limit</code>（默认 5，上限 10）、<code>as_of</code>（按某天视角查）</td></tr>
+    <tr><td><code>record_memory</code></td><td>写入一条记忆</td><td><code>module</code>、<code>entity</code>、<code>kind</code>、<code>content</code>；可选 <code>supersedes</code>、<code>anchors</code>、<code>aliases</code>、<code>draft_id</code></td></tr>
+    <tr><td><code>confirm_memory</code></td><td>核对后确认仍然成立，刷新核对日期</td><td><code>ids</code></td></tr>
+    <tr><td><code>memory_graph</code></td><td>模块的议题时间线（谁哪天替代了谁）和相关模块</td><td><code>module</code>；可选 <code>entity</code></td></tr>
+    <tr><td><code>list_modules</code></td><td>列出模块、记忆数量和常用议题</td><td>可选 <code>category</code></td></tr>
+  </table>
+  <p>检索结果里几个关键字段：<code>stale</code>（关联代码已变）、<code>check</code>（具体哪些文件变了）、<code>fallback: module</code>（议题内没命中，退回整个模块）、<code>related</code>（相关模块）。</p>
+</section>
+
+<!-- ============ CLI ============ -->
+<section id="cli">
+  <h2>命令行</h2>
+  <table>
+    <tr><th>命令</th><th>用途</th></tr>
+    <tr><td><code>pmem init</code></td><td>在项目中接入（生成 <code>.memory/</code> 和各工具配置）</td></tr>
+    <tr><td><code>pmem doctor</code></td><td>自检：配置、模块覆盖率、路径重叠、各工具接入、语义模型、可合并议题、最近 Hook 错误</td></tr>
+    <tr><td><code>pmem scan</code></td><td>输出目录概览和提交热度，供 Agent 划分模块</td></tr>
+    <tr><td><code>pmem search</code></td><td>检索：<code>--path</code> / <code>--module</code> / <code>--entity</code> / <code>--as-of</code>，加关键词</td></tr>
+    <tr><td><code>pmem record</code></td><td>写入一条记忆，规则与 MCP 相同；长正文用 <code>--content-file</code></td></tr>
+    <tr><td><code>pmem confirm &lt;id&gt;...</code></td><td>核对后确认仍然成立</td></tr>
+    <tr><td><code>pmem graph --module X</code></td><td>议题时间线与相关模块</td></tr>
+    <tr><td><code>pmem list</code></td><td>模块与记忆数量</td></tr>
+    <tr><td><code>pmem terms</code></td><td>记忆里的高频词，用于整理同义词</td></tr>
+    <tr><td><code>pmem compact</code></td><td>列出零碎记忆较多的议题；指定议题时输出全部正文供合并</td></tr>
+    <tr><td><code>pmem anchors [--apply]</code></td><td>给没有关联代码的旧记忆补 anchors（默认只预览）</td></tr>
+    <tr><td><code>pmem import</code></td><td>从 LanceDB 记忆库只读导入</td></tr>
+    <tr><td><code>pmem reindex</code></td><td>清空本机索引缓存并重建</td></tr>
+    <tr><td><code>pmem report</code></td><td>本机收益报告</td></tr>
+    <tr><td><code>pmem bench</code></td><td>有 / 无记忆对照实验</td></tr>
+    <tr><td><code>pmem serve</code> / <code>pmem hook</code></td><td>由工具自动调用，不需要手动运行</td></tr>
+  </table>
+  <pre><code>pmem search --path Assets/Game/Jigsaw/JigsawReward.cs
+pmem search --module Puzzle "重复发放"                       <span class="c"># 别名、同义词自动扩展</span>
+pmem search --module Puzzle "重复发放" --as-of 2026-06-01    <span class="c"># 按当时的视角查</span>
+pmem record --module gameplay.Jigsaw --entity Reward --kind exclusion --content-file note.txt --alias 重复领取
+pmem graph --module gameplay.Jigsaw --entity Reward</code></pre>
+</section>
+
+<!-- ============ 配置 ============ -->
+<section id="config">
+  <h2>配置</h2>
+  <p><code>.memory/config.yaml</code> 随仓库提交，团队共用。<code>pmem init</code> 生成的规则文件不要手改，重新 init 会覆盖；需要调整就改这里。</p>
+  <pre><code>schema_version: 1
+project:
+  name: MyGame
+  type: game
+vcs: auto                   <span class="c"># auto / git / svn / none</span>
+gate:
+  mode: block               <span class="c"># block / warn / off</span>
+  watch: []                 <span class="c"># 为空 = 所有已登记模块的路径都受守护</span>
+  ignore: ["**/*.md", "docs/**", ".memory/**", ".cursor/**"]
+  skip_markers: ["跳过记忆", "skip-memory"]
+  analysis_reminder: true   <span class="c"># 只查了记忆、没改也没写时，结束提醒一次</span>
+write:
+  default_status: active    <span class="c"># active 直接生效 / draft 需人工审阅</span>
+  content_min: 20
+  content_max: 1200
+  recommend_max: 600        <span class="c"># 超过只提示、不拒绝</span>
+  max_per_day_per_entity: 5
+embedding:
+  backend: auto             <span class="c"># auto / onnx / ollama / openai / none</span></code></pre>
+</section>
+
+<!-- ============ 存储 ============ -->
+<section id="storage">
+  <h2>存储与资源开销</h2>
+  <pre><code>&lt;仓库&gt;/.memory/                      <span class="c"># 提交到版本库</span>
+  config.yaml
+  modules.yaml
+  entries/&lt;category.Module&gt;/&lt;ULID&gt;.md  <span class="c"># 一条记忆一个文件，通常 1～3 KB</span>
+
+%LOCALAPPDATA%\pmem\                 <span class="c"># 本机缓存，可用环境变量 PMEM_CACHE_DIR 修改</span>
+  models/                            <span class="c"># 语义模型，所有项目共享</span>
+  &lt;项目名&gt;-&lt;路径哈希&gt;/
+    vectors.db                       <span class="c"># 向量缓存（SQLite），删掉可重建</span>
+    sessions/&lt;对话&gt;.json             <span class="c"># 闸门状态，7 天过期</span>
+    events.jsonl  cites.json         <span class="c"># 收益统计，超过 20 MB 轮转</span>
+    hooks.log  hook-errors.log</code></pre>
+
+  <div class="callout ok">
+    <strong>记忆变多不会让 token 线性增长。</strong>AI 不会直接读 <code>.md</code> 文件，只拿到检索返回的 Top-K：默认 5 条、上限 10 条，同一批次最多 2 条，被替代的不返回。单次调用的 token 只和返回条数有关，与库里总数无关。
+  </div>
+  <ul>
+    <li><strong>内存</strong>：MCP 服务进程会把全部记忆解析后放进内存（正文、分词计数、向量），每条几 KB，1 万条大约几十 MB。</li>
+    <li><strong>速度</strong>：最多每 10 秒增量刷新一次，只重新解析改过的文件；检索是逐条打分，几千到上万条都在毫秒级。</li>
+    <li><strong>增长控制</strong>：每日写入上限、替代后隐藏、<code>pmem-compact</code> 合并、<code>pmem doctor</code> 提示可合并的议题。</li>
+  </ul>
+</section>
+
+<!-- ============ 检索 ============ -->
+<section id="ranking">
+  <h2>检索与排序</h2>
+  <ol>
+    <li>按 <code>modules.yaml</code> 把文件路径或别名映射到模块，在模块内检索。</li>
+    <li>查询词按 <code>synonyms</code> 和记忆的 <code>aliases</code> 扩展，扩展词权重略低于原词。</li>
+    <li>相关度 = 0.6 × 向量相似度 + 0.4 × BM25（关键词匹配算法）。</li>
+    <li>议题匹配加 0.15；排除项、更正加 0.05；按 90 天半衰期做时间衰减（核对过的按核对日期算）。</li>
+    <li>同一批次（同一对话，或同一作者 90 分钟内）最多返回 2 条，避免碎片挤占名额。</li>
+    <li>议题内没命中时退回整个模块，并标注 <code>fallback: module</code>。</li>
+  </ol>
+  <p>分词：中文按二元组切分、英文按词，camelCase 拆开。默认语义模型 bge-small-zh-v1.5（ONNX 格式，约 90 MB），首次调用才加载。</p>
+  <p class="muted">实测：853 条真实记忆、13 个限定模块查询，前 3 条命中目标 pmem 9/13，原向量库服务 4/13；单次检索 1～14 毫秒。</p>
+</section>
+
+<!-- ============ 整理 ============ -->
+<section id="curation">
+  <h2>整理与维护</h2>
+  <div class="grid2">
+    <div class="card">
+      <h4>合并零碎记忆（pmem-compact）</h4>
+      <p>功能连续迭代几天常会写出十几条零碎记忆。对 Agent 说“按 pmem-compact 技能合并记忆”，它会读出议题全部正文，提炼成一两条现状并替代旧记忆。实测 13 条约 2500 字合并成 2 条约 1150 字。</p>
+    </div>
+    <div class="card">
+      <h4>整理同义词（pmem-normalize）</h4>
+      <p>“闪退”搜不到只写了“崩溃”的记忆时使用。Agent 用 <code>pmem terms</code> 列高频词、起草词组，确认后写入 <code>synonyms</code>。</p>
+    </div>
+    <div class="card">
+      <h4>补关联代码</h4>
+      <p><code>pmem anchors</code> 从正文提到的文件名、类名.成员 自动补 anchors，补上后才能判断是否过期。</p>
+    </div>
+    <div class="card">
+      <h4>重建索引</h4>
+      <p>换了嵌入模型或检索结果异常时运行 <code>pmem reindex</code>，同时会列出无法解析的记忆文件。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 收益 ============ -->
+<section id="metrics">
+  <h2>衡量收益</h2>
+  <h3>日常数据：pmem report</h3>
+  <pre><code>pmem report --days 30     <span class="c"># 加 --json 导出原始数字</span></code></pre>
+  <table>
+    <tr><th>指标</th><th>含义</th></tr>
+    <tr><td>检索命中率</td><td>改代码前查记忆，有多少次查到了相关结论</td></tr>
+    <tr><td>避坑提示</td><td>命中结果里有多少次是排除项、风险或更正</td></tr>
+    <tr><td>跨人复用</td><td>有多少次用上了同事写的记忆</td></tr>
+    <tr><td>记忆被采用</td><td>返回的记忆有多少条在 Agent 回复里被明确用到（保守下限）</td></tr>
+    <tr><td>闸门 / 提醒转化</td><td>被提醒后有多少次真的照做了</td></tr>
+    <tr><td>知识资产</td><td>有记忆的模块占比、单作者模块、改动多却没记忆的模块</td></tr>
+  </table>
+  <p class="muted">数据只存在本机，不会上传；团队汇总尚未实现。</p>
+
+  <h3>对照实验：pmem bench</h3>
+  <p>从项目历史里挑出“当时知道某条结论就能少走弯路”的问题写成用例（参考 <code>bench/cases.yaml</code>），同一任务有记忆、无记忆各跑一遍，比较通过率、token、耗时、工具调用次数。需要 Cursor SDK 和 <code>CURSOR_API_KEY</code>，会真实消耗额度。</p>
+  <pre><code>pmem bench --dry-run      <span class="c"># 先确认用例有效：起始提交上验收应当失败</span>
+pmem bench                <span class="c"># 结果写入 bench-results/summary.md</span></code></pre>
+</section>
+
+<!-- ============ 迁移 ============ -->
+<section id="import">
+  <h2>迁移旧记忆</h2>
+  <p>已有 LanceDB 版记忆库（如 tilematch-dev-memory）可以只读导入，源库不会被修改，重复执行会跳过已导入的条目：</p>
+  <pre><code>uv tool install "pmem[embed,import] @ git+https://github.com/mry-ship/pmem"   <span class="c"># 或在源码目录 uv tool install --editable ".[embed,import]"</span>
+pmem import --lancedb &lt;源库目录&gt; --catalog &lt;源 modules.yaml&gt; --author &lt;团队名&gt; --dry-run   <span class="c"># 先预览</span>
+pmem import --lancedb &lt;源库目录&gt; --catalog &lt;源 modules.yaml&gt; --author &lt;团队名&gt; --guess-kind
+pmem anchors --apply      <span class="c"># 给导入的记忆补关联代码</span>
+pmem reindex</code></pre>
+  <ul>
+    <li>导入的类型默认都是 conclusion，<code>--guess-kind</code> 按正文开头猜测排除、风险等类型。</li>
+    <li>含疑似密钥的条目会被跳过并列出。</li>
+    <li><code>--catalog</code> 只在 <code>modules.yaml</code> 还没有模块时生效；导入后要给模块补上 <code>paths</code>，闸门才能按文件定位模块。</li>
+  </ul>
+</section>
+
+<!-- ============ FAQ ============ -->
+<section id="faq">
+  <h2>常见问题</h2>
+  <h3>Windows 上 Hook 收到的中文是乱码？</h3>
+  <p>这是 Cursor 在非 UTF-8 代码页下的转码问题，pmem 已自动兼容。开启 Windows 设置里的“使用 Unicode UTF-8 提供全球语言支持”可以从根本上避免。</p>
+  <h3>第一次查询很慢？</h3>
+  <p>首次使用会下载语义模型。提前运行一次 <code>pmem doctor</code> 即可预下载。</p>
+  <h3>modules.yaml 写错了？</h3>
+  <p>所有命令都会提示出错的行号；<code>pmem doctor</code> 还会检查覆盖率和路径重叠。</p>
+  <h3>没有相关记忆，为什么还返回了几条？</h3>
+  <p>检索总是返回得分最高的几条，由 Agent 读正文判断是否相关。真实数据上相关和不相关的得分区间重叠，设阈值会把真命中也挡掉，所以没加。把常用叫法写全比阈值更管用。</p>
+  <h3>用 SVN 可以吗？</h3>
+  <p>可以。作者和版本号取自 SVN，新记忆会自动 <code>svn add</code>。</p>
+  <h3>Hook 出错会卡住我吗？</h3>
+  <p>不会。任何异常都直接放行，错误记在本机日志里。</p>
+  <h3>多个项目会互相影响吗？</h3>
+  <p>不会。每个项目的记忆在各自仓库的 <code>.memory/</code>，本机缓存按“项目名 + 路径哈希”分目录；只有语义模型是共享的。</p>
+</section>
+
+<!-- ============ 限制 ============ -->
+<section id="limits">
+  <h2>已知限制</h2>
+  <ul>
+    <li>收益报告只看本机数据，团队汇总尚未实现。</li>
+    <li><code>pmem bench</code> 还没有用真实 API Key 跑过完整对照，示例用例只用 <code>--dry-run</code> 验证过。</li>
+    <li>模块划分依赖 Agent 按 pmem-bootstrap 技能完成，还没有全自动扫描器。</li>
+    <li>Cursor 里 MCP 必须每人手动开启一次。</li>
+  </ul>
+</section>
+
+<p class="muted" style="text-align:center">pmem v0.1.0.dev0 · 详细设计见 <code>docs/architecture.md</code> 与 <code>README.md</code></p>
+</main>
+</div>
+</body>
+</html>

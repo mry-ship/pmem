@@ -43,7 +43,7 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
 **1. 安装（每人一次）**
 
 ```bash
-uv tool install "pmem[embed] @ git+<pmem 仓库地址>"
+uv tool install "pmem[embed] @ git+https://github.com/mry-ship/pmem"
 ```
 
 `[embed]` 会启用中文语义检索：首次使用时下载约 90 MB 的模型，所有项目共用。不需要语义检索可以去掉 `[embed]`，此时只用关键词检索。
@@ -208,7 +208,7 @@ pmem bench                     # 每个用例：有记忆、无记忆各跑 repe
 - **已有一套研发记忆（LanceDB 版 tilematch-dev-memory 一类），能搬过来吗？** 可以只读导入，源库不会被修改，重复执行会跳过已导入的条目：
 
   ```bash
-  uv tool install "pmem[embed,import] @ git+<pmem 仓库地址>"
+  uv tool install "pmem[embed,import] @ git+https://github.com/mry-ship/pmem"
   pmem import --lancedb <源库目录> --catalog <源 modules.yaml> --author <团队名> --dry-run   # 先预览
   pmem import --lancedb <源库目录> --catalog <源 modules.yaml> --author <团队名>
   pmem reindex

@@ -376,6 +376,13 @@ def test_search_injection_adds_conversation(make_project):
     assert handle("pre-tool", payload, root)["updated_input"]["source_conversation"] == "c1"
 
 
+@pytest.mark.parametrize("tool_input", [{"module": "system.AdChase", "query": "插屏"}, {"query": "插屏"}])
+def test_search_injection_skips_other_memory_servers(make_project, tool_input):
+    root = make_project()
+    payload = {"conversation_id": "c1", "tool_name": "MCP:search_memory", "tool_input": tool_input}
+    assert "updated_input" not in handle("pre-tool", payload, root)
+
+
 def test_events_are_logged_for_report(make_project):
     root = make_project("warn")
     handle("prompt", {"conversation_id": "c1", "prompt": "修一下", "composer_mode": "agent"}, root)

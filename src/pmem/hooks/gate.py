@@ -238,7 +238,10 @@ class Gate:
             return self._inject(args, with_draft=True)
         if "search_memory" in name:
             self._mark_searched(args, via="mcp")
-            return self._inject(args, with_draft=False)
+            # Cursor 的 tool_name 不带服务名，别家记忆服务的同名工具可能拒收多出的参数
+            if "pmem" in name.lower() or self.module_from_args(args):
+                return self._inject(args, with_draft=False)
+            return dict(ALLOW)
         if "memory_graph" in name:
             self._mark_searched(args, via="graph")
             return dict(ALLOW)

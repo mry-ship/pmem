@@ -10,6 +10,7 @@ anchors:
 revision: git:a0936e7
 author: 1002378395@qq.com
 note_date: '2026-10-14'
+verified: '2026-10-15'
 ---
 结论：写记忆时，闸门会按本对话改过的文件自动补 anchors。
 

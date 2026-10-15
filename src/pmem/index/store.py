@@ -6,7 +6,7 @@ import sqlite3
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -22,6 +22,7 @@ VISIBLE_STATUSES = ("active", "seed", "draft")
 _BATCH_WINDOW_MS = 90 * 60 * 1000
 SYNONYM_WEIGHT = 0.8
 CHANGE_CACHE_SECONDS = 60.0
+SAME_WORK_DAYS = 7
 
 
 def entry_text(entry: Entry) -> str:
@@ -259,6 +260,45 @@ class MemoryIndex:
         self._changes[key] = (time.monotonic(), found)
         return found
 
+    def _baselines(self, entries: list[Entry]) -> dict[str, str]:
+        """每条记忆的核对基准日：此日及之前的代码改动视为已被这条记忆考虑过。
+
+        通常先写记忆、过一两天才连同代码一起提交，记忆自己那次修复的提交不能算“之后改过”。
+        记忆文件写下后不久就提交了（或还是本地草稿），提交日（草稿取今天）之前的改动算作同一份工作；
+        隔了很久才提交的（如从别的系统导入）仍以写入日为准。
+        """
+        today = date.today()
+        paths = {i.entry.id: i.path for i in self._items.values()}
+        rels: dict[str, str] = {}
+        for entry in entries:
+            path = paths.get(entry.id)
+            if path is not None:
+                try:
+                    rels[entry.id] = path.relative_to(self.storage.root).as_posix()
+                except ValueError:
+                    pass
+        earliest = min((e.note_date for e in entries), default="")
+        try:
+            since = (date.fromisoformat(earliest) - timedelta(days=1)).isoformat()
+        except ValueError:
+            since = "1970-01-01"
+        committed = self._changed_after(sorted(set(rels.values())), since) if rels else {}
+        baselines: dict[str, str] = {}
+        for entry in entries:
+            base = entry.checked_date
+            try:
+                written = date.fromisoformat(entry.note_date)
+            except ValueError:
+                baselines[entry.id] = base
+                continue
+            day = committed.get(rels.get(entry.id, ""))
+            if day is None and entry.id in rels:
+                day = today.isoformat()
+            if day and (date.fromisoformat(day) - written).days <= SAME_WORK_DAYS:
+                base = max(base, day)
+            baselines[entry.id] = base
+        return baselines
+
     def check_anchors(self, entries: list[Entry]) -> dict[str, list[str]]:
         """记忆写下（或上次核对）之后关联代码的变化：id → 问题列表（文件已删除、符号找不到、某天改过）。"""
         root = self.storage.root
@@ -279,10 +319,11 @@ class MemoryIndex:
                 else:
                     alive.setdefault(rel, []).append(entry)
         if alive:
-            since = min(e.checked_date for group in alive.values() for e in group)
+            baselines = self._baselines([e for group in alive.values() for e in group])
+            since = min(baselines.values())
             for rel, day in self._changed_after(sorted(alive), since).items():
                 for entry in alive.get(rel, []):
-                    if day > entry.checked_date:
+                    if day > baselines[entry.id]:
                         problems.setdefault(entry.id, []).append(f"{rel} 于 {day} 改过")
         return problems
 

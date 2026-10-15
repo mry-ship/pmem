@@ -85,6 +85,42 @@ def cli_args(command: str, subcommand: str) -> list[dict]:
     return found
 
 
+def tool_response(payload: dict) -> dict | None:
+    """pmem 工具的返回 JSON。各家包装不同（Cursor 的 result_json 是多层转义的字符串，
+    Claude / Codex 的 tool_response 是内容块列表），逐层解开找带 ok 的对象；tool_input 不看。"""
+
+    def walk(value, level: int):
+        if level > 8:
+            return None
+        if isinstance(value, str):
+            text = value.strip().lstrip("\ufeff")
+            if text[:1] not in ("{", "["):
+                return None
+            try:
+                return walk(json.loads(text), level + 1)
+            except ValueError:
+                return None
+        if isinstance(value, dict):
+            if "ok" in value:
+                return value
+            children = list(value.values())
+        elif isinstance(value, list):
+            children = value
+        else:
+            return None
+        for child in children:
+            found = walk(child, level + 1)
+            if found is not None:
+                return found
+        return None
+
+    return walk({k: v for k, v in payload.items() if k != "tool_input"}, 0)
+
+
+def draft_key(module: str, entity: str | None) -> str:
+    return f"{module}|{(entity or '').strip().lower()}"
+
+
 # ---- 主逻辑 ----
 
 class Gate:
@@ -239,7 +275,9 @@ class Gate:
         updated = dict(args)
         updated["source_conversation"] = self.conversation
         module = self.module_from_args({"module": args.get("module")}) if with_draft else None
-        draft = self.state.data["written"].get(module) if module else None
+        # 同一模块下的不同议题是不同的记忆，只有议题也相同时才覆盖本对话写过的草稿
+        entity = self.registry.resolve_entity(module, str(args.get("entity") or "")) if module else None
+        draft = self.state.data["written"].get(draft_key(module, entity)) if module else None
         if draft and not args.get("draft_id"):
             updated["draft_id"] = draft
         if module and not args.get("anchors"):
@@ -266,16 +304,17 @@ class Gate:
         name = str(self.payload.get("tool_name") or "")
         if self.state is None or not any(t in name for t in PMEM_TOOLS):
             return {}
-        blob = json.dumps(self.payload, ensure_ascii=False)
-        if not re.search(r'\\*"ok\\*"\s*:\s*true', blob):
+        response = tool_response(self.payload)
+        if not response or response.get("ok") is not True:
             return {}
-        module_match = re.search(r'\\*"module\\*"\s*:\s*\\*"([A-Za-z0-9_.]+)', blob)
-        module = module_match.group(1) if module_match else None
-        ids = list(dict.fromkeys(re.findall(r'\\*"id\\*"\s*:\s*\\*"(' + _ULID + ")", blob)))
+        module = self.module_from_args({"module": response["module"]}) if response.get("module") else None
+        rows = [r for key in ("items", "timeline") for r in response.get(key) or [] if isinstance(r, dict)]
+        ids = [str(i) for i in dict.fromkeys([response.get("id"), *(r.get("id") for r in rows)])
+               if i and re.fullmatch(_ULID, str(i))]
         if "record_memory" in name:
-            if module and ids:
-                self.state.data["written"][module] = ids[0]
-                self.state.add("recorded", ids[0])
+            if module and response.get("id") in ids:
+                self.state.data["written"][draft_key(module, response.get("entity"))] = response["id"]
+                self.state.add("recorded", response["id"])
             self.log("mcp_record", module=module, ids=ids[:1])
         else:
             if module:
@@ -320,7 +359,7 @@ class Gate:
         return {}
 
     def _written(self) -> set[str]:
-        return set(self.state.data["written"]) | set(self.state.data["cli_recorded"])
+        return {key.split("|", 1)[0] for key in self.state.data["written"]} | set(self.state.data["cli_recorded"])
 
     def _pending_nudges(self, status) -> list[str]:
         if status not in (None, "completed") or self.state.data["skip"]:

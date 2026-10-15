@@ -10,6 +10,7 @@ anchors:
 revision: git:1201d1a
 author: 1002378395@qq.com
 note_date: '2026-10-14'
+verified: '2026-10-15'
 ---
 结论：与参考实现（tilematch-dev-memory，LanceDB + Ollama nomic-embed-text）在同一批 TileMatch 真实记忆（853 条/53 模块）上对比，pmem 检索明显更准，差距来自排序方式而不是嵌入模型。
 

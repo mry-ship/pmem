@@ -1,5 +1,6 @@
 import os
-from datetime import date, datetime
+import subprocess
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -182,6 +183,45 @@ def test_code_changed_after_memory_is_stale_until_confirmed(storage, tmp_path):
     assert rows[old.id]["stale"] and rows[old.id]["check"] == ["src/Reward.cs 于 2026-10-12 改过"]
     assert not rows[fresh.id]["stale"]
     assert not rows[confirmed.id]["stale"] and rows[confirmed.id]["verified"] == "2026-10-13"
+
+
+def test_own_fix_commit_is_not_a_later_change(git_repo, tmp_path):
+    def day(n: int) -> str:
+        return (date.today() - timedelta(days=n)).isoformat()
+
+    def commit(when: str, *files: str) -> None:
+        env = {**os.environ, "GIT_AUTHOR_DATE": f"{when}T12:00:00", "GIT_COMMITTER_DATE": f"{when}T12:00:00"}
+        subprocess.run(["git", "add", *files], cwd=git_repo, check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-q", "-m", when], cwd=git_repo, check=True, capture_output=True, env=env)
+
+    def edit(name: str, text: str) -> str:
+        path = git_repo / "src" / name
+        path.parent.mkdir(exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        return f"src/{name}"
+
+    store = FilesStorage(git_repo, detect_vcs(git_repo))
+    files = [edit(n, "v1") for n in ("Own.cs", "Import.cs", "Later.cs", "Draft.cs")]
+    commit(day(90), *files)
+    later = store.write(Entry(id=new_ulid(), module="m.A", entity="Later", kind="conclusion", content="后来又改",
+                              note_date=day(20), author="a", anchors=["src/Later.cs"]))
+    commit(day(19), str(later.path))
+    own = store.write(Entry(id=new_ulid(), module="m.A", entity="Own", kind="conclusion", content="修复本身",
+                            note_date=day(3), author="a", anchors=["src/Own.cs"]))
+    imported = store.write(Entry(id=new_ulid(), module="m.A", entity="Import", kind="conclusion", content="导入",
+                                 note_date=day(60), author="a", anchors=["src/Import.cs"]))
+    commit(day(2), edit("Own.cs", "v2"), str(own.path), edit("Import.cs", "v2"), edit("Later.cs", "v2"))
+    commit(day(1), str(imported.path))
+    draft = store.write(Entry(id=new_ulid(), module="m.A", entity="Draft", kind="conclusion", content="本地草稿",
+                              note_date=day(1), author="a", anchors=["src/Draft.cs"]))
+    edit("Draft.cs", "v2")
+
+    index = MemoryIndex(store, throttle_seconds=0)
+    rows = {i["entity"]: i for i in index.search(module="m.A", limit=10, max_per_batch=10).items}
+    assert not rows["Own"]["stale"] and not rows["Draft"]["stale"]
+    assert rows["Import"]["check"] == [f"src/Import.cs 于 {day(2)} 改过"]
+    assert rows["Later"]["check"] == [f"src/Later.cs 于 {day(2)} 改过"]
+    assert draft.entry.id in {i["id"] for i in rows.values()}
 
 
 def test_synonym_groups_expand_the_query(storage, tmp_path):

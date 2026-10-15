@@ -196,11 +196,31 @@ def test_record_injection_adds_conversation_and_draft(make_project):
     first = handle("pre-tool", payload, root)
     assert first["updated_input"]["source_conversation"] == "c1"
     assert "draft_id" not in first["updated_input"]
-    after = {"conversation_id": "c1", "tool_name": "record_memory",
-             "result_json": json.dumps({"ok": True, "id": "01JA7K3M2X9F4Q8W6ZB1C2D3E9", "module": "gameplay.Jigsaw"})}
+    response = {"ok": True, "id": "01JA7K3M2X9F4Q8W6ZB1C2D3E9", "module": "gameplay.Jigsaw", "entity": "Reward"}
+    after = {"conversation_id": "c1", "tool_name": "record_memory", "result_json": json.dumps(response)}
     handle("after-mcp", after, root)
     second = handle("pre-tool", payload, root)
     assert second["updated_input"]["draft_id"] == "01JA7K3M2X9F4Q8W6ZB1C2D3E9"
+    other = {**payload, "tool_input": {**payload["tool_input"], "entity": "Config"}}
+    assert "draft_id" not in handle("pre-tool", other, root)["updated_input"]
+    same = {**payload, "tool_input": {**payload["tool_input"], "entity": "reward"}}
+    assert handle("pre-tool", same, root)["updated_input"]["draft_id"] == "01JA7K3M2X9F4Q8W6ZB1C2D3E9"
+
+
+def test_after_mcp_reads_module_from_nested_response_not_input(make_project):
+    root = make_project()
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    response = {"ok": True, "id": "01JA7K3M2X9F4Q8W6ZB1C2D3E9", "module": "economy.Shop", "entity": "Price",
+                "similar": [{"id": "01JA7K3M2X9F4Q8W6ZB1C2D3E4", "entity": "Price"}]}
+    wrapped = json.dumps({"content": [{"type": "text", "text": json.dumps(response, ensure_ascii=False)}]})
+    after = {"conversation_id": "c1", "tool_name": "record_memory",
+             "tool_input": json.dumps({"module": "gameplay.Jigsaw", "entity": "Price"}), "result_json": wrapped}
+    handle("after-mcp", after, root)
+    assert handle("stop", {"conversation_id": "c1", "status": "completed"}, root) == {}
+    failed = {**after, "result_json": json.dumps({"ok": False, "error": "x", "module": "gameplay.Jigsaw"})}
+    handle("after-mcp", {**failed, "conversation_id": "c2"}, root)
+    handle("edited", {"conversation_id": "c2", "file_path": str(root / "src/Jigsaw/Board.cs")}, root)
+    assert "gameplay.Jigsaw" in handle("stop", {"conversation_id": "c2", "status": "completed"}, root)["followup_message"]
 
 
 def test_stop_reminds_once_for_edited_modules_without_record(make_project):

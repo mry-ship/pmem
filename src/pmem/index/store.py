@@ -19,6 +19,7 @@ from pmem.index.tokenize import tokenize
 from pmem.storage.files import FilesStorage
 
 VISIBLE_STATUSES = ("active", "seed", "draft")
+BOOSTED_KINDS = ("exclusion", "correction")
 _BATCH_WINDOW_MS = 90 * 60 * 1000
 SYNONYM_WEIGHT = 0.8
 CHANGE_CACHE_SECONDS = 60.0
@@ -177,18 +178,27 @@ class MemoryIndex:
                 hidden.update(item.entry.supersedes)
         return hidden
 
+    def _visible_items(self, as_of: str | None = None) -> list[Indexed]:
+        self.refresh()
+        hidden = self.superseded(as_of)
+        return [
+            i for i in self._items.values()
+            if i.entry.status in VISIBLE_STATUSES
+            and i.entry.id not in hidden
+            and (as_of is None or i.entry.note_date <= as_of)
+        ]
+
+    def visible(self, as_of: str | None = None) -> list[Entry]:
+        """检索得到的记忆：状态有效、没被替代；给出 as_of 时只看那天及之前写下的。"""
+        return [i.entry for i in self._visible_items(as_of)]
+
     def find(self, entry_id: str) -> Entry | None:
         self.refresh()
         return next((i.entry for i in self._items.values() if i.entry.id == entry_id), None)
 
     def module_stats(self) -> dict[str, dict]:
-        self.refresh()
-        hidden = self.superseded()
         stats: dict[str, dict] = defaultdict(lambda: {"count": 0, "entities": Counter()})
-        for item in self._items.values():
-            entry = item.entry
-            if entry.status not in VISIBLE_STATUSES or entry.id in hidden:
-                continue
+        for entry in self.visible():
             stats[entry.module]["count"] += 1
             stats[entry.module]["entities"][entry.entity] += 1
         return {
@@ -339,19 +349,11 @@ class MemoryIndex:
         as_of: str | None = None,
         verify: bool = True,
     ) -> SearchResult:
-        self.refresh()
+        """排序 = (相关度 + 加分) × 时效；相关度 = 0.6 × 语义 + 0.4 × 关键词（无语义时只用关键词）。"""
+        pool = [i for i in self._visible_items(as_of) if module is None or _same(i.entry.module, module)]
         result = SearchResult(warnings=list(self.warnings))
-        hidden = self.superseded(as_of)
-        pool = [
-            i
-            for i in self._items.values()
-            if i.entry.status in VISIBLE_STATUSES
-            and i.entry.id not in hidden
-            and (module is None or i.entry.module.lower() == module.lower())
-            and (as_of is None or i.entry.note_date <= as_of)
-        ]
         if entity:
-            matched = [i for i in pool if i.entry.entity.lower() == entity.lower()]
+            matched = [i for i in pool if _same(i.entry.entity, entity)]
             if matched:
                 pool = matched
             elif pool:
@@ -360,70 +362,90 @@ class MemoryIndex:
             return result
 
         query = (query or "").strip()
-        weights, extra = self._query_weights(query)
-        result.expanded = extra
-        keyword = self._bm25(pool, weights)
-        semantic = [0.0] * len(pool)
-        if query:
-            if self.embedder is None:
-                result.degraded = "keyword_only"
-            else:
-                try:
-                    vectors = self._vectors_for(pool)
-                    q = self.embedder.embed([" ".join([query, *extra])])[0]
-                    semantic = [max(0.0, float(np.dot(vectors[i.digest], q))) for i in pool]
-                except Exception as exc:  # noqa: BLE001
-                    result.degraded = "keyword_only"
-                    result.warnings.append(f"语义检索不可用，已退化为关键词检索：{exc}")
-
-        today = date.fromisoformat(as_of) if as_of else (today or date.today())
-        scored = []
-        for item, kw, vec in zip(pool, keyword, semantic, strict=True):
-            entry = item.entry
-            rel = kw if result.degraded or not query else 0.6 * vec + 0.4 * kw
-            bonus = 0.05 if entry.kind in ("exclusion", "correction") else 0.0
-            if entity and entry.entity.lower() == entity.lower():
-                bonus += 0.15
-            try:
-                checked = entry.note_date if as_of else entry.checked_date
-                age = max(0, (today - date.fromisoformat(checked)).days)
-            except ValueError:
-                age = 0
-            recency = 0.5 ** (age / half_life_days)
-            scored.append(((rel + bonus) * (0.7 + 0.3 * recency), ulid_ms(entry.id), item))
-        scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
-
-        per_batch: Counter = Counter()
-        chosen: list[Entry] = []
-        for _score, created, item in scored:
-            entry = item.entry
-            batch = entry.source_conversation or f"{entry.author}|{entry.module}|{created // _BATCH_WINDOW_MS}"
-            if per_batch[batch] >= max_per_batch:
-                continue
-            per_batch[batch] += 1
-            chosen.append(entry)
-            if len(chosen) >= limit:
-                break
-
+        weights, result.expanded = self._query_weights(query)
+        relevance = self._relevance(pool, query, weights, result)
+        day = date.fromisoformat(as_of) if as_of else (today or date.today())
+        ranked = sorted(
+            (
+                (_score(i.entry, rel, entity, day, half_life_days, as_of), ulid_ms(i.entry.id), i.entry)
+                for i, rel in zip(pool, relevance, strict=True)
+            ),
+            key=lambda t: (t[0], t[1]),
+            reverse=True,
+        )
+        chosen = _spread_batches(ranked, limit, max_per_batch)
         # 回看历史时代码早已变化，核对没有意义
         problems = self.check_anchors(chosen) if verify and not as_of else {}
-        for entry in chosen:
-            row = {
-                "id": entry.id,
-                "entity": entry.entity,
-                "kind": entry.kind,
-                "date": entry.note_date,
-                "author": entry.author,
-                "stale": entry.id in problems,
-                "content": entry.content,
-            }
-            if module is None:
-                row = {"module": entry.module, **row}
-            if entry.id in problems:
-                row["check"] = problems[entry.id]
-            if entry.verified:
-                row["verified"] = entry.verified
-            if entry.status != "active":
-                row["status"] = entry.status
-            result.items.append(row)
+        result.items = [_row(e, problems.get(e.id), with_module=module is None) for e in chosen]
         return result
+
+    def _relevance(self, pool: list[Indexed], query: str, weights: dict[str, float], result: SearchResult) -> list[float]:
+        keyword = self._bm25(pool, weights)
+        if not query:
+            return keyword
+        if self.embedder is None:
+            result.degraded = "keyword_only"
+            return keyword
+        try:
+            vectors = self._vectors_for(pool)
+            q = self.embedder.embed([" ".join([query, *result.expanded])])[0]
+            semantic = [max(0.0, float(np.dot(vectors[i.digest], q))) for i in pool]
+        except Exception as exc:  # noqa: BLE001
+            result.degraded = "keyword_only"
+            result.warnings.append(f"语义检索不可用，已退化为关键词检索：{exc}")
+            return keyword
+        return [0.6 * vec + 0.4 * kw for vec, kw in zip(semantic, keyword, strict=True)]
+
+
+def _same(a: str, b: str) -> bool:
+    return a.lower() == b.lower()
+
+
+def _score(entry: Entry, relevance: float, entity: str | None, today: date, half_life_days: float,
+           as_of: str | None) -> float:
+    bonus = 0.05 if entry.kind in BOOSTED_KINDS else 0.0
+    if entity and _same(entry.entity, entity):
+        bonus += 0.15
+    try:
+        checked = entry.note_date if as_of else entry.checked_date
+        age = max(0, (today - date.fromisoformat(checked)).days)
+    except ValueError:
+        age = 0
+    recency = 0.5 ** (age / half_life_days)
+    return (relevance + bonus) * (0.7 + 0.3 * recency)
+
+
+def _spread_batches(ranked: list[tuple[float, int, Entry]], limit: int, max_per_batch: int) -> list[Entry]:
+    """同一批（同一对话，或同一作者同一模块 90 分钟内）最多取 max_per_batch 条，免得碎片挤占名额。"""
+    per_batch: Counter = Counter()
+    chosen: list[Entry] = []
+    for _score, created, entry in ranked:
+        batch = entry.source_conversation or f"{entry.author}|{entry.module}|{created // _BATCH_WINDOW_MS}"
+        if per_batch[batch] >= max_per_batch:
+            continue
+        per_batch[batch] += 1
+        chosen.append(entry)
+        if len(chosen) >= limit:
+            break
+    return chosen
+
+
+def _row(entry: Entry, problems: list[str] | None, with_module: bool) -> dict:
+    row = {
+        "id": entry.id,
+        "entity": entry.entity,
+        "kind": entry.kind,
+        "date": entry.note_date,
+        "author": entry.author,
+        "stale": problems is not None,
+        "content": entry.content,
+    }
+    if with_module:
+        row = {"module": entry.module, **row}
+    if problems is not None:
+        row["check"] = problems
+    if entry.verified:
+        row["verified"] = entry.verified
+    if entry.status != "active":
+        row["status"] = entry.status
+    return row

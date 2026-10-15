@@ -28,13 +28,18 @@ MAX_AUTO_ANCHORS = 5
 
 # ---- 终端命令里的写文件目标 ----
 
+def _segments(command: str) -> list[str]:
+    """按 ; && || | 拆成单条命令。"""
+    return re.split(r"\s*(?:\|\||&&|[;|])\s*", command or "")
+
+
 def _tokens(segment: str) -> list[str]:
     return [t.strip("'\"") for t in re.findall(r"'[^']*'|\"[^\"]*\"|\S+", segment)]
 
 
 def shell_write_targets(command: str) -> list[str]:
     targets: list[str] = []
-    for segment in re.split(r"\s*(?:\|\||&&|[;|])\s*", command or ""):
+    for segment in _segments(command):
         targets += _REDIRECT.findall(segment)
         tokens = _tokens(segment)
         if not tokens:
@@ -66,7 +71,7 @@ _LAUNCHERS = {"uv", "uvx", "pipx", "python", "python3", "py"}
 def cli_args(command: str, subcommand: str) -> list[dict]:
     """终端里的 `pmem search/record ...` 与对应 MCP 工具等价，按出现顺序返回每一处的 module/path 参数。"""
     found: list[dict] = []
-    for segment in re.split(r"\s*(?:\|\||&&|[;|])\s*", command or ""):
+    for segment in _segments(command):
         tokens = _tokens(segment)
         names = [re.split(r"[\\/]", t)[-1].lower().removesuffix(".exe") for t in tokens]
         start = next(
@@ -247,17 +252,7 @@ class Gate:
             return dict(ALLOW)
         if name.lower() == "shell":
             command = str(args.get("command") or "")
-            searches = cli_args(command, "search") + cli_args(command, "graph")
-            records = cli_args(command, "record")
-            for cli_search in searches:
-                self._mark_searched(cli_search, via="cli")
-            for cli_record in records:
-                module = self.module_from_args(cli_record)
-                if module and self.state is not None:
-                    self.state.add("cli_recorded", module)
-                    self.save()
-                self.log("record_call", module=module, via="cli")
-            if searches or records:
+            if self._note_cli_calls(command):
                 return dict(ALLOW)
             base = args.get("cwd") or str(self.root)
             paths = [self.relative(t, base) for t in shell_write_targets(command)]
@@ -266,11 +261,21 @@ class Gate:
             paths = [self.relative(str(p)) for p in raw]
         else:
             return dict(ALLOW)
-        for rel in paths:
-            verdict = self._guard(rel)
-            if verdict is not None:
-                return verdict
-        return dict(ALLOW)
+        return next((v for v in map(self._guard, paths) if v is not None), dict(ALLOW))
+
+    def _note_cli_calls(self, command: str) -> bool:
+        """终端里的 pmem search/graph/record 与 MCP 工具等价，照样登记；命令里有它们时返回 True。"""
+        searches = cli_args(command, "search") + cli_args(command, "graph")
+        records = cli_args(command, "record")
+        for cli_search in searches:
+            self._mark_searched(cli_search, via="cli")
+        for cli_record in records:
+            module = self.module_from_args(cli_record)
+            if module and self.state is not None:
+                self.state.add("cli_recorded", module)
+                self.save()
+            self.log("record_call", module=module, via="cli")
+        return bool(searches or records)
 
     def _inject(self, args: dict, with_draft: bool) -> dict:
         if not args or self.state is None:
@@ -364,26 +369,26 @@ class Gate:
     def _written(self) -> set[str]:
         return {key.split("|", 1)[0] for key in self.state.data["written"]} | set(self.state.data["cli_recorded"])
 
-    def _pending_nudges(self, status) -> list[str]:
-        if status not in (None, "completed") or self.state.data["skip"]:
-            return []
-        if not self.config.get("gate.stop_reminder", True) or self.config.get("gate.mode") == "off":
+    def _reminders_on(self, setting: str, default: bool | None = None) -> bool:
+        return bool(self.config.get(setting, default)) and self.config.get("gate.mode") != "off"
+
+    def _pending_nudges(self) -> list[str]:
+        """改了代码却没写记忆的模块。"""
+        if not self._reminders_on("gate.stop_reminder", True):
             return []
         written = self._written()
         return [m for m in self.state.data["edited"] if m not in written and not self.state.has("nudged", m)]
 
-    def _analyzed(self, status) -> list[str]:
+    def _analyzed(self) -> list[str]:
         """排查类对话里查过记忆、但既没改代码也没写记忆的模块。"""
-        if status not in (None, "completed") or self.state.data["skip"] or not self.state.data["analysis"]:
+        if not self.state.data["analysis"]:
             return []
         done = self._written() | set(self.state.data["edited"])
         return [m for m in self.state.data["consulted"] if m not in done]
 
-    def _consulted_only(self, status) -> list[str]:
+    def _consulted_only(self) -> list[str]:
         """整个对话只查了记忆、没改代码也没写记忆时，查过的模块；写代码时顺带查的模块不算。"""
-        if status not in (None, "completed") or self.state.data["skip"]:
-            return []
-        if not self.config.get("gate.analysis_reminder") or self.config.get("gate.mode") == "off":
+        if not self._reminders_on("gate.analysis_reminder"):
             return []
         if self._written() or self.state.data["edited"]:
             return []
@@ -394,9 +399,11 @@ class Gate:
             return {}
         self.state.cleanup_old()
         status = self.payload.get("status")
-        pending = self._pending_nudges(status)
-        analyzed = self._analyzed(status)
-        consulted_pending = self._consulted_only(status)
+        # 中断或出错结束的回合、用户说了“跳过记忆”的对话，都不提醒
+        finished = status in (None, "completed") and not self.state.data["skip"]
+        pending = self._pending_nudges() if finished else []
+        analyzed = self._analyzed() if finished else []
+        consulted_pending = self._consulted_only() if finished else []
         usage = {k: self.payload.get(k) for k in TOKEN_FIELDS if isinstance(self.payload.get(k), int)}
         self.save()
         self.log(

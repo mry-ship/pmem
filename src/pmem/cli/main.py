@@ -151,93 +151,141 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.reconfigure(encoding="utf-8")
     parser = build_parser()
     args = parser.parse_args(argv)
-
-    if args.command == "hook":
-        from pmem.cli.hook_cmd import run_hook
-
-        return run_hook(args.event, args.agent)
-    if args.command == "serve":
-        from pmem.server.app import serve
-
-        serve(args.root)
+    if args.command in SERVICE_COMMANDS:
+        return _run_service(args)
+    handler = COMMANDS.get(args.command)
+    if handler is None:
+        parser.print_help()
         return 0
-    if args.command == "init":
-        from pmem.cli.init_cmd import run_init
+    return handler(args)
 
-        return run_init(Path(args.root), args.type, args.gate, args.agents)
-    if args.command == "scan":
-        from pmem.scan.lite import run_scan
 
-        return run_scan(Path(args.root), args.depth)
-    if args.command == "doctor":
-        from pmem.cli.doctor_cmd import run_doctor
+# ---- 各子命令；依赖在用到时才导入，保持启动快 ----
 
-        return run_doctor(_project_root(args.root))
-    if args.command == "import":
-        from pmem.cli.import_cmd import run_import
+def _hook(args) -> int:
+    from pmem.cli.hook_cmd import run_hook
 
-        return run_import(_project_root(args.root), Path(args.lancedb), Path(args.catalog) if args.catalog else None,
-                          args.author, args.dry_run, args.guess_kind)
-    if args.command == "compact":
-        from pmem.cli.compact_cmd import run_compact
+    return run_hook(args.event, args.agent)
 
-        return run_compact(_project_root(args.root), args.module, args.entity, args.min, args.json)
-    if args.command == "reindex":
-        from pmem.cli.reindex_cmd import run_reindex
 
-        return run_reindex(_project_root(args.root))
-    if args.command == "report":
-        from pmem.metrics.report import run_report
+def _serve(args) -> int:
+    from pmem.server.app import serve
 
-        return run_report(_project_root(args.root), args.days, args.json)
-    if args.command == "bench":
-        from pmem.bench.runner import dry_run_executor, run_bench
-
-        root = _project_root(args.root)
-        arms = tuple(a.strip() for a in args.arms.split(",") if a.strip())
-        records = run_bench(
-            root, root / args.cases, root / args.out, arms=arms, repeats=1 if args.dry_run else args.repeats,
-            model=args.model, executor=dry_run_executor if args.dry_run else None, only=args.only or None,
-        )
-        if args.dry_run:
-            bad = sorted({r.case for r in records if r.passed})
-            print("用例有效：起始提交上验收均失败" if not bad else f"这些用例在起始提交上已能通过，需要调整：{'、'.join(bad)}")
-            return 1 if bad else 0
-        print(f"结果见 {root / args.out / 'summary.md'}")
-        return 0
-    if args.command == "anchors":
-        from pmem.cli.anchors_cmd import run_anchors
-
-        return run_anchors(_project_root(args.root), args.module or None, args.apply)
-    if args.command in ("search", "list", "record", "confirm", "graph", "terms"):
-        from pmem.service import MemoryService
-
-        service = MemoryService(_project_root(args.root))
-        try:
-            if args.command == "list":
-                result = service.list_modules()
-            elif args.command == "record":
-                if args.content_file:
-                    content = Path(args.content_file).read_text(encoding="utf-8-sig")
-                else:
-                    content = sys.stdin.read() if args.content == "-" else args.content
-                result = service.record(args.module, args.entity, args.kind, content, args.supersedes, args.anchor,
-                                        args.draft_id or None, aliases=args.alias)
-            elif args.command == "confirm":
-                result = service.confirm(args.ids)
-            elif args.command == "graph":
-                result = service.graph(args.module, args.entity or None)
-            elif args.command == "terms":
-                result = service.terms(args.module or None, args.top, args.min)
-            else:
-                result = service.search(args.module or None, args.path or None, args.entity or None,
-                                        args.query or None, args.limit, as_of=args.as_of or None)
-            _print_json(result)
-        finally:
-            service.close()
-        return 0 if result.get("ok") else 1
-    parser.print_help()
+    serve(args.root)
     return 0
+
+
+def _init(args) -> int:
+    from pmem.cli.init_cmd import run_init
+
+    return run_init(Path(args.root), args.type, args.gate, args.agents)
+
+
+def _scan(args) -> int:
+    from pmem.scan.lite import run_scan
+
+    return run_scan(Path(args.root), args.depth)
+
+
+def _doctor(args) -> int:
+    from pmem.cli.doctor_cmd import run_doctor
+
+    return run_doctor(_project_root(args.root))
+
+
+def _import(args) -> int:
+    from pmem.cli.import_cmd import run_import
+
+    return run_import(_project_root(args.root), Path(args.lancedb), Path(args.catalog) if args.catalog else None,
+                      args.author, args.dry_run, args.guess_kind)
+
+
+def _compact(args) -> int:
+    from pmem.cli.compact_cmd import run_compact
+
+    return run_compact(_project_root(args.root), args.module, args.entity, args.min, args.json)
+
+
+def _reindex(args) -> int:
+    from pmem.cli.reindex_cmd import run_reindex
+
+    return run_reindex(_project_root(args.root))
+
+
+def _report(args) -> int:
+    from pmem.metrics.report import run_report
+
+    return run_report(_project_root(args.root), args.days, args.json)
+
+
+def _bench(args) -> int:
+    from pmem.bench.runner import dry_run_executor, run_bench
+
+    root = _project_root(args.root)
+    arms = tuple(a.strip() for a in args.arms.split(",") if a.strip())
+    records = run_bench(
+        root, root / args.cases, root / args.out, arms=arms, repeats=1 if args.dry_run else args.repeats,
+        model=args.model, executor=dry_run_executor if args.dry_run else None, only=args.only or None,
+    )
+    if args.dry_run:
+        bad = sorted({r.case for r in records if r.passed})
+        print("用例有效：起始提交上验收均失败" if not bad else f"这些用例在起始提交上已能通过，需要调整：{'、'.join(bad)}")
+        return 1 if bad else 0
+    print(f"结果见 {root / args.out / 'summary.md'}")
+    return 0
+
+
+def _anchors(args) -> int:
+    from pmem.cli.anchors_cmd import run_anchors
+
+    return run_anchors(_project_root(args.root), args.module or None, args.apply)
+
+
+COMMANDS = {
+    "hook": _hook,
+    "serve": _serve,
+    "init": _init,
+    "scan": _scan,
+    "doctor": _doctor,
+    "import": _import,
+    "compact": _compact,
+    "reindex": _reindex,
+    "report": _report,
+    "bench": _bench,
+    "anchors": _anchors,
+}
+
+
+# ---- 直接调用 MemoryService、输出 JSON 的子命令 ----
+
+def _record_content(args) -> str:
+    if args.content_file:
+        return Path(args.content_file).read_text(encoding="utf-8-sig")
+    return sys.stdin.read() if args.content == "-" else args.content
+
+
+SERVICE_COMMANDS = {
+    "list": lambda s, a: s.list_modules(),
+    "record": lambda s, a: s.record(a.module, a.entity, a.kind, _record_content(a), a.supersedes, a.anchor,
+                                    a.draft_id or None, aliases=a.alias),
+    "confirm": lambda s, a: s.confirm(a.ids),
+    "graph": lambda s, a: s.graph(a.module, a.entity or None),
+    "terms": lambda s, a: s.terms(a.module or None, a.top, a.min),
+    "search": lambda s, a: s.search(a.module or None, a.path or None, a.entity or None, a.query or None, a.limit,
+                                    as_of=a.as_of or None),
+}
+
+
+def _run_service(args) -> int:
+    from pmem.service import MemoryService
+
+    service = MemoryService(_project_root(args.root))
+    try:
+        result = SERVICE_COMMANDS[args.command](service, args)
+        _print_json(result)
+    finally:
+        service.close()
+    return 0 if result.get("ok") else 1
 
 
 if __name__ == "__main__":

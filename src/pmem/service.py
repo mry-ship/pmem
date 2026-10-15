@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import difflib
+import functools
 import time
 from collections import Counter
 from datetime import date
@@ -10,11 +11,11 @@ from pmem.core.config import Config, user_cache_base
 from pmem.core.entry import KINDS, Entry
 from pmem.core.ids import new_ulid
 from pmem.core.quality import content_hints, entity_hint
-from pmem.core.registry import ModuleRegistry, RegistryError
+from pmem.core.registry import ModuleRegistry, RegistryError, ResolvedModule
 from pmem.core.secrets import find_secrets
 from pmem.index.embedder import make_embedder
 from pmem.index.graph import MemoryGraph, preview
-from pmem.index.store import VISIBLE_STATUSES, MemoryIndex
+from pmem.index.store import MemoryIndex, SearchResult
 from pmem.index.tokenize import tokenize
 from pmem.metrics.events import log_event
 from pmem.storage.files import FilesStorage, StorageError
@@ -37,10 +38,24 @@ SIMILAR_HINT = (
     "无关则忽略。"
 )
 ALIASES_HINT = "没填 aliases：把现象和关键术语的其他常用叫法（如 闪退/崩溃/crash）写进 aliases，换个说法也能搜到。"
+HINTS_FOOTER = "以上只是提示，已写入；如需修改，带上 draft_id 再写一次即可覆盖。"
 
 
 def _fail(message: str, **extra) -> dict:
     return {"ok": False, "error": message, **extra}
+
+
+def _returns_errors(method):
+    """模块名无法解析、modules.yaml 有误、写文件失败时返回 {"ok": False, "error": ...}，不抛给调用方。"""
+
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return method(self, *args, **kwargs)
+        except (RegistryError, StorageError) as exc:
+            return _fail(str(exc))
+
+    return wrapper
 
 
 def _valid_date(raw: str | None) -> str | None:
@@ -62,7 +77,7 @@ def _clean_aliases(raw: list[str] | None) -> list[str]:
 
 
 class MemoryService:
-    """三个工具背后的业务规则；MCP 与 CLI 共用。"""
+    """MCP 工具与命令行背后的业务规则，两边共用。"""
 
     def __init__(self, root: str | Path, source: str = "cli"):
         self.config = Config.load(root)
@@ -118,11 +133,18 @@ class MemoryService:
     def _log(self, event_type: str, **fields) -> None:
         log_event(self.config.cache_dir, event_type, source=self.source, user=self.user, **fields)
 
-    def _similar(self, name: str) -> list[str]:
+    def _module_id(self, name: str) -> str:
+        return self.registry.resolve_module(name).id
+
+    def _similar_modules(self, name: str) -> list[str]:
         known = set(self.registry.modules) | set(self.index.module_stats())
         lowered = {k.lower(): k for k in known}
         hits = difflib.get_close_matches(name.lower(), list(lowered), n=3, cutoff=0.6)
         return [lowered[h] for h in hits]
+
+    def _index_search(self, **kwargs) -> SearchResult:
+        self.index.synonyms = self.registry.synonyms
+        return self.index.search(**kwargs)
 
     # ---- search_memory ----
 
@@ -139,7 +161,7 @@ class MemoryService:
         started = time.perf_counter()
         try:
             response = self._search(module, path, entity, query, limit, _valid_date(as_of))
-        except (RegistryError, ValueError) as exc:
+        except ValueError as exc:  # 含 RegistryError
             response = _fail(str(exc))
         items = response.get("items") or []
         self._log(
@@ -162,35 +184,25 @@ class MemoryService:
         response: dict = {"ok": True}
         module_id: str | None = None
         if path:
-            try:
-                match = self.registry.module_for_path(self._relative(path))
-            except RegistryError as exc:
-                return _fail(str(exc))
-            if match is None and not module:
+            match = self.registry.module_for_path(self._relative(path))
+            if match is not None:
+                module_id = match.module_id
+                response["resolved_from"] = "path"
+            elif not module:
                 if not query:
                     return {"ok": True, "module": None, "items": [], "hint": "该路径未登记到任何模块；可带 query 全局检索"}
                 response["hint"] = "该路径未登记到任何模块，已改为全局检索"
-            elif match is not None:
-                module_id = match.module_id
-                response["resolved_from"] = "path"
         if module and module_id is None:
-            try:
-                resolved = self.registry.resolve_module(module)
-            except RegistryError as exc:
-                return _fail(str(exc))
-            module_id = resolved.id
+            module_id = self._module_id(module)
         if module_id is None and not query:
             return _fail("请提供 module、path 或 query 其中之一")
-
-        if module_id is not None:
-            exists = module_id in self.registry.modules or module_id in self.index.module_stats()
-            if not exists:
-                return {"ok": True, "module": module_id, "module_exists": False, "items": [],
-                        "similar_modules": self._similar(module_id)}
+        if module_id is not None and module_id not in self.registry.modules \
+                and module_id not in self.index.module_stats():
+            return {"ok": True, "module": module_id, "module_exists": False, "items": [],
+                    "similar_modules": self._similar_modules(module_id)}
 
         entity_id = self.registry.resolve_entity(module_id or "", entity) if entity else None
-        self.index.synonyms = self.registry.synonyms
-        result = self.index.search(
+        result = self._index_search(
             module=module_id,
             entity=entity_id,
             query=query,
@@ -204,8 +216,7 @@ class MemoryService:
             response["as_of"] = as_of
         if result.expanded:
             response["expanded"] = result.expanded
-        stale = [i["id"] for i in result.items if i.get("stale")]
-        if stale:
+        if any(i.get("stale") for i in result.items):
             response["verify_hint"] = VERIFY_HINT
         if module_id and not as_of:
             related = self.graph_model().related(module_id, entity_id, limit=MAX_RELATED)
@@ -213,9 +224,8 @@ class MemoryService:
                 response["related"] = [f"{r['module']}（{r['via']}）" for r in related]
         if result.fallback:
             response["fallback"] = result.fallback
-        degraded = result.degraded if self.index.embedder_problem or self.index.embedder else None
-        if degraded:
-            response["degraded"] = degraded
+        if result.degraded and (self.index.embedder_problem or self.index.embedder):
+            response["degraded"] = result.degraded
         warnings = result.warnings + ([self.index.embedder_problem] if self.index.embedder_problem else [])
         if warnings:
             response["warnings"] = warnings
@@ -232,6 +242,7 @@ class MemoryService:
 
     # ---- record_memory ----
 
+    @_returns_errors
     def record(
         self,
         module: str,
@@ -244,57 +255,28 @@ class MemoryService:
         source_conversation: str | None = None,
         aliases: list[str] | None = None,
     ) -> dict:
-        try:
-            resolved = self.registry.resolve_module(module)
-        except RegistryError as exc:
-            return _fail(str(exc))
-        if kind not in KINDS:
-            return _fail(f"kind 必须是 {' / '.join(KINDS)} 之一")
+        resolved = self.registry.resolve_module(module)
         content = (content or "").strip()
-        low, high = int(self.config.get("write.content_min")), int(self.config.get("write.content_max"))
-        if not low <= len(content) <= high:
-            return _fail(f"正文长度需在 {low}–{high} 字之间，当前 {len(content)} 字")
-        hits = find_secrets(content, self.config.get("write.secret_patterns") or [])
-        if hits:
-            return _fail("正文疑似包含敏感信息，已拒绝写入：" + "；".join(hits))
+        problem = self._invalid_content(kind, content)
+        if problem:
+            return _fail(problem)
         entity_id = self.registry.resolve_entity(resolved.id, entity or "")
         if not entity_id:
             return _fail("entity 不能为空，用于区分模块内的议题，如 Reward、Config")
 
         today = date.today().isoformat()
-        author = self.vcs.current_user()
-        module_def = self.registry.modules.get(resolved.id) or self.registry.candidates.get(resolved.id)
-        declared = [*module_def.entities, *module_def.components, *module_def.variants] if module_def else []
-        known_entities = list(dict.fromkeys(
-            [*declared, *(e.entity for e in self.index.entries() if e.module == resolved.id)]
-        ))
         supersedes = list(dict.fromkeys(s for s in supersedes or [] if s))
         replaced = [old for s in supersedes if (old := self.index.find(s)) is not None]
-        # 合并多条零碎记忆时只受硬上限约束
-        recommend_max = high if len(replaced) >= 2 else int(self.config.get("write.recommend_max"))
-        hints = content_hints(content, recommend_max)
-        if not self.registry.is_global_entity(entity_id) and (new_entity := entity_hint(entity_id, known_entities)):
-            hints.append(new_entity)
         aliases = _clean_aliases(aliases)
-        if not aliases:
-            hints.append(ALIASES_HINT)
+        hints = self._write_hints(resolved.id, entity_id, content, aliases, merging=len(replaced) >= 2)
         # 替代旧记忆（含合并零碎记忆）不增加条数，不受每日上限约束
         if not draft_id and not replaced:
-            same_day = [
-                e.id
-                for e in self.index.entries()
-                if e.module == resolved.id and e.entity.lower() == entity_id.lower() and e.note_date == today
-            ]
-            cap = int(self.config.get("write.max_per_day_per_entity"))
-            if len(same_day) >= cap:
-                return _fail(
-                    f"{resolved.id}/{entity_id} 今天已有 {len(same_day)} 条记忆，达到上限 {cap}；"
-                    "请把新结论合并进已有的一条（带 draft_id 覆盖自己未提交的那条），或用 supersedes 替代旧结论",
-                    existing_ids=same_day,
-                )
+            over_cap = self._daily_cap_error(resolved.id, entity_id, today)
+            if over_cap:
+                return over_cap
 
-        warnings = [f"supersedes 中的 {s} 不存在，已忽略对它的替代关系"
-                    for s in supersedes if s not in {old.id for old in replaced}]
+        replaced_ids = [old.id for old in replaced]
+        warnings = [f"supersedes 中的 {s} 不存在，已忽略对它的替代关系" for s in supersedes if s not in replaced_ids]
         if not anchors and replaced:
             anchors = list(dict.fromkeys(a for old in replaced for a in old.anchors))[:MAX_INHERITED_ANCHORS]
         entry = Entry(
@@ -304,18 +286,15 @@ class MemoryService:
             kind=kind,
             content=content,
             note_date=today,
-            author=author,
+            author=self.vcs.current_user(),
             revision=self.vcs.revision(),
             status=str(self.config.get("write.default_status")),
-            supersedes=[old.id for old in replaced],
+            supersedes=replaced_ids,
             anchors=[a.replace("\\", "/") for a in anchors or []],
             source_conversation=source_conversation or None,
             aliases=aliases,
         )
-        try:
-            written = self.storage.write(entry, draft_id=draft_id or None)
-        except StorageError as exc:
-            return _fail(str(exc))
+        written = self.storage.write(entry, draft_id=draft_id or None)
         self.index.refresh(force=True)
 
         response = {
@@ -327,15 +306,9 @@ class MemoryService:
             "overwritten": written.overwritten,
             "draft_id": written.entry.id,
         }
-        if resolved.redirected_from:
-            warnings.append(f"{resolved.redirected_from} 已并入 {resolved.id}")
-        if resolved.candidate:
-            response["candidate_module"] = True
-            warnings.append(f"{resolved.id} 是冷候选模块，已有记忆后建议负责人在 modules.yaml 中把它转为正式模块")
-        elif not resolved.known:
-            response["new_module"] = True
-            response["similar_modules"] = [m for m in self._similar(resolved.id) if m != resolved.id]
-            warnings.append(f"{resolved.id} 尚未登记在 modules.yaml；如是笔误请改用相近模块")
+        flags, module_warnings = self._module_notes(resolved)
+        response.update(flags)
+        warnings += module_warnings
         if warnings:
             response["warnings"] = warnings
         similar = self._similar_memories(written.entry)
@@ -343,7 +316,7 @@ class MemoryService:
             response["similar"] = similar
             hints.append(SIMILAR_HINT)
         if hints:
-            response["hints"] = hints + ["以上只是提示，已写入；如需修改，带上 draft_id 再写一次即可覆盖。"]
+            response["hints"] = hints + [HINTS_FOOTER]
         self._log(
             "record",
             conv=source_conversation,
@@ -356,14 +329,71 @@ class MemoryService:
         )
         return response
 
+    def _invalid_content(self, kind: str, content: str) -> str | None:
+        if kind not in KINDS:
+            return f"kind 必须是 {' / '.join(KINDS)} 之一"
+        low, high = int(self.config.get("write.content_min")), int(self.config.get("write.content_max"))
+        if not low <= len(content) <= high:
+            return f"正文长度需在 {low}–{high} 字之间，当前 {len(content)} 字"
+        hits = find_secrets(content, self.config.get("write.secret_patterns") or [])
+        if hits:
+            return "正文疑似包含敏感信息，已拒绝写入：" + "；".join(hits)
+        return None
+
+    def _write_hints(self, module_id: str, entity_id: str, content: str, aliases: list[str], merging: bool) -> list[str]:
+        """只提示、不拦截的写作建议。合并多条零碎记忆时篇长只受硬上限约束。"""
+        limit_key = "write.content_max" if merging else "write.recommend_max"
+        hints = content_hints(content, int(self.config.get(limit_key)))
+        if not self.registry.is_global_entity(entity_id):
+            new_entity = entity_hint(entity_id, self._known_entities(module_id))
+            if new_entity:
+                hints.append(new_entity)
+        if not aliases:
+            hints.append(ALIASES_HINT)
+        return hints
+
+    def _known_entities(self, module_id: str) -> list[str]:
+        module = self.registry.modules.get(module_id) or self.registry.candidates.get(module_id)
+        declared = [*module.entities, *module.components, *module.variants] if module else []
+        used = [e.entity for e in self.index.entries() if e.module == module_id]
+        return list(dict.fromkeys([*declared, *used]))
+
+    def _daily_cap_error(self, module_id: str, entity_id: str, today: str) -> dict | None:
+        same_day = [
+            e.id for e in self.index.entries()
+            if e.module == module_id and e.entity.lower() == entity_id.lower() and e.note_date == today
+        ]
+        cap = int(self.config.get("write.max_per_day_per_entity"))
+        if len(same_day) < cap:
+            return None
+        return _fail(
+            f"{module_id}/{entity_id} 今天已有 {len(same_day)} 条记忆，达到上限 {cap}；"
+            "请把新结论合并进已有的一条（带 draft_id 覆盖自己未提交的那条），或用 supersedes 替代旧结论",
+            existing_ids=same_day,
+        )
+
+    def _module_notes(self, resolved: ResolvedModule) -> tuple[dict, list[str]]:
+        """写到别名、候选模块或未登记模块时，附在返回里的标记与提醒。"""
+        flags: dict = {}
+        warnings: list[str] = []
+        if resolved.redirected_from:
+            warnings.append(f"{resolved.redirected_from} 已并入 {resolved.id}")
+        if resolved.candidate:
+            flags["candidate_module"] = True
+            warnings.append(f"{resolved.id} 是冷候选模块，已有记忆后建议负责人在 modules.yaml 中把它转为正式模块")
+        elif not resolved.known:
+            flags["new_module"] = True
+            flags["similar_modules"] = [m for m in self._similar_modules(resolved.id) if m != resolved.id]
+            warnings.append(f"{resolved.id} 尚未登记在 modules.yaml；如是笔误请改用相近模块")
+        return flags, warnings
+
     def _similar_memories(self, entry: Entry) -> list[dict]:
         """同一议题下与新记忆最相近的有效记忆，交给写入的 Agent 判断是重复、推翻还是无关。
 
         只看同一实体：跨议题时相关度分不清真假（见 Ranking 排除项），每次都附两条无关记忆只会成为噪音。
         """
         skip = {entry.id, *entry.supersedes}
-        self.index.synonyms = self.registry.synonyms
-        result = self.index.search(
+        result = self._index_search(
             module=entry.module, entity=entry.entity, query=" ".join([entry.content, *entry.aliases]),
             limit=MAX_SIMILAR + len(skip), max_per_batch=MAX_LIMIT, verify=False,
         )
@@ -398,55 +428,46 @@ class MemoryService:
 
     # ---- memory_graph ----
 
+    @_returns_errors
     def graph(self, module: str, entity: str | None = None) -> dict:
-        try:
-            module_id = self.registry.resolve_module(module).id
-        except RegistryError as exc:
-            return _fail(str(exc))
+        module_id = self._module_id(module)
         model = self.graph_model()
-        if entity:
-            entity_id = self.registry.resolve_entity(module_id, entity)
-            timeline = model.timeline(module_id, entity_id)
-            if not timeline:
-                return _fail(f"{module_id}/{entity_id} 下没有记忆",
-                             entities=[t["entity"] for t in model.topics(module_id)][:20])
-            return {"ok": True, "module": module_id, "entity": entity_id, "timeline": timeline,
-                    "related": model.related(module_id, entity_id)}
-        return {"ok": True, "module": module_id, "topics": model.topics(module_id),
-                "related": model.related(module_id)}
+        if not entity:
+            return {"ok": True, "module": module_id, "topics": model.topics(module_id),
+                    "related": model.related(module_id)}
+        entity_id = self.registry.resolve_entity(module_id, entity)
+        timeline = model.timeline(module_id, entity_id)
+        if not timeline:
+            return _fail(f"{module_id}/{entity_id} 下没有记忆",
+                         entities=[t["entity"] for t in model.topics(module_id)][:20])
+        return {"ok": True, "module": module_id, "entity": entity_id, "timeline": timeline,
+                "related": model.related(module_id, entity_id)}
 
     # ---- terms ----
 
+    @_returns_errors
     def terms(self, module: str | None = None, top: int = 300, min_count: int = 2) -> dict:
         """有效记忆里的高频词（按出现在几条记忆里计），供 Agent 找出同一件事的不同叫法。"""
-        if module:
-            try:
-                module = self.registry.resolve_module(module).id
-            except RegistryError as exc:
-                return _fail(str(exc))
+        module = self._module_id(module) if module else None
         docs: Counter = Counter()
         where: dict[str, Counter] = {}
-        hidden = self.index.superseded()
-        for entry in self.index.entries():
-            if entry.status not in VISIBLE_STATUSES or entry.id in hidden or (module and entry.module != module):
+        for entry in self.index.visible():
+            if module and entry.module != module:
                 continue
             words = {t for t in tokenize(f"{entry.content} {' '.join(entry.aliases)}")
                      if len(t) >= 2 and not t.isdigit() and not (t.isascii() and len(t) < 3)}
-            for word in words:
+            for word in sorted(words):
                 docs[word] += 1
                 where.setdefault(word, Counter())[entry.module] += 1
-        known = [list(g) for g in self.registry.synonyms]
         rows = [{"term": w, "memories": n, "modules": [m for m, _ in where[w].most_common(2)]}
                 for w, n in docs.most_common() if n >= min_count][:top]
-        return {"ok": True, "module": module, "synonyms": known, "terms": rows}
+        return {"ok": True, "module": module, "synonyms": [list(g) for g in self.registry.synonyms], "terms": rows}
 
     # ---- list_modules ----
 
+    @_returns_errors
     def list_modules(self, category: str | None = None) -> dict:
-        try:
-            registry = self.registry
-        except RegistryError as exc:
-            return _fail(str(exc))
+        registry = self.registry
         stats = self.index.module_stats()
         rows, empty = [], []
         for module_id in sorted(set(registry.modules) | set(stats)):
@@ -468,29 +489,21 @@ class MemoryService:
 
     # ---- compact ----
 
-    def _visible_groups(self, module: str | None = None) -> dict[tuple[str, str], list[Entry]]:
-        hidden = self.index.superseded()
+    def _topic_groups(self, module: str | None = None) -> dict[tuple[str, str], list[Entry]]:
+        """按 (模块, 议题) 分组的有效记忆，组内从旧到新。"""
         groups: dict[tuple[str, str], list[Entry]] = {}
-        for entry in sorted(self.index.entries(), key=lambda e: (e.note_date, e.id)):
-            if entry.status not in VISIBLE_STATUSES or entry.id in hidden:
-                continue
+        for entry in sorted(self.index.visible(), key=lambda e: (e.note_date, e.id)):
             if module and entry.module.lower() != module.lower():
                 continue
             groups.setdefault((entry.module, entry.entity.lower()), []).append(entry)
         return groups
 
+    @_returns_errors
     def compact_groups(self, module: str | None = None, min_size: int = COMPACT_MIN_GROUP) -> dict:
         """同一模块同一议题积累了多条记忆的分组，按条数从多到少。"""
-        if module:
-            try:
-                module = self.registry.resolve_module(module).id
-            except RegistryError as exc:
-                return _fail(str(exc))
-        rows = []
-        for (module_id, _), items in self._visible_groups(module).items():
-            if len(items) < min_size:
-                continue
-            rows.append({
+        module = self._module_id(module) if module else None
+        rows = [
+            {
                 "module": module_id,
                 "entity": items[-1].entity,
                 "count": len(items),
@@ -498,18 +511,19 @@ class MemoryService:
                 "first": items[0].note_date,
                 "last": items[-1].note_date,
                 "kinds": dict(Counter(e.kind for e in items)),
-            })
+            }
+            for (module_id, _), items in self._topic_groups(module).items()
+            if len(items) >= min_size
+        ]
         rows.sort(key=lambda r: (-r["count"], r["module"], r["entity"]))
         return {"ok": True, "min_size": min_size, "groups": rows, "memories": sum(r["count"] for r in rows)}
 
+    @_returns_errors
     def compact_group(self, module: str, entity: str) -> dict:
         """一个议题下全部有效记忆的正文（从旧到新），供合并成一条。"""
-        try:
-            module_id = self.registry.resolve_module(module).id
-        except RegistryError as exc:
-            return _fail(str(exc))
+        module_id = self._module_id(module)
         entity_id = self.registry.resolve_entity(module_id, entity)
-        items = self._visible_groups(module_id).get((module_id, entity_id.lower()), [])
+        items = self._topic_groups(module_id).get((module_id, entity_id.lower()), [])
         if not items:
             return _fail(f"{module_id}/{entity_id} 下没有有效记忆")
         return {

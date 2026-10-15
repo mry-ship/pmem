@@ -130,25 +130,7 @@ anchors: [Assets/Game/Jigsaw/JigsawReward.cs#Claim]
 
 ## 一次对话的完整流程
 
-```mermaid
-sequenceDiagram
-    actor U as 你
-    participant A as AI Agent
-    participant G as 闸门 Hooks
-    participant P as pmem 服务
-    participant R as 仓库 .memory
-    U->>A: 修一下拼图奖励重复发放
-    A->>P: 改代码前先查 search_memory，按要改的文件
-    P->>R: 定位到 gameplay.Jigsaw，增量读取记忆
-    P-->>A: 排除项：别在客户端去重，根因在服务端；并标出哪些已过期
-    Note over A,G: 如果 AI 忘了查就去改，闸门拦下这次修改，直到查过该模块
-    A->>A: 按正确方向修改并验证
-    A->>P: 得出结论后写入 record_memory
-    P->>R: 写入 entries/gameplay.Jigsaw/ID.md
-    Note over A,G: 回合结束时，改了模块却没写记忆，闸门提醒一次
-    A-->>U: 完成，并说明依据了哪条记忆
-    U->>R: git commit / push，队友拉代码后就能查到
-```
+![一次对话的完整流程：改前先查、得出结论后写入、提交共享，闸门在两处兜底](docs/images/pmem-flow.svg)
 
 **只在三个时机写记忆**：确认根因；排除某个方向或定下方案；改完并验证通过。同一任务对同一模块的同一议题只留一条，再写会覆盖自己的草稿。
 

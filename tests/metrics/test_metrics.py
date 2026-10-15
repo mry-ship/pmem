@@ -113,6 +113,38 @@ def test_report_counts_benefits(project, tmp_path, monkeypatch):
     assert "跨人复用" in text and "样本不足" in text
 
 
+def test_memory_written_in_the_same_conversation_is_not_reuse(project, tmp_path, monkeypatch):
+    cache = Config.load(project).cache_dir
+    log_event(cache, "prompt", conv="c3")
+    own_id = record_as(project, monkeypatch, "me", "risk", MEMORY)
+    transcript = write_transcript(tmp_path / "c3.jsonl", MEMORY)
+    log_event(cache, "mcp_search", conv="c3", ids=[own_id])
+    log_event(cache, "stop", conv="c3", status="completed", transcript=str(transcript))
+    report = build_report(project, days=7, heat=False)
+    assert report["citations"]["cited"] == 0
+    assert report["usage"]["returned_memories"] == 0
+
+
+def test_usage_lists_most_used_and_never_used(project, tmp_path, monkeypatch):
+    used = record_as(project, monkeypatch, "alice", "exclusion", MEMORY)
+    ignored = record_as(project, monkeypatch, "alice", "conclusion", "商店价格表缓存失效：配置热更新后需要清理本地缓存才能生效。")
+    monkeypatch.setenv("PMEM_AUTHOR", "me")
+    cache = Config.load(project).cache_dir
+    for n in range(3):
+        conv = f"u{n}"
+        transcript = write_transcript(tmp_path / f"{conv}.jsonl", MEMORY if n == 0 else "改好了，测试通过。")
+        log_event(cache, "mcp_search", conv=conv, ids=[used, ignored])
+        log_event(cache, "mcp_search", conv=conv, ids=[ignored])
+        log_event(cache, "stop", conv=conv, status="completed", transcript=str(transcript))
+    report = build_report(project, days=7, heat=False)
+    usage = report["usage"]
+    assert usage["returned_memories"] == 2
+    assert [(r["id"], r["cited"], r["returned"]) for r in usage["top"]] == [(used, 1, 3)]
+    assert [(r["id"], r["returned"]) for r in usage["review"]] == [(ignored, 3)]
+    text = render(report)
+    assert "最常被用到" in text and ignored in text
+
+
 def test_records_are_counted_from_files_even_without_events(project, monkeypatch):
     monkeypatch.setenv("PMEM_NO_EVENTS", "1")
     record_as(project, monkeypatch, "me", "risk", MEMORY)

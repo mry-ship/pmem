@@ -19,6 +19,10 @@ KIND_NAMES = {"conclusion": "结论", "exclusion": "排除", "correction": "更�
 MIN_GROUP = 5
 HOT_TOP = 10
 CLI_LINK_SECONDS = 30
+OWN_WRITE_SLACK = 60
+USAGE_TOP = 5
+MIN_RETURNS_TO_REVIEW = 3
+MIN_SEARCHES_FOR_IDLE = 20
 
 
 def _median(values: list[float]) -> float | None:
@@ -74,6 +78,7 @@ def _citations(cache_dir: Path, convs: dict[str, dict], contents: dict[str, str]
         cache = {}
     returned = cited = 0
     cited_ids: Counter = Counter()
+    judged_ids: Counter = Counter()
     for conv, c in convs.items():
         ids = sorted(i for i in c["returned"] - c["recorded"] if i in contents)
         transcript = Path(c["transcript"]) if c["transcript"] else None
@@ -88,11 +93,40 @@ def _citations(cache_dir: Path, convs: dict[str, dict], contents: dict[str, str]
         returned += len(ids)
         cited += len(hit["cited"])
         cited_ids.update(hit["cited"])
+        judged_ids.update(ids)
     try:
         cache_path.write_text(json.dumps(cache), encoding="utf-8")
     except OSError:
         pass
-    return {"returned": returned, "cited": cited, "top": cited_ids.most_common(5)}
+    return {"returned": returned, "cited": cited, "top": cited_ids.most_common(5),
+            "by_id": dict(cited_ids), "judged": dict(judged_ids)}
+
+
+def _usage(convs: dict[str, dict], events: list[dict], citations: dict, visible: list, since: float) -> dict:
+    """每条记忆在统计期内被返回、被采用的次数（同一对话只算一次）。"""
+    known = {e.id: e for e in visible}
+    returned: Counter = Counter()
+    for c in convs.values():
+        returned.update(i for i in c["returned"] - c["recorded"] if i in known)
+    for e in events:
+        if e["type"] == "search" and e.get("ok") and not e.get("conv"):
+            returned.update(i for i in e.get("ids") or [] if i in known)
+    cited, judged = Counter(citations["by_id"]), Counter(citations["judged"])
+
+    def row(i: str) -> dict:
+        e = known[i]
+        return {"id": i, "module": e.module, "entity": e.entity, "returned": returned[i], "cited": cited[i],
+                "content": e.content}
+
+    idle = [e for e in visible if returned[e.id] == 0 and ulid_ms(e.id) / 1000 < since]
+    return {
+        "returned_memories": len(returned),
+        "top": [row(i) for i, _ in cited.most_common() if i in known][:USAGE_TOP],
+        "review": [row(i) for i, n in judged.most_common()
+                   if i in known and n >= MIN_RETURNS_TO_REVIEW and cited[i] == 0][:USAGE_TOP],
+        "idle": len(idle),
+        "idle_modules": Counter(e.module for e in idle).most_common(3),
+    }
 
 
 def _compare(convs: dict[str, dict]) -> dict:
@@ -162,6 +196,10 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
     )
 
     convs = _conversations(events)
+    # 对话期间自己新写的记忆被返回、被复述不算复用；终端写入的事件不带对话 id，所以按记忆文件的创建时间判断
+    authored = [(ulid_ms(e.id) / 1000, e.id) for e in entries if e.author == user]
+    for c in convs.values():
+        c["recorded"].update(i for ts, i in authored if c["start"] - OWN_WRITE_SLACK <= ts <= c["end"] + OWN_WRITE_SLACK)
     visible = [e for e in entries if e.id not in hidden and e.status != "deprecated"]
     authors_by_module: dict[str, set] = defaultdict(set)
     for e in visible:
@@ -181,6 +219,7 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
                 module_heat[match.module_id] += count
         hot = [(m, n, len([e for e in visible if e.module == m])) for m, n in module_heat.most_common(HOT_TOP)]
 
+    citations = _citations(cache_dir, convs, contents)
     return {
         "days": days,
         "search": {
@@ -191,7 +230,8 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
             "reused": len(reused),
             "reused_authors": len(reused_authors),
         },
-        "citations": _citations(cache_dir, convs, contents),
+        "citations": citations,
+        "usage": _usage(convs, events, citations, visible, since),
         "records": {"total": sum(record_kinds.values()), "by_kind": dict(record_kinds)},
         "habits": {
             "gates": len(gates), "gate_converted": gate_converted,
@@ -224,6 +264,28 @@ def _num(value: float | None, unit: str = "") -> str:
     return f"{value:.0f}{unit}" if value >= 10 else f"{value:.1f}{unit}"
 
 
+def _snippet(text: str, width: int = 40) -> str:
+    line = " ".join(text.split())
+    return line if len(line) <= width else line[:width] + "…"
+
+
+def _render_usage(u: dict, memories: int, searches: int) -> list[str]:
+    lines = ["", "【记忆使用】同一对话里返回多次只算一次；对话中自己新写的不计入",
+             f"  被返回过的记忆 {u['returned_memories']} 条（占有效记忆 {_pct(u['returned_memories'], memories)}）"]
+    if u["top"]:
+        lines.append("  最常被用到：")
+        lines += [f"    {r['module']}/{r['entity']} 用到 {r['cited']} 次、返回 {r['returned']} 次：{_snippet(r['content'])}"
+                  for r in u["top"]]
+    if u["review"]:
+        lines.append(f"  返回 {MIN_RETURNS_TO_REVIEW} 次以上却从没被用到（可能过时、写得不清楚或归错模块，值得复查）：")
+        lines += [f"    [{r['id']}] {r['module']}/{r['entity']} 返回 {r['returned']} 次：{_snippet(r['content'])}"
+                  for r in u["review"]]
+    if searches >= MIN_SEARCHES_FOR_IDLE and u["idle"]:
+        where = "、".join(f"{m} {n} 条" for m, n in u["idle_modules"])
+        lines.append(f"  统计期之前写的记忆里有 {u['idle']} 条一次都没被检索到（主要在 {where}）")
+    return lines
+
+
 def render(report: dict) -> str:
     s, c, r, h, a = (report[k] for k in ("search", "citations", "records", "habits", "assets"))
     kinds = "、".join(f"{KIND_NAMES.get(k, k)} {n}" for k, n in sorted(r["by_kind"].items(), key=lambda kv: -kv[1]))
@@ -242,6 +304,7 @@ def render(report: dict) -> str:
         f"  改代码前被提醒先查 {h['gates']} 次，随后真的查了 {h['gate_converted']} 次（{_pct(h['gate_converted'], h['gates'])}）",
         f"  结束时被提醒记录 {h['nudges']} 次，随后写了 {h['nudge_converted']} 次（{_pct(h['nudge_converted'], h['nudges'])}）",
     ]
+    lines += _render_usage(report["usage"], a["memories"], s["total"])
     cmp_ = report["compare"]
     lines += ["", "【对话对照】改了代码的对话，按“是否用到他人/既有记忆”分组，取中位数"]
     lines.append(f"  {'':<10}{'对话数':>6}{'输入 token':>12}{'输出 token':>12}{'轮数':>6}{'编辑':>6}{'时长(分)':>9}")

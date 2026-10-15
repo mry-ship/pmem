@@ -109,6 +109,7 @@
   <div class="brand">pmem 使用手册</div>
   <div class="ver">v0.1.0.dev0 · 项目研发记忆</div>
   <a href="#what">pmem 是什么</a>
+  <a href="#benefits">收益与适用场景</a>
   <a href="#concepts">核心概念</a>
   <a href="#onboard">在其他项目接入</a>
   <a href="#daily">日常使用</a>
@@ -143,6 +144,49 @@
 Agent：（自动查 gameplay.Jigsaw 的记忆）
        已有排除项：不要在客户端去重，根因是服务端 Claim 没有按关卡做幂等……
        我按这个方向修改服务端，并补测试。</code></pre>
+</section>
+
+<!-- ============ 收益 ============ -->
+<section id="benefits">
+  <h2>收益与适用场景</h2>
+  <h3>没有记忆 → 有记忆</h3>
+  <p class="muted">TileMatch 项目上一代记忆服务上线前后的真实对话对比（改过代码的对话：上线前 122 个，上线后 62 个）。是前后对比而非对照实验。</p>
+  <table>
+    <tr><th>被用户纠正的比例</th><th>每次改代码的耗时</th><th>读写 token</th><th>长对话全程不回退</th></tr>
+    <tr><td><strong>−54% ~ −69%</strong></td><td><strong>−36% ~ −44%</strong></td><td><strong>−18%</strong></td><td>27% → 52%</td></tr>
+  </table>
+
+  <h3>上一代记忆服务 → pmem（853 条真实记忆离线回放）</h3>
+  <table>
+    <tr><th>指标</th><th>上一代服务</th><th>pmem</th></tr>
+    <tr><td>18 个人工核对的查询，正确结论排进前 3 条</td><td>6 / 18</td><td><strong>16 / 18</strong></td></tr>
+    <tr><td>写进去后被悄悄删掉的记忆</td><td>19%</td><td><strong>0</strong></td></tr>
+    <tr><td>搜“闪退”排进前 3 的“崩溃”记忆</td><td>0 条</td><td><strong>2 条</strong></td></tr>
+    <tr><td>单次检索耗时</td><td>300–400 毫秒</td><td>中位 <strong>9 毫秒</strong></td></tr>
+    <tr><td>换电脑 / 换嵌入模型</td><td>本机库丢失 / 要重建</td><td>随仓库保存 / 自动重算</td></tr>
+  </table>
+  <div class="callout warn">还没测：pmem 对改代码质量的端到端提升。可以用 <code>pmem bench</code> 做对照实验，或真实使用 2–4 周后看 <code>pmem report</code>。</div>
+
+  <div class="grid2">
+    <div class="card">
+      <h4>非常适合</h4>
+      <ul>
+        <li>长期维护的中大型项目，同类问题反复出现</li>
+        <li>多人协作、人员流动，经验要沉淀到仓库</li>
+        <li>排查型工作多：崩溃、数据错乱、偶现 bug</li>
+        <li>同时用 Cursor、Claude Code、Codex</li>
+        <li>对数据外流敏感；或使用 SVN 的项目</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>不太适合</h4>
+      <ul>
+        <li>一次性脚本、小 demo，没有可积累的坑</li>
+        <li>纯问答、不改代码：pmem 不会在提问时自动注入记忆</li>
+        <li>要求零配置：需要先划分模块（可交给 AI 完成）</li>
+      </ul>
+    </div>
+  </div>
 </section>
 
 <!-- ============ 核心概念 ============ -->

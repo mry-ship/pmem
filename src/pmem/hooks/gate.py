@@ -58,18 +58,24 @@ def shell_write_targets(command: str) -> list[str]:
     return seen
 
 
+# 以这些程序开头时，pmem 可以出现在它们的参数之后（如 uv run --extra embed pmem record）
+_LAUNCHERS = {"uv", "uvx", "pipx", "python", "python3", "py"}
+
+
 def cli_args(command: str, subcommand: str) -> list[dict]:
     """终端里的 `pmem search/record ...` 与对应 MCP 工具等价，按出现顺序返回每一处的 module/path 参数。"""
     found: list[dict] = []
     for segment in re.split(r"\s*(?:\|\||&&|[;|])\s*", command or ""):
         tokens = _tokens(segment)
-        heads = [re.split(r"[\\/]", t)[-1].lower().removesuffix(".exe") for t in tokens[:4]]
-        if heads[:2] == ["pmem", subcommand]:
-            rest = tokens[2:]
-        elif heads[:4] == ["uv", "run", "pmem", subcommand]:
-            rest = tokens[4:]
-        else:
+        names = [re.split(r"[\\/]", t)[-1].lower().removesuffix(".exe") for t in tokens]
+        start = next(
+            (i + 2 for i in range(len(tokens) - 1)
+             if names[i] == "pmem" and tokens[i + 1] == subcommand and (i == 0 or names[0] in _LAUNCHERS)),
+            None,
+        )
+        if start is None:
             continue
+        rest = tokens[start:]
         args: dict = {}
         for i, token in enumerate(rest[:-1]):
             if token in ("--module", "--path"):

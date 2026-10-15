@@ -211,6 +211,8 @@ def test_stop_is_quiet_when_aborted(make_project):
         ("cd proj; uv run pmem search --path src/a.cs", [{"path": "src/a.cs"}]),
         (r"C:\bin\pmem.exe search 奖励", [{}]),
         ("pmem search --module a.B; pmem search --module c.D", [{"module": "a.B"}, {"module": "c.D"}]),
+        ("uv run --extra embed pmem search --module a.B; git add -A", [{"module": "a.B"}]),
+        ("python -m pmem search --path x.cs", [{"path": "x.cs"}]),
         ("pmem list", []),
         ("echo pmem search", []),
     ],

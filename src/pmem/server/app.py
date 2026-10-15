@@ -20,7 +20,7 @@ def _dump(data: dict) -> str:
 
 def resolve_root(raw: str | None) -> Path | None:
     """优先用 --root（忽略未被替换的 ${...} 变量），否则从工作目录向上找 .memory/config.yaml。"""
-    for candidate in (raw, os.environ.get("PMEM_ROOT"), os.getcwd()):
+    for candidate in (raw, os.environ.get("PMEM_ROOT"), os.environ.get("CLAUDE_PROJECT_DIR"), os.getcwd()):
         if candidate and "${" not in candidate:
             root = find_root(candidate)
             if root is not None:
@@ -42,16 +42,18 @@ def build_server(root: Path | None) -> MCPServer:
         entity: str = "",
         query: str = "",
         limit: int = 5,
+        as_of: str = "",
         source_conversation: str = "",
     ) -> str:
         """检索项目研发记忆。改代码前先查：传 path（要改的文件路径）或 module（category.Module）；
-        entity 为模块内议题（如 Reward、Config），可省略；query 为关键词或问题描述。
-        都不确定时只传 query 做全局检索。返回按相关度排序的记忆，stale=true 表示关联代码已变。
+        entity 为模块内议题（如 Reward、Config），可省略；query 为关键词或问题描述，会按项目同义词表自动展开。
+        都不确定时只传 query 做全局检索。as_of（YYYY-MM-DD）只看那天有效的记忆，用于回答“当时的结论”。
+        返回按相关度排序的记忆；stale=true 表示写下（或上次核对）后关联代码改过或已删除，用前先核对。
         source_conversation 由系统自动填写，无需传。"""
         if service is None:
             return _dump(missing)
         return _dump(service.search(module or None, path or None, entity or None, query or None, limit,
-                                    source_conversation or None))
+                                    source_conversation or None, as_of or None))
 
     @server.tool()
     def record_memory(
@@ -61,21 +63,39 @@ def build_server(root: Path | None) -> MCPServer:
         content: str,
         supersedes: list[str] | None = None,
         anchors: list[str] | None = None,
+        aliases: list[str] | None = None,
         draft_id: str = "",
         source_conversation: str = "",
     ) -> str:
         """记录一条研发记忆。只在三个时机写：根因确认、方向被排除或方案确定、改完并验证通过。
         module：category.Module；entity：模块内议题；kind：conclusion / exclusion / correction / risk / decision；
-        content：自包含的结论（为什么、证据、影响范围），不要写“改了哪个方法”这类版本库已有的信息；
-        现象写上常用的不同叫法（如“闪退/崩溃”），以后换个说法也能搜到。
+        content：自包含的结论（为什么、证据、影响范围），不要写“改了哪个方法”这类版本库已有的信息。
+        aliases：现象和关键术语的其他常用叫法（如 ["闪退", "崩溃", "crash"]），以后换个说法也能搜到。
         推翻旧结论时在 supersedes 写旧记忆 id；anchors 写相关代码位置（相对路径#符号），不填时系统按本次对话改过的该模块文件补上。
-        同一任务对同一模块再次写入时，带上次返回的 draft_id 覆盖，避免重复。返回里的 hints 是写作提示，可按提示改写后覆盖。"""
+        同一任务对同一模块再次写入时，带上次返回的 draft_id 覆盖，避免重复。
+        返回的 similar 是同模块最相近的已有记忆：重复或被推翻时带 draft_id 重写并填 supersedes；hints 是写作提示。"""
         if service is None:
             return _dump(missing)
         return _dump(
             service.record(module, entity, kind, content, supersedes, anchors, draft_id or None,
-                           source_conversation or None)
+                           source_conversation or None, aliases)
         )
+
+    @server.tool()
+    def confirm_memory(ids: list[str], source_conversation: str = "") -> str:
+        """确认记忆仍然成立：对照关联代码核对过 stale=true 的记忆、结论依然正确时调用，核对日期记为今天，
+        之后不再因更早的代码改动标为 stale，排序时也按核对日期计算新旧。已不成立的不要确认，改写 correction。"""
+        if service is None:
+            return _dump(missing)
+        return _dump(service.confirm(ids, source_conversation or None))
+
+    @server.tool()
+    def memory_graph(module: str, entity: str = "") -> str:
+        """查看模块的记忆图谱。只传 module：列出议题（现行/已被替代条数、首末日期）和相关模块
+        （共享代码或正文提及）；再传 entity：给出该议题的时间线（谁在哪天替代了谁）和相关模块。"""
+        if service is None:
+            return _dump(missing)
+        return _dump(service.graph(module, entity or None))
 
     @server.tool()
     def list_modules(category: str = "") -> str:

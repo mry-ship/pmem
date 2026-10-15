@@ -14,11 +14,20 @@ import numpy as np
 from pmem.core.entry import Entry
 from pmem.core.ids import ALPHABET
 from pmem.index.embedder import Embedder
+from pmem.index.synonyms import expansions
 from pmem.index.tokenize import tokenize
 from pmem.storage.files import FilesStorage
 
 VISIBLE_STATUSES = ("active", "seed", "draft")
 _BATCH_WINDOW_MS = 90 * 60 * 1000
+SYNONYM_WEIGHT = 0.8
+CHANGE_CACHE_SECONDS = 60.0
+
+
+def entry_text(entry: Entry) -> str:
+    """参与检索的文本：议题名 + 正文 + 常用叫法。"""
+    text = f"{entry.entity} {entry.content}"
+    return f"{text} {' '.join(entry.aliases)}" if entry.aliases else text
 
 
 def ulid_ms(entry_id: str) -> int:
@@ -47,6 +56,7 @@ class SearchResult:
     fallback: str | None = None
     degraded: str | None = None
     warnings: list[str] = field(default_factory=list)
+    expanded: list[str] = field(default_factory=list)
 
 
 class VectorCache:
@@ -114,6 +124,9 @@ class MemoryIndex:
         self._items: dict[Path, Indexed] = {}
         self._last_refresh = -math.inf
         self.warnings: list[str] = []
+        self.synonyms: list[list[str]] = []
+        self.version = 0
+        self._changes: dict[tuple, tuple[float, dict[str, str]]] = {}
 
     def close(self) -> None:
         self.vectors.close()
@@ -141,22 +154,25 @@ class MemoryIndex:
                 warnings.append(f"跳过无法解析的记忆文件 {path.name}：{exc}")
                 self._items.pop(path, None)
                 continue
-            text = f"{entry.entity} {entry.content}"
+            text = entry_text(entry)
             tokens = Counter(tokenize(text))
             digest = hashlib.sha1(text.encode("utf-8")).hexdigest()
             self._items[path] = Indexed(entry, path, stamp, digest, tokens, sum(tokens.values()))
+            self.version += 1
         for gone in set(self._items) - seen:
             del self._items[gone]
+            self.version += 1
         self.warnings = warnings
 
     def entries(self) -> list[Entry]:
         self.refresh()
         return [item.entry for item in self._items.values()]
 
-    def superseded(self) -> set[str]:
+    def superseded(self, as_of: str | None = None) -> set[str]:
+        """被替代的记忆 id；给出 as_of 时只算那天及之前写下的替代关系。"""
         hidden: set[str] = set()
         for item in self._items.values():
-            if item.entry.status in VISIBLE_STATUSES:
+            if item.entry.status in VISIBLE_STATUSES and (as_of is None or item.entry.note_date <= as_of):
                 hidden.update(item.entry.supersedes)
         return hidden
 
@@ -195,7 +211,7 @@ class MemoryIndex:
         found = self.vectors.get_many(self.embedder.id, digests)
         missing = [i for i in items if i.digest not in found]
         if missing:
-            unique = {i.digest: f"{i.entry.entity} {i.entry.content}" for i in missing}
+            unique = {i.digest: entry_text(i.entry) for i in missing}
             matrix = self.embedder.embed(list(unique.values()))
             fresh = dict(zip(unique.keys(), matrix, strict=True))
             self.vectors.put_many(self.embedder.id, fresh)
@@ -203,36 +219,72 @@ class MemoryIndex:
         return found
 
     @staticmethod
-    def _bm25(items: list[Indexed], query_tokens: list[str]) -> list[float]:
-        if not query_tokens or not items:
+    def _bm25(items: list[Indexed], weights: dict[str, float]) -> list[float]:
+        """weights：查询词 → 权重（原词 1，同义展开的词较低）。"""
+        if not weights or not items:
             return [0.0] * len(items)
         n = len(items)
         avg_len = sum(i.length for i in items) / n or 1.0
-        df = Counter(t for i in items for t in set(query_tokens) if t in i.tokens)
+        df = Counter(t for i in items for t in weights if t in i.tokens)
         scores = []
         for item in items:
             score = 0.0
-            for token in set(query_tokens):
+            for token, weight in weights.items():
                 tf = item.tokens.get(token, 0)
                 if not tf:
                     continue
                 idf = math.log(1 + (n - df[token] + 0.5) / (df[token] + 0.5))
-                score += idf * tf * 2.2 / (tf + 1.2 * (0.25 + 0.75 * item.length / avg_len))
+                score += weight * idf * tf * 2.2 / (tf + 1.2 * (0.25 + 0.75 * item.length / avg_len))
             scores.append(score)
         top = max(scores)
         return [s / top if top > 0 else 0.0 for s in scores]
 
-    def _anchor_stale(self, anchors: list[str], cache: dict[str, str | None]) -> bool:
+    def _query_weights(self, query: str) -> tuple[dict[str, float], list[str]]:
+        weights = {t: 1.0 for t in tokenize(query)}
+        extra = expansions(query, self.synonyms)
+        for term in extra:
+            for token in tokenize(term):
+                weights.setdefault(token, SYNONYM_WEIGHT)
+        return weights, extra
+
+    def _changed_after(self, files: list[str], since: str) -> dict[str, str]:
+        key = (tuple(files), since)
+        cached = self._changes.get(key)
+        if cached and time.monotonic() - cached[0] < CHANGE_CACHE_SECONDS:
+            return cached[1]
+        try:
+            found = self.storage.vcs.changed_after(files, since)
+        except Exception:  # noqa: BLE001
+            found = {}
+        self._changes[key] = (time.monotonic(), found)
+        return found
+
+    def check_anchors(self, entries: list[Entry]) -> dict[str, list[str]]:
+        """记忆写下（或上次核对）之后关联代码的变化：id → 问题列表（文件已删除、符号找不到、某天改过）。"""
         root = self.storage.root
-        for anchor in anchors:
-            rel, _, symbol = anchor.partition("#")
-            if rel not in cache:
-                path = root / rel.replace("\\", "/")
-                cache[rel] = path.read_text(encoding="utf-8", errors="ignore") if path.is_file() else None
-            text = cache[rel]
-            if text is None or (symbol and symbol not in text):
-                return True
-        return False
+        texts: dict[str, str | None] = {}
+        problems: dict[str, list[str]] = {}
+        alive: dict[str, list[Entry]] = {}
+        for entry in entries:
+            for anchor in entry.anchors:
+                rel, _, symbol = anchor.partition("#")
+                rel = rel.replace("\\", "/")
+                if rel not in texts:
+                    path = root / rel
+                    texts[rel] = path.read_text(encoding="utf-8", errors="ignore") if path.is_file() else None
+                if texts[rel] is None:
+                    problems.setdefault(entry.id, []).append(f"{rel} 已不存在")
+                elif symbol and symbol not in texts[rel]:
+                    problems.setdefault(entry.id, []).append(f"{rel} 中找不到 {symbol}")
+                else:
+                    alive.setdefault(rel, []).append(entry)
+        if alive:
+            since = min(e.checked_date for group in alive.values() for e in group)
+            for rel, day in self._changed_after(sorted(alive), since).items():
+                for entry in alive.get(rel, []):
+                    if day > entry.checked_date:
+                        problems.setdefault(entry.id, []).append(f"{rel} 于 {day} 改过")
+        return problems
 
     def search(
         self,
@@ -243,16 +295,19 @@ class MemoryIndex:
         max_per_batch: int = 2,
         half_life_days: float = 90,
         today: date | None = None,
+        as_of: str | None = None,
+        verify: bool = True,
     ) -> SearchResult:
         self.refresh()
         result = SearchResult(warnings=list(self.warnings))
-        hidden = self.superseded()
+        hidden = self.superseded(as_of)
         pool = [
             i
             for i in self._items.values()
             if i.entry.status in VISIBLE_STATUSES
             and i.entry.id not in hidden
             and (module is None or i.entry.module.lower() == module.lower())
+            and (as_of is None or i.entry.note_date <= as_of)
         ]
         if entity:
             matched = [i for i in pool if i.entry.entity.lower() == entity.lower()]
@@ -264,7 +319,9 @@ class MemoryIndex:
             return result
 
         query = (query or "").strip()
-        keyword = self._bm25(pool, tokenize(query))
+        weights, extra = self._query_weights(query)
+        result.expanded = extra
+        keyword = self._bm25(pool, weights)
         semantic = [0.0] * len(pool)
         if query:
             if self.embedder is None:
@@ -272,13 +329,13 @@ class MemoryIndex:
             else:
                 try:
                     vectors = self._vectors_for(pool)
-                    q = self.embedder.embed([query])[0]
+                    q = self.embedder.embed([" ".join([query, *extra])])[0]
                     semantic = [max(0.0, float(np.dot(vectors[i.digest], q))) for i in pool]
                 except Exception as exc:  # noqa: BLE001
                     result.degraded = "keyword_only"
                     result.warnings.append(f"语义检索不可用，已退化为关键词检索：{exc}")
 
-        today = today or date.today()
+        today = date.fromisoformat(as_of) if as_of else (today or date.today())
         scored = []
         for item, kw, vec in zip(pool, keyword, semantic, strict=True):
             entry = item.entry
@@ -287,7 +344,8 @@ class MemoryIndex:
             if entity and entry.entity.lower() == entity.lower():
                 bonus += 0.15
             try:
-                age = max(0, (today - date.fromisoformat(entry.note_date)).days)
+                checked = entry.note_date if as_of else entry.checked_date
+                age = max(0, (today - date.fromisoformat(checked)).days)
             except ValueError:
                 age = 0
             recency = 0.5 ** (age / half_life_days)
@@ -295,27 +353,36 @@ class MemoryIndex:
         scored.sort(key=lambda t: (t[0], t[1]), reverse=True)
 
         per_batch: Counter = Counter()
-        anchor_cache: dict[str, str | None] = {}
-        for score, created, item in scored:
+        chosen: list[Entry] = []
+        for _score, created, item in scored:
             entry = item.entry
             batch = entry.source_conversation or f"{entry.author}|{entry.module}|{created // _BATCH_WINDOW_MS}"
             if per_batch[batch] >= max_per_batch:
                 continue
             per_batch[batch] += 1
+            chosen.append(entry)
+            if len(chosen) >= limit:
+                break
+
+        # 回看历史时代码早已变化，核对没有意义
+        problems = self.check_anchors(chosen) if verify and not as_of else {}
+        for entry in chosen:
             row = {
                 "id": entry.id,
                 "entity": entry.entity,
                 "kind": entry.kind,
                 "date": entry.note_date,
                 "author": entry.author,
-                "stale": self._anchor_stale(entry.anchors, anchor_cache),
+                "stale": entry.id in problems,
                 "content": entry.content,
             }
             if module is None:
                 row = {"module": entry.module, **row}
+            if entry.id in problems:
+                row["check"] = problems[entry.id]
+            if entry.verified:
+                row["verified"] = entry.verified
             if entry.status != "active":
                 row["status"] = entry.status
             result.items.append(row)
-            if len(result.items) >= limit:
-                break
         return result

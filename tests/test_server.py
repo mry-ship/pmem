@@ -10,10 +10,10 @@ def call(server, name, args):
     return json.loads(result.content[0].text)
 
 
-def test_exposes_exactly_three_tools(project):  # noqa: F811
+def test_exposes_memory_tools(project):  # noqa: F811
     server = build_server(project)
     names = sorted(t.name for t in asyncio.run(server.list_tools()))
-    assert names == ["list_modules", "record_memory", "search_memory"]
+    assert names == ["confirm_memory", "list_modules", "memory_graph", "record_memory", "search_memory"]
 
 
 def test_record_and_search_through_tools(project):  # noqa: F811

@@ -5,7 +5,8 @@ from pathlib import Path
 
 from pmem import __version__
 
-HOOK_EVENTS = ("prompt", "pre-tool", "before-mcp", "after-mcp", "edited", "compact", "stop")
+HOOK_EVENTS = ("prompt", "pre-tool", "before-mcp", "after-mcp", "edited", "post-tool", "compact", "stop")
+AGENTS = ("cursor", "claude", "codex")
 
 
 def build_parser():
@@ -15,10 +16,13 @@ def build_parser():
     parser.add_argument("--version", action="version", version=f"pmem {__version__}")
     sub = parser.add_subparsers(dest="command")
 
-    p = sub.add_parser("init", help="在项目中接入 pmem（生成 .memory/ 与 .cursor/ 配置）")
+    p = sub.add_parser("init", help="在项目中接入 pmem（生成 .memory/ 与各 Agent 的配置）")
     p.add_argument("--root", default=".")
     p.add_argument("--type", choices=("game", "app", "backend", "generic"), default=None, help="项目类型，决定默认大类")
     p.add_argument("--gate", choices=("off", "warn", "block"), default="block", help="闸门力度")
+    p.add_argument("--agents", default="auto",
+                   help="要接入的 Agent，逗号分隔：cursor,claude,codex 或 all；"
+                        "auto = Cursor 加上项目里已有配置的（.claude/、CLAUDE.md、.codex/、AGENTS.md）")
 
     p = sub.add_parser("scan", help="输出目录概览，供 Agent 划分模块")
     p.add_argument("--root", default=".")
@@ -30,8 +34,9 @@ def build_parser():
     p = sub.add_parser("serve", help="启动 MCP 服务（由 Cursor 调用）")
     p.add_argument("--root", default=None)
 
-    p = sub.add_parser("hook", help="处理 Cursor Hook 事件（由 Cursor 调用）")
+    p = sub.add_parser("hook", help="处理 Agent 的 Hook 事件（由 Cursor / Claude Code / Codex 调用）")
     p.add_argument("event", choices=HOOK_EVENTS)
+    p.add_argument("--agent", choices=AGENTS, default="cursor")
 
     p = sub.add_parser("search", help="命令行检索记忆")
     p.add_argument("query", nargs="?", default="")
@@ -39,6 +44,27 @@ def build_parser():
     p.add_argument("--path", default="")
     p.add_argument("--entity", default="")
     p.add_argument("--limit", type=int, default=5)
+    p.add_argument("--as-of", default="", help="只看这一天（YYYY-MM-DD）有效的记忆")
+    p.add_argument("--root", default=".")
+
+    p = sub.add_parser("confirm", help="确认记忆仍然成立（核对过关联代码后），核对日期记为今天")
+    p.add_argument("ids", nargs="+")
+    p.add_argument("--root", default=".")
+
+    p = sub.add_parser("graph", help="模块的记忆图谱：议题、时间线与相关模块")
+    p.add_argument("--module", required=True)
+    p.add_argument("--entity", default="")
+    p.add_argument("--root", default=".")
+
+    p = sub.add_parser("terms", help="记忆里的高频词，供 Agent 整理同义叫法（pmem-normalize 技能）")
+    p.add_argument("--module", default="")
+    p.add_argument("--top", type=int, default=300)
+    p.add_argument("--min", type=int, default=2, help="至少出现在几条记忆里")
+    p.add_argument("--root", default=".")
+
+    p = sub.add_parser("anchors", help="从记忆正文里提到的文件名、类名.成员 补全关联代码（默认只预览）")
+    p.add_argument("--module", default="")
+    p.add_argument("--apply", action="store_true", help="写回记忆文件")
     p.add_argument("--root", default=".")
 
     p = sub.add_parser("record", help="命令行写入一条记忆（规则与 MCP 的 record_memory 相同）")
@@ -50,6 +76,7 @@ def build_parser():
     body.add_argument("--content-file", help="从 UTF-8 文件读取正文（正文含引号或较长时推荐）")
     p.add_argument("--supersedes", action="append", default=[])
     p.add_argument("--anchor", action="append", default=[])
+    p.add_argument("--alias", action="append", default=[], help="常用的其他叫法，可重复，如 --alias 闪退 --alias 崩溃")
     p.add_argument("--draft-id", default="", help="上次写入返回的 draft_id：同一任务再次写入时覆盖那一条")
     p.add_argument("--root", default=".")
 
@@ -109,10 +136,17 @@ def _print_json(data: dict) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     args_list = sys.argv[1:] if argv is None else argv
-    if len(args_list) == 2 and args_list[0] == "hook" and args_list[1] in HOOK_EVENTS:
-        from pmem.cli.hook_cmd import run_hook
+    # Hook 每次工具调用都会触发，跳过 argparse 与 stdout 重配置以减少启动耗时
+    if len(args_list) >= 2 and args_list[0] == "hook" and args_list[1] in HOOK_EVENTS:
+        rest = args_list[2:]
+        if not rest:
+            from pmem.cli.hook_cmd import run_hook
 
-        return run_hook(args_list[1])
+            return run_hook(args_list[1])
+        if len(rest) == 2 and rest[0] == "--agent" and rest[1] in AGENTS:
+            from pmem.cli.hook_cmd import run_hook
+
+            return run_hook(args_list[1], rest[1])
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     parser = build_parser()
@@ -121,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "hook":
         from pmem.cli.hook_cmd import run_hook
 
-        return run_hook(args.event)
+        return run_hook(args.event, args.agent)
     if args.command == "serve":
         from pmem.server.app import serve
 
@@ -130,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "init":
         from pmem.cli.init_cmd import run_init
 
-        return run_init(Path(args.root), args.type, args.gate)
+        return run_init(Path(args.root), args.type, args.gate, args.agents)
     if args.command == "scan":
         from pmem.scan.lite import run_scan
 
@@ -171,28 +205,37 @@ def main(argv: list[str] | None = None) -> int:
             return 1 if bad else 0
         print(f"结果见 {root / args.out / 'summary.md'}")
         return 0
-    if args.command in ("search", "list", "record"):
+    if args.command == "anchors":
+        from pmem.cli.anchors_cmd import run_anchors
+
+        return run_anchors(_project_root(args.root), args.module or None, args.apply)
+    if args.command in ("search", "list", "record", "confirm", "graph", "terms"):
         from pmem.service import MemoryService
 
         service = MemoryService(_project_root(args.root))
         try:
             if args.command == "list":
-                _print_json(service.list_modules())
+                result = service.list_modules()
             elif args.command == "record":
                 if args.content_file:
                     content = Path(args.content_file).read_text(encoding="utf-8-sig")
                 else:
                     content = sys.stdin.read() if args.content == "-" else args.content
                 result = service.record(args.module, args.entity, args.kind, content, args.supersedes, args.anchor,
-                                        args.draft_id or None)
-                _print_json(result)
-                return 0 if result.get("ok") else 1
+                                        args.draft_id or None, aliases=args.alias)
+            elif args.command == "confirm":
+                result = service.confirm(args.ids)
+            elif args.command == "graph":
+                result = service.graph(args.module, args.entity or None)
+            elif args.command == "terms":
+                result = service.terms(args.module or None, args.top, args.min)
             else:
-                _print_json(service.search(args.module or None, args.path or None, args.entity or None,
-                                           args.query or None, args.limit))
+                result = service.search(args.module or None, args.path or None, args.entity or None,
+                                        args.query or None, args.limit, as_of=args.as_of or None)
+            _print_json(result)
         finally:
             service.close()
-        return 0
+        return 0 if result.get("ok") else 1
     parser.print_help()
     return 0
 

@@ -1,4 +1,4 @@
-# pmem：给 Cursor 用的项目研发记忆
+# pmem：给 Cursor / Claude Code / Codex 用的项目研发记忆
 
 Agent 改代码前，先查这个模块以前踩过的坑；改完之后，把新得出的结论留给下一个人。
 记忆按业务模块存成 Markdown 文件，放在仓库的 `.memory/` 里，跟代码一起提交、一起评审，整个团队共享。不需要服务器，也不需要数据库。
@@ -34,11 +34,11 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
 | 模块里较早的记忆（6 个查询） | 4 / 6 | 0 / 6 |
 | 单次检索耗时 | 1–14 毫秒 | 依赖本机 Ollama 服务 |
 
-差距主要来自排序方式。原服务按向量相似度取出至少 20 条候选，再按日期从新到旧截取，所以不超过 20 条的模块（53 个里有 42 个）总是返回最新几条，查询词不起作用；大模块里的老结论也会被新记忆挤掉。pmem 按“相关度为主、时间衰减为辅”排序，老的根因和排除项照样能被找回。两边共同的短板是同义改写：只写了“崩溃”的记忆，搜“闪退”两边都找不到，所以写记忆时最好把常用叫法写全。
+差距主要来自排序方式。原服务按向量相似度取出至少 20 条候选，再按日期从新到旧截取，所以不超过 20 条的模块（53 个里有 42 个）总是返回最新几条，查询词不起作用；大模块里的老结论也会被新记忆挤掉。pmem 按“相关度为主、时间衰减为辅”排序，老的根因和排除项照样能被找回。两边共同的短板是同义改写：只写了“崩溃”的记忆，搜“闪退”两边都找不到。pmem 现在用两种方式补上：写记忆时 Agent 顺手填 `aliases`（这条记忆的其他叫法）；团队常见的同义叫法登记在 `modules.yaml` 的 `synonyms` 里，检索时自动扩展（见“日常怎么用”）。
 
 ## 5 分钟接入
 
-前提：已安装 [uv](https://docs.astral.sh/uv/)、Python ≥ 3.10、Cursor；项目使用 Git 或 SVN（也可以都不用）。
+前提：已安装 [uv](https://docs.astral.sh/uv/)、Python ≥ 3.10，以及 Cursor、Claude Code、Codex 中的至少一个；项目使用 Git 或 SVN（也可以都不用）。
 
 **1. 安装（每人一次）**
 
@@ -51,14 +51,25 @@ uv tool install "pmem[embed] @ git+<pmem 仓库地址>"
 **2. 在项目根目录初始化（每个项目一次）**
 
 ```bash
-pmem init --type game      # 可选 game / app / backend / generic，决定默认的模块大类
+pmem init --type game                        # 可选 game / app / backend / generic，决定默认的模块大类
+pmem init --agents cursor,claude,codex       # 指定接入哪些工具；默认 auto
 ```
 
-它会生成 `.memory/`（配置、模块目录、记忆）和 `.cursor/`（规则、技能、Hooks、MCP 配置）。已有的 Cursor 配置只会合并，不会覆盖。
+它会生成 `.memory/`（配置、模块目录、记忆），再按 `--agents` 给各工具生成规则、Hooks 和 MCP 配置。默认 `auto` 总是接入 Cursor；项目里已有 `.claude/` 或 `CLAUDE.md` 时接入 Claude Code，已有 `.codex/` 或 `AGENTS.md` 时接入 Codex。`--agents all` 三个都接。已有的配置只会合并，不会覆盖；`CLAUDE.md`、`AGENTS.md` 里只更新 `<!-- pmem:begin -->` 到 `<!-- pmem:end -->` 之间的段落。
 
-**3. 在 Cursor 里启用（每人一次）**
+| 工具 | 生成的文件 |
+|---|---|
+| Cursor | `.cursor/rules/pmem.mdc`、`.cursor/skills/pmem-*`、`.cursor/hooks.json`、`.cursor/mcp.json` |
+| Claude Code | `CLAUDE.md` 中的 pmem 段落、`.claude/skills/pmem-*`、`.claude/settings.json`、`.mcp.json` |
+| Codex | `AGENTS.md` 中的 pmem 段落、`.codex/hooks.json`、`.codex/config.toml` |
 
-打开 Cursor 设置 → MCP，把 `pmem` 打开。这一步只能手动完成。
+三个工具共用同一份 `.memory/` 和同一套闸门逻辑：Hooks 统一调用 `pmem hook <事件> --agent <工具>`，pmem 把各工具的输入输出格式转换成同一种。
+
+**3. 在工具里启用（每人一次）**
+
+- Cursor：打开设置 → MCP，把 `pmem` 打开。这一步只能手动完成。
+- Claude Code：首次打开项目时批准 `.mcp.json` 里的 pmem 服务；用 `/hooks` 可以查看已接入的 Hook。
+- Codex：先信任本项目（未信任时不加载项目里的 `.codex/`），再在 `/hooks` 里审阅并信任 pmem 的 Hook。
 
 **4. 划分模块（每个项目一次）**
 
@@ -68,9 +79,11 @@ pmem init --type game      # 可选 game / app / backend / generic，决定默�
 **5. 自检并提交**
 
 ```bash
-pmem doctor                 # 检查配置、模块覆盖率、Cursor 接入、语义模型
+pmem doctor                 # 检查配置、模块覆盖率、各工具接入、语义模型
 git add .memory .cursor && git commit -m "接入 pmem"
 ```
+
+接入了 Claude Code 或 Codex 的话，把上面列出的对应文件一并提交。
 
 团队其他人拉下代码后，只需要做第 1 步和第 3 步。
 
@@ -80,14 +93,33 @@ git add .memory .cursor && git commit -m "接入 pmem"
 
 - **改代码前**：Agent 按规则先查要改文件所属模块的记忆。它忘了也没关系，Hooks 会拦下对“有记忆的模块”的修改，直到它查过这个模块；查哪个模块只放行哪个模块。检索报错也算查过，MCP 不可用时在终端运行 `pmem search --module <模块>` 同样有效，不会把 Agent 卡死。
 - **得出结论后**：只在三个时机写记忆：确认根因、排除某个方向或定下方案、改完并验证通过。一轮对话结束时，如果改了模块却没写记忆，会提醒一次；整个对话只查了记忆、没改代码也没写记忆时，也会对查过的模块提醒一次。没有新结论的话回复“无需记录”即可。不想要后一种提醒，可在 `.memory/config.yaml` 里设置 `gate.analysis_reminder: false`。
+- **用之前核对**：检索结果里 `stale: true` 的记忆，表示写下（或上次核对）之后关联代码又改过、文件已不存在或找不到对应方法，`check` 字段写明是哪一种。Agent 打开代码核对后，仍然成立就调用 `confirm_memory` 刷新核对日期（排序也按这个日期算新旧），已不成立就写一条 correction 替代它。改动日期从 Git/SVN 记录里批量查出，没有版本库时看文件修改时间。
+- **写入时规整**：写记忆的 Agent 本身就是大模型，规整由它完成，不调用外部服务。规则要求它把现象的其他叫法写进 `aliases`（如“闪退 / 崩溃 / crash”）；写入结果会带回同一议题下已有的相近记忆（`similar`），由 Agent 判断是新增、覆盖草稿，还是用 `supersedes` 替代旧结论。
 - **不想被打扰**：在提问里写“跳过记忆”，本次对话就不查也不写。
+
+**同义词组。** 团队里常混用的叫法登记在 `modules.yaml` 顶层，检索时查询词会自动扩展到同组的其他叫法（扩展词权重略低于原词），所有模块通用：
+
+```yaml
+synonyms:
+  - [闪退, 崩溃, crash]
+  - [卡顿, 掉帧, lag]
+```
+
+不知道该登记哪些时，对 Agent 说“按 pmem-normalize 技能整理同义词”：它用 `pmem terms` 列出记忆里的高频词，起草词组，你确认后写入，再用 `pmem search` 验证。
+
+**轻量图谱与时间维度。** 不需要额外存储，全部从现有记忆推出来。`memory_graph` 工具（终端里是 `pmem graph`）给出一个模块的议题时间线：每条结论从哪天生效、哪天被哪条替代；以及相关模块：和哪些模块共用代码文件、正文里提到过哪些模块。按模块检索时结果也会附带 `related`。`search_memory` 的 `as_of` 参数（终端里是 `--as-of`）按某一天的视角检索，只看那天之前写下的记忆，用于回答“当时为什么这么定”。
 
 也可以在终端里直接用：
 
 ```bash
 pmem search --path Assets/Game/Jigsaw/JigsawReward.cs     # 按文件查
-pmem search --module Puzzle "重复发放"                       # 按模块 + 关键词查（别名自动归一）
-pmem record --module gameplay.Jigsaw --entity Reward --kind exclusion --content-file note.txt
+pmem search --module Puzzle "重复发放"                       # 按模块 + 关键词查（别名、同义词自动扩展）
+pmem search --module Puzzle "重复发放" --as-of 2026-06-01    # 按当时的视角查
+pmem record --module gameplay.Jigsaw --entity Reward --kind exclusion --content-file note.txt --alias 重复领取
+pmem confirm <记忆 id>...                                    # 核对后仍然成立，刷新核对日期
+pmem graph --module gameplay.Jigsaw [--entity Reward]        # 议题时间线与相关模块
+pmem terms --module gameplay.Jigsaw                          # 高频词，用于整理同义词组
+pmem anchors [--module X] [--apply]                          # 给没有关联代码的旧记忆补 anchors（默认只预览）
 pmem list                                                    # 模块与记忆数量
 ```
 
@@ -107,7 +139,7 @@ anchors: [Assets/Game/Jigsaw/JigsawReward.cs#Claim]
 ```
 
 `kind` 有五种：conclusion 结论、exclusion 排除项、correction 更正、risk 风险、decision 决定。
-记忆写入后不再修改。要推翻旧结论，就新写一条，在 `supersedes` 里填旧记忆的 id，旧的那条会自动从检索结果中隐藏。如果锚点代码后来改了，检索结果会带上 `stale: true`，提示需要核实。
+记忆写入后不再修改正文（`confirm` 只更新 `verified` 核对日期）。要推翻旧结论，就新写一条，在 `supersedes` 里填旧记忆的 id，旧的那条会自动从检索结果中隐藏。`anchors` 是记忆关联的代码（文件或 `文件#方法`），使用前核对就靠它；从别的系统导入的旧记忆往往没有，可以用 `pmem anchors` 从正文里提到的文件名、类名自动补上。
 
 ## 衡量收益
 

@@ -21,7 +21,7 @@ description: 为项目首次划分 pmem 模块并写入 .memory/modules.yaml。�
    - 模块名用 PascalCase 英文；有常见别称的写进 `aliases`。
 3. 写入 `.memory/modules.yaml`（保留文件头注释与 `categories`）。
 4. 运行 `pmem doctor`，处理“未覆盖目录”“路径重叠”“空壳模块”，直到覆盖率 ≥ 95%。
-5. 告诉用户：划分已完成，可以提交 `.memory/` 与 `.cursor/` 到版本库，团队成员安装 pmem 后即可使用。
+5. 告诉用户：划分已完成，可以提交 `.memory/` 与 pmem init 生成的 Agent 配置到版本库，团队成员安装 pmem 后即可使用。
 
 ## 注意
 - 不要为了覆盖率把无关目录硬塞进模块；确实不需要守护的放进 `ignored` 并写明 `reason`。

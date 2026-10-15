@@ -22,6 +22,7 @@ _RM = {"rm", "del", "erase", "rmdir", "rd"}
 _ULID = r"[0-9A-HJKMNP-TV-Z]{26}"
 TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens")
 ALLOW = {"permission": "allow"}
+PMEM_TOOLS = ("record_memory", "search_memory", "memory_graph")
 MAX_AUTO_ANCHORS = 5
 
 
@@ -202,9 +203,13 @@ class Gate:
         if "search_memory" in name:
             self._mark_searched(args, via="mcp")
             return self._inject(args, with_draft=False)
+        if "memory_graph" in name:
+            self._mark_searched(args, via="graph")
+            return dict(ALLOW)
         if name.lower() == "shell":
             command = str(args.get("command") or "")
-            searches, records = cli_args(command, "search"), cli_args(command, "record")
+            searches = cli_args(command, "search") + cli_args(command, "graph")
+            records = cli_args(command, "record")
             for cli_search in searches:
                 self._mark_searched(cli_search, via="cli")
             for cli_record in records:
@@ -218,8 +223,8 @@ class Gate:
             base = args.get("cwd") or str(self.root)
             paths = [self.relative(t, base) for t in shell_write_targets(command)]
         elif name.lower() in WRITE_TOOLS:
-            raw = args.get("file_path") or args.get("path") or args.get("target_file") or ""
-            paths = [self.relative(str(raw))]
+            raw = args.get("file_paths") or [args.get("file_path") or args.get("path") or args.get("target_file") or ""]
+            paths = [self.relative(str(p)) for p in raw]
         else:
             return dict(ALLOW)
         for rel in paths:
@@ -252,13 +257,14 @@ class Gate:
         self.log("search_call", module=module, via=via)
 
     def on_before_mcp(self) -> dict:
-        if "search_memory" in str(self.payload.get("tool_name") or ""):
+        name = str(self.payload.get("tool_name") or "")
+        if "search_memory" in name or "memory_graph" in name:
             self._mark_searched(tool_input(self.payload), via="mcp")
         return dict(ALLOW)
 
     def on_after_mcp(self) -> dict:
         name = str(self.payload.get("tool_name") or "")
-        if self.state is None or not any(t in name for t in ("record_memory", "search_memory")):
+        if self.state is None or not any(t in name for t in PMEM_TOOLS):
             return {}
         blob = json.dumps(self.payload, ensure_ascii=False)
         if not re.search(r'\\*"ok\\*"\s*:\s*true', blob):
@@ -282,7 +288,11 @@ class Gate:
         return {}
 
     def on_edited(self) -> dict:
-        rel = self.relative(str(self.payload.get("file_path") or ""))
+        self._mark_edited(str(self.payload.get("file_path") or ""))
+        return {}
+
+    def _mark_edited(self, path: str) -> None:
+        rel = self.relative(path)
         module = self.module_of(rel)
         if module and self.state is not None:
             self.state.add("edited", module)
@@ -290,6 +300,16 @@ class Gate:
             self.save()
         if rel is not None:
             self.log("edit", module=module, file=rel)
+
+    def on_post_tool(self) -> dict:
+        """Claude Code / Codex 的 PostToolUse：pmem 工具的返回与编辑过的文件。"""
+        from pmem.hooks.agents import edited_files
+
+        name = str(self.payload.get("tool_name") or "")
+        if any(t in name for t in PMEM_TOOLS):
+            return self.on_after_mcp()
+        for path in edited_files(self.payload):
+            self._mark_edited(path)
         return {}
 
     def on_compact(self) -> dict:
@@ -374,6 +394,7 @@ HANDLERS = {
     "before-mcp": Gate.on_before_mcp,
     "after-mcp": Gate.on_after_mcp,
     "edited": Gate.on_edited,
+    "post-tool": Gate.on_post_tool,
     "compact": Gate.on_compact,
     "stop": Gate.on_stop,
 }

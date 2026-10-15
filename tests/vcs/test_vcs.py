@@ -1,4 +1,6 @@
+import os
 import subprocess
+from datetime import date
 
 import pytest
 
@@ -88,3 +90,36 @@ def test_svn_counts_uncommitted_memories(svn_wc):
     assert vcs.uncommitted_count(entries) == 2
     run(["svn", "add", "-q", "--parents", str(folder / "a.md")], svn_wc)
     assert vcs.uncommitted_count(entries) == 2
+
+
+def test_plain_changed_after_uses_mtime(tmp_path):
+    vcs = detect_vcs(tmp_path)
+    (tmp_path / "a.ts").write_text("x", encoding="utf-8")
+    (tmp_path / "old.ts").write_text("x", encoding="utf-8")
+    os.utime(tmp_path / "old.ts", (946684800, 946684800))
+    today = date.today().isoformat()
+    assert vcs.changed_after(["a.ts", "old.ts", "gone.ts"], "2001-01-01") == {"a.ts": today}
+    assert vcs.changed_after(["a.ts"], today) == {}
+
+
+def test_git_changed_after_commits_and_local_edits(git_repo):
+    vcs = detect_vcs(git_repo)
+    (git_repo / "src").mkdir()
+    (git_repo / "src" / "a.ts").write_text("x", encoding="utf-8")
+    run(["git", "add", "-A"], git_repo)
+    run(["git", "commit", "-q", "-m", "a"], git_repo)
+    today = date.today().isoformat()
+    assert vcs.changed_after(["src/a.ts", "README.md"], "2000-01-01") == {"src/a.ts": today, "README.md": today}
+    assert vcs.changed_after(["src/a.ts"], today) == {}
+    assert vcs.changed_after([], "2000-01-01") == {}
+    (git_repo / "README.md").write_text("changed\n", encoding="utf-8")
+    assert vcs.changed_after(["README.md"], "2000-01-01") == {"README.md": today}
+
+
+def test_svn_changed_after_reads_commit_date_and_local_edits(svn_wc):
+    vcs = detect_vcs(svn_wc)
+    found = vcs.changed_after(["README.md", "missing.ts"], "2000-01-01")
+    assert list(found) == ["README.md"]
+    assert vcs.changed_after(["README.md"], "2999-01-01") == {}
+    (svn_wc / "README.md").write_text("changed\n", encoding="utf-8")
+    assert vcs.changed_after(["README.md"], "2000-01-01")["README.md"] == date.today().isoformat()

@@ -70,7 +70,8 @@ def test_merge_hides_fragments_skips_daily_cap_and_inherits_anchors(svc):
 def test_long_merge_is_not_hinted_as_too_long(svc):
     ids = fill(svc, "gameplay.Jigsaw", "Reward", 2)
     long_text = "奖励重复发放的根因是配置缺字段，" + "细节" * 400
-    assert "hints" not in svc.record("gameplay.Jigsaw", "Reward", "conclusion", long_text, supersedes=ids)
+    assert "hints" not in svc.record("gameplay.Jigsaw", "Reward", "conclusion", long_text, supersedes=ids,
+                                     aliases=["领奖"])
     assert "超过建议" in "".join(svc.record("economy.Shop", "Price", "conclusion", long_text)["hints"])
 
 

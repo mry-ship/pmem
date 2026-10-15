@@ -1,5 +1,5 @@
 import os
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 
@@ -148,16 +148,66 @@ def test_vectors_are_cached_across_instances(storage, tmp_path):
     assert emb2.calls == 1
 
 
+def _touch(path, day: str) -> None:
+    stamp = datetime.fromisoformat(f"{day}T12:00:00").timestamp()
+    os.utime(path, (stamp, stamp))
+
+
 def test_stale_anchor_detection(storage, tmp_path):
     src = tmp_path / "src" / "Reward.cs"
     src.parent.mkdir()
     src.write_text("class Reward { void Grant() {} }", encoding="utf-8")
+    _touch(src, "2026-10-01")
     add(storage, "有效锚点", anchors=["src/Reward.cs#Grant"], entity="A")
     add(storage, "符号不存在", anchors=["src/Reward.cs#Missing"], entity="B")
     add(storage, "文件不存在", anchors=["src/Gone.cs"], entity="C")
     result = make_index(storage, tmp_path).search(module="gameplay.Jigsaw", today=TODAY, limit=10, max_per_batch=10)
     stale = {item["entity"]: item["stale"] for item in result.items}
     assert stale == {"A": False, "B": True, "C": True}
+    checks = {item["entity"]: item.get("check") for item in result.items}
+    assert checks["B"] == ["src/Reward.cs 中找不到 Missing"] and checks["C"] == ["src/Gone.cs 已不存在"]
+
+
+def test_code_changed_after_memory_is_stale_until_confirmed(storage, tmp_path):
+    src = tmp_path / "src" / "Reward.cs"
+    src.parent.mkdir()
+    src.write_text("class Reward { void Grant() {} }", encoding="utf-8")
+    _touch(src, "2026-10-12")
+    old = add(storage, "领取前先校验次数", anchors=["src/Reward.cs#Grant"], note_date="2026-10-05", entity="A")
+    fresh = add(storage, "领取后刷新红点", anchors=["src/Reward.cs"], note_date="2026-10-12", entity="B")
+    confirmed = add(storage, "奖励按配置发", anchors=["src/Reward.cs"], note_date="2026-10-05",
+                    verified="2026-10-13", entity="C")
+    result = make_index(storage, tmp_path).search(module="gameplay.Jigsaw", today=TODAY, limit=10, max_per_batch=10)
+    rows = {item["id"]: item for item in result.items}
+    assert rows[old.id]["stale"] and rows[old.id]["check"] == ["src/Reward.cs 于 2026-10-12 改过"]
+    assert not rows[fresh.id]["stale"]
+    assert not rows[confirmed.id]["stale"] and rows[confirmed.id]["verified"] == "2026-10-13"
+
+
+def test_synonym_groups_expand_the_query(storage, tmp_path):
+    crash = add(storage, "进入拼图时崩溃，原因是图集为空", entity="Loading")
+    add(storage, "拼图奖励按配置发放", entity="Reward")
+    index = make_index(storage, tmp_path, embedder=None)
+    assert ids(index.search(module="gameplay.Jigsaw", query="闪退", today=TODAY))[0] != crash.id
+    index.synonyms = [["闪退", "崩溃", "crash"]]
+    result = index.search(module="gameplay.Jigsaw", query="闪退", today=TODAY)
+    assert ids(result)[0] == crash.id and result.expanded == ["崩溃", "crash"]
+
+
+def test_aliases_are_searchable(storage, tmp_path):
+    target = add(storage, "进入拼图时崩溃，原因是图集为空", entity="Loading", aliases=["闪退"])
+    add(storage, "拼图奖励按配置发放", entity="Reward")
+    result = make_index(storage, tmp_path, embedder=None).search(module="gameplay.Jigsaw", query="闪退", today=TODAY)
+    assert ids(result)[0] == target.id
+
+
+def test_as_of_shows_what_was_valid_then(storage, tmp_path):
+    first = add(storage, "奖励在关卡结束时发放", note_date="2026-09-01")
+    second = add(storage, "奖励改为领取时发放，避免断线丢奖励", note_date="2026-10-01", supersedes=[first.id])
+    index = make_index(storage, tmp_path)
+    assert ids(index.search(module="gameplay.Jigsaw", today=TODAY)) == [second.id]
+    assert ids(index.search(module="gameplay.Jigsaw", as_of="2026-09-15")) == [first.id]
+    assert ids(index.search(module="gameplay.Jigsaw", as_of="2026-10-02")) == [second.id]
 
 
 def test_global_search_without_module(storage, tmp_path):

@@ -13,7 +13,9 @@ from pmem.core.quality import content_hints, entity_hint
 from pmem.core.registry import ModuleRegistry, RegistryError
 from pmem.core.secrets import find_secrets
 from pmem.index.embedder import make_embedder
+from pmem.index.graph import MemoryGraph, preview
 from pmem.index.store import VISIBLE_STATUSES, MemoryIndex
+from pmem.index.tokenize import tokenize
 from pmem.metrics.events import log_event
 from pmem.storage.files import FilesStorage, StorageError
 from pmem.vcs.detect import detect_vcs
@@ -21,10 +23,42 @@ from pmem.vcs.detect import detect_vcs
 MAX_LIMIT = 10
 MAX_INHERITED_ANCHORS = 10
 COMPACT_MIN_GROUP = 5
+MAX_RELATED = 3
+MAX_SIMILAR = 2
+MAX_ALIASES = 10
+MAX_ALIAS_CHARS = 30
+VERIFY_HINT = (
+    "stale=true 的记忆写下（或上次核对）之后，关联代码又改过或已不存在，见各条 check。"
+    "依赖它之前先打开关联代码核对：仍然成立就调用 confirm_memory(ids=[...]) 刷新核对日期；"
+    "已不成立就写一条 correction，supersedes 填它的 id。"
+)
+SIMILAR_HINT = (
+    "similar 是同模块最相近的已有记忆：新结论与其中某条重复或推翻了它，就带 draft_id 重写并在 supersedes 填那条的 id；"
+    "无关则忽略。"
+)
+ALIASES_HINT = "没填 aliases：把现象和关键术语的其他常用叫法（如 闪退/崩溃/crash）写进 aliases，换个说法也能搜到。"
 
 
 def _fail(message: str, **extra) -> dict:
     return {"ok": False, "error": message, **extra}
+
+
+def _valid_date(raw: str | None) -> str | None:
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(str(raw).strip()).isoformat()
+    except ValueError as exc:
+        raise ValueError(f"as_of 需要 YYYY-MM-DD 格式的日期，当前为 {raw!r}") from exc
+
+
+def _clean_aliases(raw: list[str] | None) -> list[str]:
+    seen: list[str] = []
+    for alias in raw or []:
+        text = str(alias).strip()
+        if text and len(text) <= MAX_ALIAS_CHARS and text.lower() not in {s.lower() for s in seen}:
+            seen.append(text)
+    return seen[:MAX_ALIASES]
 
 
 class MemoryService:
@@ -40,6 +74,7 @@ class MemoryService:
         self._registry: ModuleRegistry | None = None
         self._registry_stamp: tuple[int, int] | None = None
         self._index: MemoryIndex | None = None
+        self._graph: tuple[tuple, MemoryGraph] | None = None
 
     # ---- 依赖的懒加载 ----
 
@@ -66,6 +101,14 @@ class MemoryService:
         if self._index is not None:
             self._index.close()
 
+    def graph_model(self) -> MemoryGraph:
+        registry = self.registry
+        entries = self.index.entries()
+        key = (self.index.version, self._registry_stamp)
+        if self._graph is None or self._graph[0] != key:
+            self._graph = (key, MemoryGraph(entries, registry))
+        return self._graph[1]
+
     @property
     def user(self) -> str:
         if self._user is None:
@@ -91,11 +134,12 @@ class MemoryService:
         query: str | None = None,
         limit: int | None = None,
         source_conversation: str | None = None,
+        as_of: str | None = None,
     ) -> dict:
         started = time.perf_counter()
         try:
-            response = self._search(module, path, entity, query, limit)
-        except RegistryError as exc:
+            response = self._search(module, path, entity, query, limit, _valid_date(as_of))
+        except (RegistryError, ValueError) as exc:
             response = _fail(str(exc))
         items = response.get("items") or []
         self._log(
@@ -113,7 +157,7 @@ class MemoryService:
         )
         return response
 
-    def _search(self, module, path, entity, query, limit) -> dict:
+    def _search(self, module, path, entity, query, limit, as_of=None) -> dict:
         limit = max(1, min(int(limit or self.config.get("search.limit")), MAX_LIMIT))
         response: dict = {"ok": True}
         module_id: str | None = None
@@ -145,6 +189,7 @@ class MemoryService:
                         "similar_modules": self._similar(module_id)}
 
         entity_id = self.registry.resolve_entity(module_id or "", entity) if entity else None
+        self.index.synonyms = self.registry.synonyms
         result = self.index.search(
             module=module_id,
             entity=entity_id,
@@ -152,8 +197,20 @@ class MemoryService:
             limit=limit,
             max_per_batch=int(self.config.get("search.max_per_batch")),
             half_life_days=float(self.config.get("search.recency_half_life_days")),
+            as_of=as_of,
         )
         response.update({"module": module_id, "items": result.items})
+        if as_of:
+            response["as_of"] = as_of
+        if result.expanded:
+            response["expanded"] = result.expanded
+        stale = [i["id"] for i in result.items if i.get("stale")]
+        if stale:
+            response["verify_hint"] = VERIFY_HINT
+        if module_id and not as_of:
+            related = self.graph_model().related(module_id, entity_id, limit=MAX_RELATED)
+            if related:
+                response["related"] = [f"{r['module']}（{r['via']}）" for r in related]
         if result.fallback:
             response["fallback"] = result.fallback
         degraded = result.degraded if self.index.embedder_problem or self.index.embedder else None
@@ -185,6 +242,7 @@ class MemoryService:
         anchors: list[str] | None = None,
         draft_id: str | None = None,
         source_conversation: str | None = None,
+        aliases: list[str] | None = None,
     ) -> dict:
         try:
             resolved = self.registry.resolve_module(module)
@@ -217,6 +275,9 @@ class MemoryService:
         hints = content_hints(content, recommend_max)
         if not self.registry.is_global_entity(entity_id) and (new_entity := entity_hint(entity_id, known_entities)):
             hints.append(new_entity)
+        aliases = _clean_aliases(aliases)
+        if not aliases:
+            hints.append(ALIASES_HINT)
         # 替代旧记忆（含合并零碎记忆）不增加条数，不受每日上限约束
         if not draft_id and not replaced:
             same_day = [
@@ -249,6 +310,7 @@ class MemoryService:
             supersedes=[old.id for old in replaced],
             anchors=[a.replace("\\", "/") for a in anchors or []],
             source_conversation=source_conversation or None,
+            aliases=aliases,
         )
         try:
             written = self.storage.write(entry, draft_id=draft_id or None)
@@ -276,6 +338,10 @@ class MemoryService:
             warnings.append(f"{resolved.id} 尚未登记在 modules.yaml；如是笔误请改用相近模块")
         if warnings:
             response["warnings"] = warnings
+        similar = self._similar_memories(written.entry)
+        if similar:
+            response["similar"] = similar
+            hints.append(SIMILAR_HINT)
         if hints:
             response["hints"] = hints + ["以上只是提示，已写入；如需修改，带上 draft_id 再写一次即可覆盖。"]
         self._log(
@@ -289,6 +355,90 @@ class MemoryService:
             supersedes=entry.supersedes or None,
         )
         return response
+
+    def _similar_memories(self, entry: Entry) -> list[dict]:
+        """同一议题下与新记忆最相近的有效记忆，交给写入的 Agent 判断是重复、推翻还是无关。
+
+        只看同一实体：跨议题时相关度分不清真假（见 Ranking 排除项），每次都附两条无关记忆只会成为噪音。
+        """
+        skip = {entry.id, *entry.supersedes}
+        self.index.synonyms = self.registry.synonyms
+        result = self.index.search(
+            module=entry.module, entity=entry.entity, query=" ".join([entry.content, *entry.aliases]),
+            limit=MAX_SIMILAR + len(skip), max_per_batch=MAX_LIMIT, verify=False,
+        )
+        rows = [
+            {"id": i["id"], "entity": i["entity"], "kind": i["kind"], "date": i["date"], "preview": preview(i["content"])}
+            for i in result.items if i["id"] not in skip
+        ]
+        return rows[:MAX_SIMILAR]
+
+    # ---- confirm_memory ----
+
+    def confirm(self, ids: list[str], source_conversation: str | None = None) -> dict:
+        """核对过关联代码、仍然成立的记忆：把核对日期记为今天，之后不再因更早的代码改动标为 stale。"""
+        today = date.today().isoformat()
+        confirmed, missing = [], []
+        for entry_id in dict.fromkeys(i for i in ids or [] if i):
+            path = self.storage.find_path(entry_id)
+            if path is None:
+                missing.append(entry_id)
+                continue
+            entry = self.storage.read(path)
+            entry.verified = today
+            path.write_text(entry.to_markdown(), encoding="utf-8", newline="\n")
+            confirmed.append(entry_id)
+        if confirmed:
+            self.index.refresh(force=True)
+        self._log("confirm", conv=source_conversation, ids=confirmed)
+        response: dict = {"ok": bool(confirmed) or not missing, "confirmed": confirmed, "verified": today}
+        if missing:
+            response["missing"] = missing
+        return response
+
+    # ---- memory_graph ----
+
+    def graph(self, module: str, entity: str | None = None) -> dict:
+        try:
+            module_id = self.registry.resolve_module(module).id
+        except RegistryError as exc:
+            return _fail(str(exc))
+        model = self.graph_model()
+        if entity:
+            entity_id = self.registry.resolve_entity(module_id, entity)
+            timeline = model.timeline(module_id, entity_id)
+            if not timeline:
+                return _fail(f"{module_id}/{entity_id} 下没有记忆",
+                             entities=[t["entity"] for t in model.topics(module_id)][:20])
+            return {"ok": True, "module": module_id, "entity": entity_id, "timeline": timeline,
+                    "related": model.related(module_id, entity_id)}
+        return {"ok": True, "module": module_id, "topics": model.topics(module_id),
+                "related": model.related(module_id)}
+
+    # ---- terms ----
+
+    def terms(self, module: str | None = None, top: int = 300, min_count: int = 2) -> dict:
+        """有效记忆里的高频词（按出现在几条记忆里计），供 Agent 找出同一件事的不同叫法。"""
+        if module:
+            try:
+                module = self.registry.resolve_module(module).id
+            except RegistryError as exc:
+                return _fail(str(exc))
+        docs: Counter = Counter()
+        where: dict[str, Counter] = {}
+        hidden = self.index.superseded()
+        for entry in self.index.entries():
+            if entry.status not in VISIBLE_STATUSES or entry.id in hidden or (module and entry.module != module):
+                continue
+            words = {t for t in tokenize(f"{entry.content} {' '.join(entry.aliases)}")
+                     if len(t) >= 2 and not t.isdigit() and not (t.isascii() and len(t) < 3)}
+            for word in words:
+                docs[word] += 1
+                where.setdefault(word, Counter())[entry.module] += 1
+        known = [list(g) for g in self.registry.synonyms]
+        rows = [{"term": w, "memories": n, "modules": [m for m, _ in where[w].most_common(2)]}
+                for w, n in docs.most_common() if n >= min_count][:top]
+        return {"ok": True, "module": module, "synonyms": known, "terms": rows}
 
     # ---- list_modules ----
 

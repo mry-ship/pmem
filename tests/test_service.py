@@ -131,8 +131,35 @@ def test_content_length_is_checked(svc):
 
 
 def test_good_memory_has_no_hints(svc):
-    assert "hints" not in record(svc)
-    assert "hints" not in record(svc, content="奖励弹窗的根因：动画回调里重复调用了 Claim。")
+    assert "hints" not in record(svc, aliases=["领奖"])
+    assert "hints" not in record(svc, entity="Popup", aliases=["弹框"],
+                                 content="商店弹窗的根因：动画回调里重复调用了 Open，导致连弹两次。")
+
+
+def test_missing_aliases_get_a_hint(svc):
+    assert any("aliases" in h for h in record(svc)["hints"])
+
+
+def test_record_returns_similar_memories_for_agent_to_reconcile(svc):
+    old = record(svc, aliases=["领奖"], content="奖励重复发放的根因：领取按钮没有防连点，连续点击会发两次。")
+    new = record(svc, aliases=["领奖"], content="奖励重复发放：除了按钮防连点，服务端也要按订单号去重，避免弱网重试重复发。")
+    assert [s["id"] for s in new["similar"]] == [old["id"]]
+    assert any("supersedes" in h for h in new["hints"])
+    replaced = record(svc, aliases=["领奖"], supersedes=[old["id"], new["id"]],
+                      content="奖励重复发放的根因与对策：按钮防连点 + 服务端按订单号去重，二者缺一都会重复发。")
+    assert "similar" not in replaced
+
+
+def test_confirm_refreshes_verified_date(svc, project):
+    written = record(svc, aliases=["领奖"])
+    result = svc.confirm([written["id"], "01JA7K3M2X9F4Q8W6ZB1C2D3E4"])
+    assert result["confirmed"] == [written["id"]] and result["missing"] == ["01JA7K3M2X9F4Q8W6ZB1C2D3E4"]
+    text = next((project / ".memory" / "entries").rglob(f"{written['id']}.md")).read_text(encoding="utf-8")
+    assert f"verified: '{result['verified']}'" in text
+
+
+def test_search_rejects_bad_as_of(svc):
+    assert svc.search(module="gameplay.Jigsaw", as_of="昨天")["ok"] is False
 
 
 def test_changelog_and_new_entity_get_hints_but_are_written(svc):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
+from datetime import date
 from pathlib import Path
 
 from pmem.vcs.base import VCS, run_tool
@@ -21,9 +22,9 @@ _CODES = {
 class SvnVCS(VCS):
     name = "svn"
 
-    def _xml(self, *args: str) -> ET.Element | None:
+    def _xml(self, *args: str, partial: bool = False) -> ET.Element | None:
         proc = run_tool(["svn", *args, "--xml", "--non-interactive"], self.root)
-        if proc.returncode != 0:
+        if proc.returncode != 0 and not (partial and proc.stdout.strip()):
             return None
         try:
             return ET.fromstring(proc.stdout)
@@ -76,6 +77,28 @@ class SvnVCS(VCS):
             elif path.name.endswith(suffix):
                 count += 1
         return count
+
+    def changed_after(self, paths: list[str], since: str) -> dict[str, str]:
+        if not paths:
+            return {}
+        found: dict[str, str] = {}
+        # svn info 读本地工作副本元数据，不访问服务器；commit/date 是该文件最后一次提交的时间（UTC）
+        # 有路径未纳入版本库时退出码非 0，但其余路径的 XML 仍完整输出
+        info = self._xml("info", *paths, partial=True)
+        for entry in info.iter("entry") if info is not None else []:
+            node = entry.find("commit/date")
+            rel = (entry.get("path") or "").replace("\\", "/")
+            day = (node.text or "")[:10] if node is not None else ""
+            if rel and day > since:
+                found[rel] = day
+        status = self._xml("status", *paths, partial=True)
+        today = date.today().isoformat()
+        for entry in status.iter("entry") if status is not None else []:
+            node = entry.find("wc-status")
+            if node is not None and node.get("item") in ("modified", "replaced") and today > since:
+                found[(entry.get("path") or "").replace("\\", "/")] = today
+        wanted = {p.replace("\\", "/") for p in paths}
+        return {k: v for k, v in found.items() if k in wanted}
 
     def add(self, path: Path) -> None:
         run_tool(["svn", "add", "--parents", "-q", "--non-interactive", str(path)], self.root)

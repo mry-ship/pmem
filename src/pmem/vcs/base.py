@@ -3,6 +3,7 @@ from __future__ import annotations
 import getpass
 import os
 import subprocess
+from datetime import date
 from pathlib import Path
 
 
@@ -42,3 +43,17 @@ class VCS:
 
     def add(self, path: Path) -> None:
         return None
+
+    def changed_after(self, paths: list[str], since: str) -> dict[str, str]:
+        """since（YYYY-MM-DD）之后有改动的文件 → 最近改动日期；含未提交的修改（记为今天）。
+
+        paths 为相对项目根的路径。没有版本库时按文件修改时间判断。
+        """
+        found: dict[str, str] = {}
+        for rel in paths:
+            path = self.root / rel
+            if path.is_file():
+                day = date.fromtimestamp(path.stat().st_mtime).isoformat()
+                if day > since:
+                    found[rel] = day
+        return found

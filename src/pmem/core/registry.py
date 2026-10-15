@@ -117,6 +117,12 @@ class ModuleRegistry:
         self.third_party: list[str] = [_item_path(x) for x in data.get("third_party") or []]
         self.ignored: list[str] = [_item_path(x) for x in data.get("ignored") or []]
 
+        self.synonyms: list[list[str]] = [
+            [str(t).strip() for t in group if str(t).strip()]
+            for group in data.get("synonyms") or []
+            if isinstance(group, list) and len(group) >= 2
+        ]
+
         self._entity_vocab: dict[str, str] = {}
         for canonical, aliases in (data.get("entities") or {}).items():
             self._entity_vocab[str(canonical).lower()] = str(canonical)

@@ -118,6 +118,18 @@ def run_doctor(root: Path) -> int:
     hooks = json.dumps(_load(cursor / "hooks.json"))
     line(OK if "pmem hook" in hooks else WARN, "Hooks 已接入" if "pmem hook" in hooks else "Hooks 未接入（闸门不生效），请运行 pmem init")
     line(OK if (cursor / "rules" / "pmem.mdc").exists() else WARN, "规则文件 .cursor/rules/pmem.mdc")
+    for agent, label, hooks_path, wired_mcp in (
+        ("claude", "Claude Code", root / ".claude" / "settings.json", "pmem" in _load(root / ".mcp.json").get("mcpServers", {})),
+        ("codex", "Codex", root / ".codex" / "hooks.json", "mcp_servers.pmem" in _read(root / ".codex" / "config.toml")),
+    ):
+        if not hooks_path.exists():
+            continue
+        wired_hooks = f"--agent {agent}" in json.dumps(_load(hooks_path))
+        if wired_hooks and wired_mcp:
+            line(OK, f"{label} 已接入（Hooks 与 MCP）")
+        else:
+            missing = "、".join(x for x, ok in (("Hooks", wired_hooks), ("MCP", wired_mcp)) if not ok)
+            line(WARN, f"{label} 缺少 {missing}，请运行 pmem init --agents {agent}")
     line(OK if shutil.which("pmem") else BAD, "PATH 中可以找到 pmem 命令" if shutil.which("pmem") else "PATH 中找不到 pmem，Cursor 无法启动服务")
 
     backend = config.get("embedding.backend")
@@ -160,6 +172,10 @@ def run_doctor(root: Path) -> int:
 
     print("自检完成" + ("，有需要处理的问题" if problems else "，一切正常"))
     return 1 if problems else 0
+
+
+def _read(path: Path) -> str:
+    return path.read_text(encoding="utf-8-sig", errors="replace") if path.exists() else ""
 
 
 def _load(path: Path) -> dict:

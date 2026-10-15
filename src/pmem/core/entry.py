@@ -25,6 +25,13 @@ class Entry:
     supersedes: list[str] = field(default_factory=list)
     anchors: list[str] = field(default_factory=list)
     source_conversation: str | None = None
+    aliases: list[str] = field(default_factory=list)
+    verified: str | None = None
+
+    @property
+    def checked_date(self) -> str:
+        """最近一次确认成立的日期：核对过取核对日期，否则取写入日期。"""
+        return max(self.note_date, self.verified or "")
 
     def __post_init__(self) -> None:
         if self.kind not in KINDS:
@@ -45,6 +52,10 @@ class Entry:
             "author": self.author,
             "note_date": self.note_date,
         }
+        if self.aliases:
+            meta["aliases"] = list(self.aliases)
+        if self.verified:
+            meta["verified"] = self.verified
         if self.source_conversation:
             meta["source"] = {"conversation": self.source_conversation}
         head = yaml.safe_dump(meta, allow_unicode=True, sort_keys=False).rstrip()
@@ -70,4 +81,6 @@ class Entry:
             supersedes=[str(x) for x in meta.get("supersedes") or []],
             anchors=[str(x) for x in meta.get("anchors") or []],
             source_conversation=source.get("conversation"),
+            aliases=[str(x) for x in meta.get("aliases") or []],
+            verified=str(meta["verified"]) if meta.get("verified") else None,
         )

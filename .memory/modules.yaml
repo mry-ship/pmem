@@ -18,6 +18,9 @@ entities:
   Encoding: [编码, 乱码, gbk, bom]
   Performance: [性能, 耗时, latency]
   Ranking: [排序, 打分, score]
+synonyms:
+  - [闸门, 拦截, gate]
+  - [过期, 失效, stale]
 modules:
   feature.Gate:
     description: Cursor Hooks 闸门：按模块提醒先查记忆、注入草稿、结束提醒
@@ -30,7 +33,7 @@ modules:
     aliases: [Index, Search]
     entities: [Ranking, Embedding, Tokenize]
   feature.Tools:
-    description: MCP 服务与 3 个工具背后的业务规则（写入校验、检索参数）
+    description: MCP 服务与 5 个工具背后的业务规则（写入校验、检索参数、核对、图谱）
     paths: [src/pmem/server/**, src/pmem/service.py, src/pmem/core/secrets.py, tests/test_service.py, tests/test_server.py, scripts/smoke_mcp.py]
     aliases: [Mcp, Server, Service]
     entities: [Record, Search, Secrets]
@@ -57,10 +60,10 @@ modules:
     paths: [src/pmem/importers/**, src/pmem/cli/import_cmd.py, tests/importers/**]
     aliases: [Importer, LanceDB]
   feature.Curation:
-    description: 记忆整理：写入质量提示、相近实体、合并零碎记忆
-    paths: [src/pmem/core/quality.py, src/pmem/cli/compact_cmd.py, tests/core/test_quality.py, tests/test_compact.py]
-    aliases: [Compact, Quality]
-    entities: [WriteHints, Merge]
+    description: 记忆整理：写入质量提示、相近实体、合并零碎记忆、补关联代码
+    paths: [src/pmem/core/quality.py, src/pmem/cli/compact_cmd.py, src/pmem/cli/anchors_cmd.py, tests/core/test_quality.py, tests/test_compact.py, tests/test_anchors_cmd.py]
+    aliases: [Compact, Quality, Anchors]
+    entities: [WriteHints, Merge, Anchors]
   infra.Model:
     description: 记忆条目、ULID 与配置
     paths: [src/pmem/core/entry.py, src/pmem/core/ids.py, src/pmem/core/config.py, tests/core/test_entry.py, tests/core/test_ids.py, tests/core/test_config.py]

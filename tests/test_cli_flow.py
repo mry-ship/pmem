@@ -33,6 +33,49 @@ def test_init_creates_project_files_and_merges_existing_cursor_config(tmp_path, 
     assert "pmem compact" in (cursor / "skills" / "pmem-compact" / "SKILL.md").read_text(encoding="utf-8")
 
 
+def test_init_wires_claude_and_codex_without_touching_their_other_settings(tmp_path, capsys):
+    (tmp_path / "CLAUDE.md").write_text("# 项目说明\n团队约定 A\n", encoding="utf-8")
+    claude = tmp_path / ".claude"
+    claude.mkdir()
+    (claude / "settings.json").write_text(json.dumps({
+        "permissions": {"allow": ["Bash(ls)"]},
+        "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "notify.sh"},
+                                      {"type": "command", "command": "pmem hook stop --agent claude"}]}]},
+    }), encoding="utf-8")
+    codex = tmp_path / ".codex"
+    codex.mkdir()
+    (codex / "config.toml").write_text('model = "gpt-5"\n', encoding="utf-8")
+
+    for _ in range(2):
+        assert main(["init", "--root", str(tmp_path), "--agents", "auto"]) == 0
+
+    claude_md = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
+    assert claude_md.startswith("# 项目说明\n团队约定 A\n") and claude_md.count("<!-- pmem:begin -->") == 1
+    assert "confirm_memory" in claude_md
+    settings = json.loads((claude / "settings.json").read_text(encoding="utf-8"))
+    assert settings["permissions"] == {"allow": ["Bash(ls)"]}
+    stop = [h["command"] for g in settings["hooks"]["Stop"] for h in g["hooks"]]
+    assert stop == ["notify.sh", "pmem hook stop --agent claude"]
+    assert settings["hooks"]["PreToolUse"][0]["matcher"].startswith("^(Write|Edit")
+    assert json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["pmem"]["args"] == ["serve"]
+    assert (claude / "skills" / "pmem-normalize" / "SKILL.md").exists()
+
+    toml = (codex / "config.toml").read_text(encoding="utf-8")
+    assert toml.startswith('model = "gpt-5"\n') and toml.count("[mcp_servers.pmem]") == 1
+    codex_hooks = json.loads((codex / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+    assert [h["command"] for g in codex_hooks["PreToolUse"] for h in g["hooks"]] == ["pmem hook pre-tool --agent codex"]
+    assert (tmp_path / "AGENTS.md").read_text(encoding="utf-8").count("<!-- pmem:end -->") == 1
+    out = capsys.readouterr().out
+    assert "Claude Code" in out and "/hooks" in out
+
+
+def test_init_only_wires_cursor_when_no_other_agent_is_present(tmp_path):
+    main(["init", "--root", str(tmp_path)])
+    assert not (tmp_path / "CLAUDE.md").exists() and not (tmp_path / ".codex").exists()
+    main(["init", "--root", str(tmp_path), "--agents", "codex"])
+    assert (tmp_path / ".codex" / "hooks.json").exists() and not (tmp_path / ".claude").exists()
+
+
 def test_init_keeps_existing_memory_config(tmp_path):
     (tmp_path / ".memory").mkdir()
     (tmp_path / ".memory" / "config.yaml").write_text("gate: { mode: block }\n", encoding="utf-8")

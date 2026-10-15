@@ -14,34 +14,50 @@ def _emit(data: dict) -> None:
     sys.stdout.flush()
 
 
-def run_hook(event: str) -> int:
-    fallback = {"permission": "allow"} if event in ("pre-tool", "before-mcp") else {}
-    if event == "prompt":
-        fallback = {"continue": True}
+def _fallback(event: str, agent: str) -> dict:
+    if agent != "cursor":
+        return {}
+    if event in ("pre-tool", "before-mcp"):
+        return {"permission": "allow"}
+    return {"continue": True} if event == "prompt" else {}
+
+
+def _find_project(payload: dict):
+    from pmem.core.config import find_root
+    from pmem.hooks.payload import workspace_root
+
+    for candidate in (os.getcwd(), workspace_root(payload), payload.get("cwd"), os.environ.get("CLAUDE_PROJECT_DIR")):
+        if candidate and (root := find_root(candidate)) is not None:
+            return root
+    return None
+
+
+def run_hook(event: str, agent: str = "cursor") -> int:
+    fallback = _fallback(event, agent)
     root = None
     try:
-        from pmem.core.config import Config, find_root
+        from pmem.core.config import Config
+        from pmem.hooks.agents import normalize, render
         from pmem.hooks.gate import handle
-        from pmem.hooks.payload import parse_payload, workspace_root
+        from pmem.hooks.payload import parse_payload
 
-        payload = parse_payload(sys.stdin.buffer.read())
-        root = find_root(os.getcwd())
-        if root is None and (ws := workspace_root(payload)):
-            root = find_root(ws)
+        payload = normalize(agent, parse_payload(sys.stdin.buffer.read()))
+        root = _find_project(payload)
         if root is None:
             _emit(fallback)
             return 0
         result = handle(event, payload, root)
-        _emit(result or fallback)
+        _emit(render(agent, event, result) or fallback)
         if result.get("permission") == "deny" or result.get("followup_message") or result.get("updated_input"):
-            _log(Config.load(root).cache_dir, f"{event} {json.dumps(result, ensure_ascii=False)[:300]}")
+            tag = event if agent == "cursor" else f"{event}@{agent}"
+            _log(Config.load(root).cache_dir, f"{tag} {json.dumps(result, ensure_ascii=False)[:300]}")
     except Exception:  # noqa: BLE001
         _emit(fallback)
         try:
             from pmem.core.config import Config
 
             if root is not None:
-                _log(Config.load(root).cache_dir, f"ERROR {event}\n{traceback.format_exc()}", "hook-errors.log")
+                _log(Config.load(root).cache_dir, f"ERROR {event}@{agent}\n{traceback.format_exc()}", "hook-errors.log")
         except Exception:  # noqa: BLE001, S110
             pass
     return 0

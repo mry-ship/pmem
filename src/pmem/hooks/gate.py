@@ -182,9 +182,15 @@ class Gate:
             self.state.add("warned", module)
             self.save()
         call = f'search_memory(module="{module}")'
-        retry = "然后重试本次修改" if mode == "warn" else "检索前不能修改该模块"
         # Cursor 只把 user_message 交给 Agent（实测），因此指引必须完整写在这里
-        message = f"pmem：{rel} 属于 {module}（已有 {count} 条研发记忆）。请先调用 {call} 了解已有结论，{retry}。"
+        message = f"pmem：{rel} 属于 {module}（已有 {count} 条研发记忆）。请先调用 {call} 了解已有结论，"
+        if mode == "warn":
+            message += "然后重试本次修改。"
+        else:
+            message += (
+                f"查过之后才能修改该模块。MCP 工具不可用时，在终端运行 pmem search --module {module} 也算；"
+                "检索报错同样视为查过。确实不需要记忆时，请用户回复“跳过记忆”。"
+            )
         self.log("gate", module=module, file=rel, mode=mode)
         return {"permission": "deny", "user_message": message, "agent_message": message}
 
@@ -311,6 +317,16 @@ class Gate:
         done = self._written() | set(self.state.data["edited"])
         return [m for m in self.state.data["consulted"] if m not in done]
 
+    def _consulted_only(self, status) -> list[str]:
+        """整个对话只查了记忆、没改代码也没写记忆时，查过的模块；写代码时顺带查的模块不算。"""
+        if status not in (None, "completed") or self.state.data["skip"]:
+            return []
+        if not self.config.get("gate.analysis_reminder") or self.config.get("gate.mode") == "off":
+            return []
+        if self._written() or self.state.data["edited"]:
+            return []
+        return [m for m in self.state.data["consulted"] if not self.state.has("nudged", m)]
+
     def on_stop(self) -> dict:
         if self.state is None:
             return {}
@@ -318,8 +334,7 @@ class Gate:
         status = self.payload.get("status")
         pending = self._pending_nudges(status)
         analyzed = self._analyzed(status)
-        remind_analysis = self.config.get("gate.analysis_reminder") and self.config.get("gate.mode") != "off"
-        analysis_pending = [m for m in analyzed if not self.state.has("nudged", m)] if remind_analysis else []
+        consulted_pending = self._consulted_only(status)
         usage = {k: self.payload.get(k) for k in TOKEN_FIELDS if isinstance(self.payload.get(k), int)}
         self.save()
         self.log(
@@ -331,19 +346,19 @@ class Gate:
             recorded=self.state.data["recorded"] or None,
             edited=self.state.data["edited"] or None,
             analyzed=analyzed or None,
-            nudged=(pending + analysis_pending) or None,
+            nudged=(pending + consulted_pending) or None,
             **usage,
         )
-        if not pending and not analysis_pending:
+        if not pending and not consulted_pending:
             return {}
-        for module in pending + analysis_pending:
+        for module in pending + consulted_pending:
             self.state.add("nudged", module)
         self.save()
         parts = []
         if pending:
             parts.append(f"本轮修改了 {'、'.join(pending)}，但还没有写研发记忆")
-        if analysis_pending:
-            parts.append(f"本轮排查了 {'、'.join(analysis_pending)}，没有改代码也没有写记忆")
+        if consulted_pending:
+            parts.append(f"本轮查了 {'、'.join(consulted_pending)} 的记忆，没有改代码也没有写记忆")
         return {
             "followup_message": (
                 f"[pmem] {'；'.join(parts)}。如果得出了值得留给后人的结论"

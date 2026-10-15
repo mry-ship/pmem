@@ -18,12 +18,12 @@ DEFAULTS: dict = {
     "svn_auto_add": True,
     "embedding": {"backend": "auto", "model": "", "model_path": "", "base_url": ""},
     "gate": {
-        "mode": "warn",
+        "mode": "block",
         "watch": [],
         "ignore": ["**/*.md", "docs/**", ".memory/**", ".cursor/**"],
         "skip_markers": ["跳过记忆", "skip-memory"],
         "stop_reminder": True,
-        "analysis_reminder": False,
+        "analysis_reminder": True,
         "analysis_markers": [
             "为什么", "原因", "根因", "排查", "定位", "分析", "怎么回事", "复现", "报错", "崩溃", "闪退",
             "卡死", "不生效", "异常", "bug", "why", "debug", "investigate",

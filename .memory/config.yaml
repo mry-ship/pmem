@@ -5,7 +5,7 @@ project:
   type: generic
 vcs: auto                 # auto / git / svn / none
 gate:
-  mode: warn             # off 只靠规则 / warn 首次修改有记忆的模块时先提醒查 / block 未查不许改
+  mode: block            # block 未查该模块的记忆不许改（尝试过检索即放行）/ warn 只提醒一次 / off 只靠规则
   watch: []               # 为空 = 所有已登记模块的路径都受守护
   ignore: ["**/*.md", "docs/**", ".memory/**", ".cursor/**"]
   skip_markers: ["跳过记忆", "skip-memory"]

@@ -87,6 +87,29 @@ def test_block_denies_until_searched(make_project):
     assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
 
 
+def test_block_is_the_default_mode(make_project):
+    root = make_project()
+    (root / ".memory" / "config.yaml").write_text("project: { name: demo }\nvcs: none\n", encoding="utf-8")
+    for _ in range(2):
+        assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
+
+
+def test_failed_search_still_unlocks_block(make_project):
+    root = make_project("block")
+    handle("before-mcp", search_payload(module="gameplay.Jigsaw"), root)
+    failed = {"conversation_id": "c1", "tool_name": "MCP:search_memory",
+              "result_json": json.dumps({"ok": False, "error": "index unavailable"})}
+    handle("after-mcp", failed, root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+
+
+def test_block_message_explains_fallbacks(make_project):
+    root = make_project("block")
+    message = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["agent_message"]
+    assert "pmem search --module gameplay.Jigsaw" in message
+    assert "跳过记忆" in message
+
+
 def test_search_by_path_counts_as_searched(make_project):
     root = make_project("block")
     handle("before-mcp", search_payload(path="src/Jigsaw/Other.cs"), root)
@@ -273,20 +296,37 @@ def _last_stop(root: Path) -> dict:
     return [e for e in read_events(Config.load(root).cache_dir) if e["type"] == "stop"][-1]
 
 
-def test_analysis_only_conversation_is_logged_but_not_reminded_by_default(make_project):
+def test_consulted_only_conversation_is_reminded_once(make_project):
     root = make_project()
-    assert _analysis_turn(root, "拼图奖励为什么会重复发放？") == {}
+    first = _analysis_turn(root, "拼图奖励为什么会重复发放？")
+    assert "查了 gameplay.Jigsaw 的记忆" in first["followup_message"]
+    assert "无需记录" in first["followup_message"]
     assert _last_stop(root)["analyzed"] == ["gameplay.Jigsaw"]
+    assert _analysis_turn(root, "再看看") == {}
 
 
-def test_analysis_reminder_can_be_enabled(make_project):
+def test_consulted_reminder_does_not_need_analysis_wording(make_project):
+    root = make_project()
+    assert "gameplay.Jigsaw" in _analysis_turn(root, "给拼图加一个新关卡")["followup_message"]
+
+
+def test_lookups_during_coding_are_not_reminded(make_project):
+    root = make_project()
+    handle("before-mcp", search_payload(module="gameplay.Jigsaw"), root)
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    after = {"conversation_id": "c1", "tool_name": "record_memory",
+             "result_json": json.dumps({"ok": True, "id": "01JA7K3M2X9F4Q8W6ZB1C2D3E9", "module": "economy.Shop"})}
+    handle("after-mcp", after, root)
+    assert handle("stop", {"conversation_id": "c1", "status": "completed"}, root) == {}
+
+
+def test_consulted_reminder_can_be_disabled(make_project):
     root = make_project()
     config = root / ".memory" / "config.yaml"
-    text = config.read_text(encoding="utf-8").replace("mode: warn", "mode: warn, analysis_reminder: true")
+    text = config.read_text(encoding="utf-8").replace("mode: warn", "mode: warn, analysis_reminder: false")
     config.write_text(text, encoding="utf-8")
-    first = _analysis_turn(root, "Why does the reward get granted twice?")
-    assert "排查了 gameplay.Jigsaw" in first["followup_message"]
-    assert _analysis_turn(root, "再看看") == {}
+    assert _analysis_turn(root, "Why does the reward get granted twice?") == {}
+    assert _last_stop(root)["analyzed"] == ["gameplay.Jigsaw"]
 
 
 def test_non_analysis_or_recorded_conversations_are_not_counted(make_project):

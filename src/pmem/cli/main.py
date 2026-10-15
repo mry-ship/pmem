@@ -18,7 +18,7 @@ def build_parser():
     p = sub.add_parser("init", help="在项目中接入 pmem（生成 .memory/ 与 .cursor/ 配置）")
     p.add_argument("--root", default=".")
     p.add_argument("--type", choices=("game", "app", "backend", "generic"), default=None, help="项目类型，决定默认大类")
-    p.add_argument("--gate", choices=("off", "warn", "block"), default="warn", help="闸门力度")
+    p.add_argument("--gate", choices=("off", "warn", "block"), default="block", help="闸门力度")
 
     p = sub.add_parser("scan", help="输出目录概览，供 Agent 划分模块")
     p.add_argument("--root", default=".")

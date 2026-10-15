@@ -195,6 +195,12 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
         if any(w["conv"] == stop.get("conv") and w["module"] == module and w["ts"] >= stop["ts"] for w in written)
     )
 
+    # 排查类对话：提问含排查用语且查过记忆；以最后一次 stop 记下的“只查没改也没记”的模块为准
+    analysis_convs = {e["conv"] for e in events if e["type"] == "prompt" and e.get("analysis") and e.get("conv")}
+    consulted_convs = {e.get("conv") for e in events if e["type"] in ("search_call", "mcp_search", "search")}
+    last_analyzed = {e["conv"]: e.get("analyzed") or [] for e in events if e["type"] == "stop" and e.get("conv")}
+    left = {c: m for c, m in last_analyzed.items() if m and c in analysis_convs}
+
     convs = _conversations(events)
     # 对话期间自己新写的记忆被返回、被复述不算复用；终端写入的事件不带对话 id，所以按记忆文件的创建时间判断
     authored = [(ulid_ms(e.id) / 1000, e.id) for e in entries if e.author == user]
@@ -236,6 +242,9 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
         "habits": {
             "gates": len(gates), "gate_converted": gate_converted,
             "nudges": len(nudges), "nudge_converted": nudge_converted,
+            "analysis_conversations": len(analysis_convs & consulted_convs),
+            "analysis_left": len(left),
+            "analysis_left_modules": len({m for mods in left.values() for m in mods}),
             "conversations": len(convs),
         },
         "compare": _compare(convs),
@@ -304,6 +313,12 @@ def render(report: dict) -> str:
         f"  改代码前被提醒先查 {h['gates']} 次，随后真的查了 {h['gate_converted']} 次（{_pct(h['gate_converted'], h['gates'])}）",
         f"  结束时被提醒记录 {h['nudges']} 次，随后写了 {h['nudge_converted']} 次（{_pct(h['nudge_converted'], h['nudges'])}）",
     ]
+    if h.get("analysis_conversations"):
+        lines.append(
+            f"  排查类对话 {h['analysis_conversations']} 个，其中 {h['analysis_left']} 个结束时仍有查过记忆、"
+            f"却没改代码也没写记忆的模块（共 {h['analysis_left_modules']} 个）"
+            + ("；如果常有结论被漏记，可在 .memory/config.yaml 打开 gate.analysis_reminder" if h["analysis_left"] else "")
+        )
     lines += _render_usage(report["usage"], a["memories"], s["total"])
     cmp_ = report["compare"]
     lines += ["", "【对话对照】改了代码的对话，按“是否用到他人/既有记忆”分组，取中位数"]

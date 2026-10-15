@@ -10,6 +10,7 @@ TTL_SECONDS = 7 * 24 * 3600
 _DEFAULTS = {
     "searched": [], "warned": [], "edited": [], "written": {}, "nudged": [], "skip": False,
     "returned": [], "recorded": [], "cli_recorded": [], "edited_files": [],
+    "consulted": [], "analysis": False,
 }
 
 

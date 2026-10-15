@@ -147,10 +147,15 @@ class Gate:
         text = str(self.payload.get("prompt") or "")
         markers = self.config.get("gate.skip_markers") or []
         skip = any(fuzzy_contains(text, str(m)) for m in markers)
-        if self.state is not None and skip:
-            self.state.data["skip"] = True
+        analysis = any(
+            fuzzy_contains(text.lower() if m.isascii() else text, m.lower() if m.isascii() else m)
+            for m in (str(m) for m in self.config.get("gate.analysis_markers") or [])
+        )
+        if self.state is not None and (skip or analysis):
+            self.state.data["skip"] = self.state.data["skip"] or skip
+            self.state.data["analysis"] = self.state.data["analysis"] or analysis
             self.save()
-        self.log("prompt", mode=self.payload.get("composer_mode"), skip=skip or None)
+        self.log("prompt", mode=self.payload.get("composer_mode"), skip=skip or None, analysis=analysis or None)
         return {"continue": True}
 
     def _guard(self, rel: str | None) -> dict | None:
@@ -236,6 +241,7 @@ class Gate:
         module = self.module_from_args(args)
         if module and self.state is not None:
             self.state.add("searched", module)
+            self.state.add("consulted", module)
             self.save()
         self.log("search_call", module=module, via=via)
 
@@ -262,6 +268,7 @@ class Gate:
         else:
             if module:
                 self.state.add("searched", module)
+                self.state.add("consulted", module)
             for mid in ids:
                 self.state.add("returned", mid)
             self.log("mcp_search", module=module, ids=ids)
@@ -286,13 +293,23 @@ class Gate:
             self.save()
         return {}
 
+    def _written(self) -> set[str]:
+        return set(self.state.data["written"]) | set(self.state.data["cli_recorded"])
+
     def _pending_nudges(self, status) -> list[str]:
         if status not in (None, "completed") or self.state.data["skip"]:
             return []
         if not self.config.get("gate.stop_reminder", True) or self.config.get("gate.mode") == "off":
             return []
-        written = set(self.state.data["written"]) | set(self.state.data["cli_recorded"])
+        written = self._written()
         return [m for m in self.state.data["edited"] if m not in written and not self.state.has("nudged", m)]
+
+    def _analyzed(self, status) -> list[str]:
+        """排查类对话里查过记忆、但既没改代码也没写记忆的模块。"""
+        if status not in (None, "completed") or self.state.data["skip"] or not self.state.data["analysis"]:
+            return []
+        done = self._written() | set(self.state.data["edited"])
+        return [m for m in self.state.data["consulted"] if m not in done]
 
     def on_stop(self) -> dict:
         if self.state is None:
@@ -300,6 +317,9 @@ class Gate:
         self.state.cleanup_old()
         status = self.payload.get("status")
         pending = self._pending_nudges(status)
+        analyzed = self._analyzed(status)
+        remind_analysis = self.config.get("gate.analysis_reminder") and self.config.get("gate.mode") != "off"
+        analysis_pending = [m for m in analyzed if not self.state.has("nudged", m)] if remind_analysis else []
         usage = {k: self.payload.get(k) for k in TOKEN_FIELDS if isinstance(self.payload.get(k), int)}
         self.save()
         self.log(
@@ -310,20 +330,25 @@ class Gate:
             returned=self.state.data["returned"] or None,
             recorded=self.state.data["recorded"] or None,
             edited=self.state.data["edited"] or None,
-            nudged=pending or None,
+            analyzed=analyzed or None,
+            nudged=(pending + analysis_pending) or None,
             **usage,
         )
-        if not pending:
+        if not pending and not analysis_pending:
             return {}
-        for module in pending:
+        for module in pending + analysis_pending:
             self.state.add("nudged", module)
         self.save()
-        names = "、".join(pending)
+        parts = []
+        if pending:
+            parts.append(f"本轮修改了 {'、'.join(pending)}，但还没有写研发记忆")
+        if analysis_pending:
+            parts.append(f"本轮排查了 {'、'.join(analysis_pending)}，没有改代码也没有写记忆")
         return {
             "followup_message": (
-                f"[pmem] 本轮修改了 {names}，但还没有写研发记忆。如果得出了值得留给后人的结论"
+                f"[pmem] {'；'.join(parts)}。如果得出了值得留给后人的结论"
                 "（根因、排除过的方向、做出的决定、潜在风险），请用 record_memory 各记一条；"
-                "只是机械改动、没有新结论的话，回复“无需记录”即可。"
+                "只是机械改动或查阅、没有新结论的话，回复“无需记录”即可。"
             )
         }
 

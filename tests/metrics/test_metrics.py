@@ -163,6 +163,16 @@ def test_cli_record_after_nudge_counts_as_converted(project):
     assert report["habits"]["nudges"] == 1 and report["habits"]["nudge_converted"] == 1
 
 
+def test_analysis_conversations_are_reported(project):
+    cache = Config.load(project).cache_dir
+    for conv, left in (("a1", ["gameplay.Jigsaw"]), ("a2", None)):
+        log_event(cache, "prompt", conv=conv, analysis=True)
+        log_event(cache, "search_call", conv=conv, module="gameplay.Jigsaw", via="mcp")
+        log_event(cache, "stop", conv=conv, status="completed", analyzed=left)
+    habits = build_report(project, days=7, heat=False)["habits"]
+    assert (habits["analysis_conversations"], habits["analysis_left"], habits["analysis_left_modules"]) == (2, 1, 1)
+
+
 def test_cli_search_is_linked_to_conversation(project, monkeypatch):
     other_id = record_as(project, monkeypatch, "alice", "risk", MEMORY)
     cache = Config.load(project).cache_dir

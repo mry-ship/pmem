@@ -42,6 +42,7 @@ gate:
   watch: []               # 为空 = 所有已登记模块的路径都受守护
   ignore: ["**/*.md", "docs/**", ".memory/**", ".cursor/**"]
   skip_markers: ["跳过记忆", "skip-memory"]
+  analysis_reminder: false  # true = 只排查没改代码的对话结束时，也提醒记录结论（pmem report 里可先看这类对话有多少）
 write:
   default_status: active  # active 直接生效 / draft 需审阅
   content_min: 20

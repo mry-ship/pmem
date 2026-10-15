@@ -263,6 +263,45 @@ def test_record_injection_adds_files_edited_in_module(make_project):
     assert handle("pre-tool", payload, root)["updated_input"]["anchors"] == ["src/Shop/Shop.cs#Buy"]
 
 
+def _analysis_turn(root: Path, prompt: str, conv="c1") -> dict:
+    handle("prompt", {"conversation_id": conv, "prompt": prompt}, root)
+    handle("before-mcp", search_payload(conv=conv, module="gameplay.Jigsaw"), root)
+    return handle("stop", {"conversation_id": conv, "status": "completed"}, root)
+
+
+def _last_stop(root: Path) -> dict:
+    return [e for e in read_events(Config.load(root).cache_dir) if e["type"] == "stop"][-1]
+
+
+def test_analysis_only_conversation_is_logged_but_not_reminded_by_default(make_project):
+    root = make_project()
+    assert _analysis_turn(root, "拼图奖励为什么会重复发放？") == {}
+    assert _last_stop(root)["analyzed"] == ["gameplay.Jigsaw"]
+
+
+def test_analysis_reminder_can_be_enabled(make_project):
+    root = make_project()
+    config = root / ".memory" / "config.yaml"
+    text = config.read_text(encoding="utf-8").replace("mode: warn", "mode: warn, analysis_reminder: true")
+    config.write_text(text, encoding="utf-8")
+    first = _analysis_turn(root, "Why does the reward get granted twice?")
+    assert "排查了 gameplay.Jigsaw" in first["followup_message"]
+    assert _analysis_turn(root, "再看看") == {}
+
+
+def test_non_analysis_or_recorded_conversations_are_not_counted(make_project):
+    root = make_project()
+    _analysis_turn(root, "给拼图加一个新关卡", conv="plain")
+    assert "analyzed" not in _last_stop(root)
+    handle("prompt", {"conversation_id": "rec", "prompt": "排查一下拼图报错"}, root)
+    handle("before-mcp", search_payload(conv="rec", module="gameplay.Jigsaw"), root)
+    shell = {"conversation_id": "rec", "tool_name": "Shell",
+             "tool_input": {"command": "pmem record --module gameplay.Jigsaw --entity A --kind risk --content-file a.md"}}
+    handle("pre-tool", shell, root)
+    handle("stop", {"conversation_id": "rec", "status": "completed"}, root)
+    assert "analyzed" not in _last_stop(root)
+
+
 def test_cli_search_in_shell_counts_as_searched(make_project):
     root = make_project("block")
     shell = {"conversation_id": "c1", "tool_name": "Shell",

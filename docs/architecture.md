@@ -17,12 +17,12 @@ flowchart LR
     subgraph Agent[Cursor / Claude Code / Codex]
         R[规则 pmem.mdc 等]
         M[MCP 工具<br/>search_memory<br/>record_memory<br/>confirm_memory<br/>memory_graph<br/>list_modules]
-        H[Hooks<br/>prompt · pre-tool<br/>before-mcp · after-mcp<br/>edited · post-tool<br/>compact · stop]
+        H[Hooks<br/>改前拦截<br/>记下查过和改过<br/>结束提醒]
     end
     subgraph pmem 命令
         S[serve]
         HK[hook]
-        CLI[search · record · confirm<br/>graph · list · terms<br/>init · scan · doctor<br/>compact · anchors<br/>import · reindex<br/>report · bench]
+        CLI[命令行<br/>读写记忆、接入<br/>体检、报告]
     end
     SV[MemoryService<br/>业务规则]
     REG[ModuleRegistry<br/>modules.yaml]
@@ -50,10 +50,10 @@ flowchart LR
 | `index` | 分词（中文二元组 + 英文词 + camelCase 拆分）、BM25、嵌入器（ONNX / Ollama / OpenAI 兼容）、SQLite 向量缓存、混合排序 |
 | `service` | 五个 MCP 工具背后的规则：长度、类型、密钥、每日上限、新模块提示、检索参数归一、同义词扩展；模块和存储错误统一转成 `ok: false` 返回；MCP 与 CLI 共用 |
 | `server` | MCP stdio 服务，只做参数转发 |
-| `hooks` | Hook 输入解析（兼容 Windows 转码）、按对话隔离的状态、闸门与结束提醒 |
+| `hooks` | Hook 输入解析（兼容 Windows 转码）、按对话隔离的状态、闸门与结束提醒；事件有 prompt、pre-tool、before-mcp、after-mcp、edited、post-tool、compact、stop |
 | `metrics` | 事件日志、收益报告、引用识别 |
 | `bench` | 基于 Cursor SDK 的有/无记忆对照实验 |
-| `cli` / `generate` / `scan` | 命令入口（两张分发表：读写记忆的命令直接调 `MemoryService`，其余各自实现）、`init` 生成的文件模板、目录与提交热度扫描（供 Agent 划分模块） |
+| `cli` / `generate` / `scan` | 命令入口（两张分发表：search、record、confirm、graph、list、terms 直接调 `MemoryService`；init、scan、doctor、compact、anchors、import、reindex、report、bench、serve、hook 各自实现）、`init` 生成的文件模板、目录与提交热度扫描（供 Agent 划分模块） |
 
 ## 四条主流程
 

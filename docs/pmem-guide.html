@@ -420,6 +420,7 @@ git commit -m "接入 pmem"</code></pre>
   <ul>
     <li>拦截范围：写文件类工具（Write / StrReplace / Edit / Delete 等）和终端里的写命令。</li>
     <li>“查过”的判定：MCP 的 <code>search_memory</code>，或终端里运行 <code>pmem search --module &lt;模块&gt;</code>。MCP 不可用时用终端也行，不会把 Agent 卡死。</li>
+    <li>结束提醒：改了模块却没写记忆，提醒一次；整个对话只查了记忆、没改也没写，也提醒一次（<code>gate.analysis_reminder</code> 可关）。中断结束的回合和说了“跳过记忆”的对话不提醒。</li>
     <li>上下文压缩后状态清零；会话状态 7 天过期。</li>
     <li>Hook 出任何异常都直接放行，错误写入用户缓存目录的 <code>hook-errors.log</code>，<code>pmem doctor</code> 会显示最近的错误。</li>
   </ul>
@@ -528,7 +529,7 @@ embedding:
     <li>按 <code>modules.yaml</code> 把文件路径或别名映射到模块，在模块内检索。</li>
     <li>查询词按 <code>synonyms</code> 和记忆的 <code>aliases</code> 扩展，扩展词权重略低于原词。</li>
     <li>相关度 = 0.6 × 向量相似度 + 0.4 × BM25（关键词匹配算法）。</li>
-    <li>议题匹配加 0.15；排除项、更正加 0.05；按 90 天半衰期做时间衰减（核对过的按核对日期算）。</li>
+    <li>议题匹配加 0.15；排除项、更正加 0.05；再乘时间系数 0.7 + 0.3 × 0.5<sup>天数/90</sup>：越新越靠前，最旧也保留七成（核对过的按核对日期算）。</li>
     <li>同一批次（同一对话，或同一作者 90 分钟内）最多返回 2 条，避免碎片挤占名额。</li>
     <li>议题内没命中时退回整个模块，并标注 <code>fallback: module</code>。</li>
   </ol>

@@ -14,15 +14,15 @@
 
 ```mermaid
 flowchart LR
-    subgraph Cursor
-        R[规则 pmem.mdc]
-        M[MCP 工具<br/>search_memory / record_memory / list_modules]
-        H[Hooks<br/>prompt / pre-tool / after-mcp / edited / compact / stop]
+    subgraph Agent[Cursor / Claude Code / Codex]
+        R[规则 pmem.mdc 等]
+        M[MCP 工具<br/>search_memory / record_memory / confirm_memory<br/>memory_graph / list_modules]
+        H[Hooks<br/>prompt / pre-tool / before-mcp / after-mcp<br/>edited / post-tool / compact / stop]
     end
     subgraph pmem 命令
         S[serve]
         HK[hook]
-        CLI[init / doctor / search / record / list / report / bench]
+        CLI[search / record / confirm / graph / list / terms<br/>init / scan / doctor / compact / anchors<br/>import / reindex / report / bench]
     end
     SV[MemoryService<br/>业务规则]
     REG[ModuleRegistry<br/>modules.yaml]
@@ -48,20 +48,20 @@ flowchart LR
 | `core` | 条目模型（Markdown + YAML 头）、ULID、配置、模块目录（名称解析、别名、路径映射）、敏感信息检测 |
 | `vcs` / `storage` | 作者与版本号来自 Git/SVN；写文件；判断条目是否已提交（决定能否 `draft_id` 覆盖）；SVN 下自动 `svn add` |
 | `index` | 分词（中文二元组 + 英文词 + camelCase 拆分）、BM25、嵌入器（ONNX / Ollama / OpenAI 兼容）、SQLite 向量缓存、混合排序 |
-| `service` | 三个工具背后的规则：长度、类型、密钥、每日上限、新模块提示、检索参数归一；MCP 与 CLI 共用 |
+| `service` | 五个 MCP 工具背后的规则：长度、类型、密钥、每日上限、新模块提示、检索参数归一、同义词扩展；模块和存储错误统一转成 `ok: false` 返回；MCP 与 CLI 共用 |
 | `server` | MCP stdio 服务，只做参数转发 |
 | `hooks` | Hook 输入解析（兼容 Windows 转码）、按对话隔离的状态、闸门与结束提醒 |
 | `metrics` | 事件日志、收益报告、引用识别 |
 | `bench` | 基于 Cursor SDK 的有/无记忆对照实验 |
-| `cli` / `generate` / `scan` | 命令入口、`init` 生成的文件模板、目录与提交热度扫描（供 Agent 划分模块） |
+| `cli` / `generate` / `scan` | 命令入口（两张分发表：读写记忆的命令直接调 `MemoryService`，其余各自实现）、`init` 生成的文件模板、目录与提交热度扫描（供 Agent 划分模块） |
 
 ## 四条主流程
 
-**检索**：Agent 调用 `search_memory(path=...)`。服务先用 `modules.yaml` 把路径映射到模块，再在该模块内排序：相关度 = 0.6 × 向量相似度 + 0.4 × BM25；议题匹配加 0.15；排除项和更正加 0.05；按 90 天半衰期衰减；同一批次（同一对话，或同一作者 90 分钟内）最多返回 2 条。命中议题为空时退回到整个模块，并标注 `fallback: module`。锚点代码变化过的条目带 `stale: true`。
+**检索**：Agent 调用 `search_memory(path=...)`。服务先用 `modules.yaml` 把路径映射到模块，查询词按同义词表和记忆的 `aliases` 扩展，再在该模块内排序：相关度 = 0.6 × 向量相似度 + 0.4 × BM25；议题匹配加 0.15；排除项和更正加 0.05；再乘时间系数 0.7 + 0.3 × 0.5^(天数/90)（越新越靠前，最旧也保留七成，核对过的按核对日期算）；同一批次（同一对话，或同一作者 90 分钟内）最多返回 2 条。命中议题为空时退回到整个模块，并标注 `fallback: module`。锚点代码变化过的条目带 `stale: true`，核对后用 `confirm_memory` 刷新核对日期。带 `as_of` 时只看那天有效的记忆。
 
-**写入**：`record_memory` 依次校验模块、类型、长度、密钥、每日上限，然后写文件、刷新索引，返回 `draft_id`。Hook 在调用前注入对话 id 和本对话上一次的 `draft_id`，同一任务再写时会覆盖，而不是新增。
+**写入**：`record_memory` 依次校验模块、类型、长度、密钥、每日上限，然后写文件、刷新索引，返回 `draft_id`、同模块最相近的已有记忆（`similar`）和写作提示。Hook 在调用前注入对话 id 和本对话上一次的 `draft_id`，同一任务再写时会覆盖，而不是新增。替代关系可用 `memory_graph` 按议题看时间线。
 
-**闸门**：preToolUse 拦截写文件的工具和终端里的写命令，把目标路径映射到模块。如果该模块已有记忆、本对话还没查过：`warn` 档拒绝一次，并在 `user_message` 里写明该调用什么；`block` 档一直拒绝，直到查过为止。MCP 检索、终端里的 `pmem search` 都算“已查过”。上下文压缩后状态清零。stop 时，对“改了却没写记忆”的模块提醒一次。
+**闸门**：preToolUse 拦截写文件的工具和终端里的写命令，把目标路径映射到模块。如果该模块已有记忆、本对话还没查过：`warn` 档拒绝一次，并在 `user_message` 里写明该调用什么；`block` 档一直拒绝，直到查过为止。MCP 检索、终端里的 `pmem search --module <模块>`（模块名要写字面值）都算“已查过”。上下文压缩后状态清零。stop 时提醒一次：改了模块却没写记忆；或整个对话只查了记忆、没改也没写（`gate.analysis_reminder`）。中断结束的回合和说了“跳过记忆”的对话不提醒。
 
 **度量**：服务和 Hooks 把事件追加到用户缓存目录的 `events.jsonl`。`pmem report` 按对话聚合；“记忆被采用”在报告时离线比对对话记录，不在 Hook 里计算。
 
@@ -101,4 +101,5 @@ flowchart LR
 - MCP 路径下，Hook 是否真能把对话 id 注入工具参数还没在 Cursor 中实测；作为兜底，报告会从 afterMCPExecution 的结果里提取记忆 id。
 - 收益报告只看本机数据，团队汇总尚未实现。
 - `pmem bench` 还没有用真实 API Key 跑过完整对照；示例用例已用 `--dry-run` 验证有效。
-- 模块划分依赖 Agent 按 `pmem-bootstrap` 技能完成；完整的自动扫描器、重建索引、批量导入还在计划中。
+- 模块划分依赖 Agent 按 `pmem-bootstrap` 技能完成：`pmem scan` 只给出目录和提交热度，不会自动划分。
+- Claude Code、Codex 的接入只做过模拟测试，还没在真实会话里跑过。

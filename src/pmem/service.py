@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import difflib
 import time
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
@@ -12,12 +13,14 @@ from pmem.core.quality import content_hints, entity_hint
 from pmem.core.registry import ModuleRegistry, RegistryError
 from pmem.core.secrets import find_secrets
 from pmem.index.embedder import make_embedder
-from pmem.index.store import MemoryIndex
+from pmem.index.store import VISIBLE_STATUSES, MemoryIndex
 from pmem.metrics.events import log_event
 from pmem.storage.files import FilesStorage, StorageError
 from pmem.vcs.detect import detect_vcs
 
 MAX_LIMIT = 10
+MAX_INHERITED_ANCHORS = 10
+COMPACT_MIN_GROUP = 5
 
 
 def _fail(message: str, **extra) -> dict:
@@ -207,10 +210,15 @@ class MemoryService:
         known_entities = list(dict.fromkeys(
             [*declared, *(e.entity for e in self.index.entries() if e.module == resolved.id)]
         ))
-        hints = content_hints(content, int(self.config.get("write.recommend_max")))
+        supersedes = list(dict.fromkeys(s for s in supersedes or [] if s))
+        replaced = [old for s in supersedes if (old := self.index.find(s)) is not None]
+        # 合并多条零碎记忆时只受硬上限约束
+        recommend_max = high if len(replaced) >= 2 else int(self.config.get("write.recommend_max"))
+        hints = content_hints(content, recommend_max)
         if not self.registry.is_global_entity(entity_id) and (new_entity := entity_hint(entity_id, known_entities)):
             hints.append(new_entity)
-        if not draft_id:
+        # 替代旧记忆（含合并零碎记忆）不增加条数，不受每日上限约束
+        if not draft_id and not replaced:
             same_day = [
                 e.id
                 for e in self.index.entries()
@@ -224,11 +232,10 @@ class MemoryService:
                     existing_ids=same_day,
                 )
 
-        warnings: list[str] = []
-        supersedes = [s for s in (supersedes or []) if s]
-        for old_id in supersedes:
-            if self.index.find(old_id) is None:
-                warnings.append(f"supersedes 中的 {old_id} 不存在，已忽略对它的替代关系")
+        warnings = [f"supersedes 中的 {s} 不存在，已忽略对它的替代关系"
+                    for s in supersedes if s not in {old.id for old in replaced}]
+        if not anchors and replaced:
+            anchors = list(dict.fromkeys(a for old in replaced for a in old.anchors))[:MAX_INHERITED_ANCHORS]
         entry = Entry(
             id=new_ulid(),
             module=resolved.id,
@@ -239,7 +246,7 @@ class MemoryService:
             author=author,
             revision=self.vcs.revision(),
             status=str(self.config.get("write.default_status")),
-            supersedes=[s for s in supersedes if self.index.find(s) is not None],
+            supersedes=[old.id for old in replaced],
             anchors=[a.replace("\\", "/") for a in anchors or []],
             source_conversation=source_conversation or None,
         )
@@ -308,3 +315,61 @@ class MemoryService:
                 row["aliases"] = module.aliases
             rows.append(row)
         return {"ok": True, "categories": registry.categories, "modules": rows, "registered_empty": empty}
+
+    # ---- compact ----
+
+    def _visible_groups(self, module: str | None = None) -> dict[tuple[str, str], list[Entry]]:
+        hidden = self.index.superseded()
+        groups: dict[tuple[str, str], list[Entry]] = {}
+        for entry in sorted(self.index.entries(), key=lambda e: (e.note_date, e.id)):
+            if entry.status not in VISIBLE_STATUSES or entry.id in hidden:
+                continue
+            if module and entry.module.lower() != module.lower():
+                continue
+            groups.setdefault((entry.module, entry.entity.lower()), []).append(entry)
+        return groups
+
+    def compact_groups(self, module: str | None = None, min_size: int = COMPACT_MIN_GROUP) -> dict:
+        """同一模块同一议题积累了多条记忆的分组，按条数从多到少。"""
+        if module:
+            try:
+                module = self.registry.resolve_module(module).id
+            except RegistryError as exc:
+                return _fail(str(exc))
+        rows = []
+        for (module_id, _), items in self._visible_groups(module).items():
+            if len(items) < min_size:
+                continue
+            rows.append({
+                "module": module_id,
+                "entity": items[-1].entity,
+                "count": len(items),
+                "chars": sum(len(e.content) for e in items),
+                "first": items[0].note_date,
+                "last": items[-1].note_date,
+                "kinds": dict(Counter(e.kind for e in items)),
+            })
+        rows.sort(key=lambda r: (-r["count"], r["module"], r["entity"]))
+        return {"ok": True, "min_size": min_size, "groups": rows, "memories": sum(r["count"] for r in rows)}
+
+    def compact_group(self, module: str, entity: str) -> dict:
+        """一个议题下全部有效记忆的正文（从旧到新），供合并成一条。"""
+        try:
+            module_id = self.registry.resolve_module(module).id
+        except RegistryError as exc:
+            return _fail(str(exc))
+        entity_id = self.registry.resolve_entity(module_id, entity)
+        items = self._visible_groups(module_id).get((module_id, entity_id.lower()), [])
+        if not items:
+            return _fail(f"{module_id}/{entity_id} 下没有有效记忆")
+        return {
+            "ok": True,
+            "module": module_id,
+            "entity": items[-1].entity,
+            "chars": sum(len(e.content) for e in items),
+            "items": [
+                {"id": e.id, "kind": e.kind, "date": e.note_date, "author": e.author,
+                 "anchors": e.anchors, "content": e.content}
+                for e in items
+            ],
+        }

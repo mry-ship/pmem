@@ -9,6 +9,7 @@ import yaml
 from pmem.generate.templates import (
     BOOTSTRAP_SKILL,
     CATEGORY_PRESETS,
+    COMPACT_SKILL,
     CONFIG_TEMPLATE,
     GENERATED,
     HOOK_EVENTS,
@@ -93,9 +94,11 @@ def run_init(root: Path, project_type: str | None, gate: str) -> int:
     cursor = root / ".cursor"
     _write_text(cursor / "rules" / "pmem.mdc", RULE.format(generated=GENERATED))
     _write_text(cursor / "skills" / "pmem-bootstrap" / "SKILL.md", BOOTSTRAP_SKILL.format(generated=GENERATED))
+    _write_text(cursor / "skills" / "pmem-compact" / "SKILL.md", COMPACT_SKILL.format(generated=GENERATED))
     merge_hooks(cursor / "hooks.json")
     merge_mcp(cursor / "mcp.json")
-    done.append("生成 .cursor/rules/pmem.mdc、.cursor/skills/pmem-bootstrap、合并 .cursor/hooks.json 与 .cursor/mcp.json")
+    done.append("生成 .cursor/rules/pmem.mdc、.cursor/skills/pmem-bootstrap 与 pmem-compact、"
+                "合并 .cursor/hooks.json 与 .cursor/mcp.json")
 
     print("pmem 接入完成：")
     for line in done:

@@ -56,6 +56,13 @@ def build_parser():
     p = sub.add_parser("list", help="列出模块与记忆数量")
     p.add_argument("--root", default=".")
 
+    p = sub.add_parser("compact", help="列出积累了多条零碎记忆的议题；指定议题时输出全部正文，供 Agent 合并成一条")
+    p.add_argument("--module", default="")
+    p.add_argument("--entity", default="")
+    p.add_argument("--min", type=int, default=5, help="一个议题至少积累多少条才列出")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--root", default=".")
+
     p = sub.add_parser("import", help="从参考实现的 LanceDB 记忆库导入（只读源库，重复导入不会重复写）")
     p.add_argument("--lancedb", required=True, help="LanceDB 目录")
     p.add_argument("--catalog", default=None, help="参考实现的 modules.yaml，用于填充大类与议题")
@@ -137,6 +144,10 @@ def main(argv: list[str] | None = None) -> int:
 
         return run_import(_project_root(args.root), Path(args.lancedb), Path(args.catalog) if args.catalog else None,
                           args.author, args.dry_run, args.guess_kind)
+    if args.command == "compact":
+        from pmem.cli.compact_cmd import run_compact
+
+        return run_compact(_project_root(args.root), args.module, args.entity, args.min, args.json)
     if args.command == "reindex":
         from pmem.cli.reindex_cmd import run_reindex
 

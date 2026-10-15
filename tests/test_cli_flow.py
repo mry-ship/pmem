@@ -30,6 +30,7 @@ def test_init_creates_project_files_and_merges_existing_cursor_config(tmp_path, 
     assert set(servers) == {"other", "pmem"}
     assert (cursor / "rules" / "pmem.mdc").exists()
     assert (cursor / "skills" / "pmem-bootstrap" / "SKILL.md").exists()
+    assert "pmem compact" in (cursor / "skills" / "pmem-compact" / "SKILL.md").read_text(encoding="utf-8")
 
 
 def test_init_keeps_existing_memory_config(tmp_path):

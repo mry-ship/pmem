@@ -10,7 +10,9 @@ from pathlib import Path
 from pmem.core.config import Config
 from pmem.core.quality import similar_entity_pairs
 from pmem.core.registry import ModuleRegistry, RegistryError
+from pmem.index.store import VISIBLE_STATUSES
 from pmem.scan.lite import iter_code_files
+from pmem.service import COMPACT_MIN_GROUP
 from pmem.storage.files import FilesStorage
 from pmem.vcs.detect import detect_vcs
 
@@ -95,8 +97,14 @@ def run_doctor(root: Path) -> int:
     pending = vcs.uncommitted_count(config.entries_dir)
     if pending:
         line(WARN, f"本机有 {pending} 条记忆未提交，队友看不到；请连同 .memory/ 一起提交")
+    hidden = {s for _, e in entries if e.status in VISIBLE_STATUSES for s in e.supersedes}
+    visible = [e for _, e in entries if e.status in VISIBLE_STATUSES and e.id not in hidden]
+    big = [n for n in Counter((e.module, e.entity.lower()) for e in visible).values() if n >= COMPACT_MIN_GROUP]
+    if big:
+        line(WARN, f"{len(big)} 个议题各积累了 {COMPACT_MIN_GROUP} 条以上记忆（共 {sum(big)} 条），检索时会互相挤占；"
+                   "在 Cursor 里对 Agent 说“按 pmem-compact 技能合并记忆”")
     by_module: dict[str, list[str]] = {}
-    for _, e in entries:
+    for e in visible:
         by_module.setdefault(e.module, []).append(e.entity)
     pairs = [(m, a, b) for m, names in sorted(by_module.items()) for a, b in similar_entity_pairs(names)]
     if pairs:

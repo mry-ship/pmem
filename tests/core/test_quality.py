@@ -14,6 +14,11 @@ def test_changelog_words_with_reason_are_fine():
     assert content_hints("修复重复发奖：原因是服务端没有按关卡做幂等校验。", 600) == []
 
 
+def test_regression_and_known_issue_notes_count_as_reason():
+    assert content_hints("生成布局改为底对齐。回归：单列与三列礼包界面。", 600) == []
+    assert content_hints("紧急盘改为只校验摆放解。已知：紧急盘可多解。", 600) == []
+
+
 def test_missing_reason_is_hinted():
     hints = content_hints("拼图界面在低端机上加载慢。", 600)
     assert len(hints) == 1 and "为什么" in hints[0]

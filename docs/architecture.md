@@ -16,13 +16,13 @@
 flowchart LR
     subgraph Agent[Cursor / Claude Code / Codex]
         R[规则 pmem.mdc 等]
-        M[MCP 工具<br/>search_memory / record_memory / confirm_memory<br/>memory_graph / list_modules]
-        H[Hooks<br/>prompt / pre-tool / before-mcp / after-mcp<br/>edited / post-tool / compact / stop]
+        M[MCP 工具<br/>search_memory<br/>record_memory<br/>confirm_memory<br/>memory_graph<br/>list_modules]
+        H[Hooks<br/>prompt · pre-tool<br/>before-mcp · after-mcp<br/>edited · post-tool<br/>compact · stop]
     end
     subgraph pmem 命令
         S[serve]
         HK[hook]
-        CLI[search / record / confirm / graph / list / terms<br/>init / scan / doctor / compact / anchors<br/>import / reindex / report / bench]
+        CLI[search · record · confirm<br/>graph · list · terms<br/>init · scan · doctor<br/>compact · anchors<br/>import · reindex<br/>report · bench]
     end
     SV[MemoryService<br/>业务规则]
     REG[ModuleRegistry<br/>modules.yaml]

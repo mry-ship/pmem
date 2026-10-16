@@ -4,7 +4,7 @@
 > 记忆是仓库里的 Markdown 文件，跟代码一起提交、团队共享，不需要服务器，也不上传任何数据。
 > 支持 Cursor、Claude Code、Codex。
 
-📖 [图文使用手册](https://mry-ship.github.io/pmem/pmem-guide.html)
+📖 [图文使用手册](https://mry-ship.github.io/pmem/pmem-guide.html) · [Wiki](https://github.com/mry-ship/pmem/wiki)
 
 ## 它做什么
 

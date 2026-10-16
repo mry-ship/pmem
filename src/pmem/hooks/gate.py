@@ -12,8 +12,10 @@ from pmem.core.entry import Entry
 from pmem.core.registry import ModuleRegistry, RegistryError
 from pmem.hooks.payload import asks_to_skip, fuzzy_contains, last_user_text, tool_input
 from pmem.hooks.state import SessionState
+from pmem.index.anchors import STALE_LABEL, AnchorChecker
 from pmem.index.graph import KIND_LABELS, current_entries, digest, preview
 from pmem.metrics.events import log_event
+from pmem.vcs.detect import detect_vcs
 
 WRITE_TOOLS = {"write", "strreplace", "edit", "multiedit", "editnotebook", "delete", "search_replace"}
 _GLOB = wglob.GLOBSTAR | wglob.BRACE | wglob.DOTGLOB | wglob.FORCEUNIX | wglob.IGNORECASE
@@ -28,6 +30,8 @@ PMEM_TOOLS = ("record_memory", "search_memory", "memory_graph")
 MAX_AUTO_ANCHORS = 5
 MAX_REVIEW_MODULES = 3
 DIGEST_PREVIEW = 100
+PITFALL_KINDS = ("exclusion", "risk")
+MAX_GUARD_PITFALLS = 5
 _PATH_TOKEN = re.compile(r"[\w.\-]*[/\\][\w./\\\-]+")
 
 
@@ -142,6 +146,7 @@ class Gate:
         self.state = SessionState(self.config.cache_dir, self.conversation) if self.conversation else None
         modules_path = self.config.modules_path
         self.registry = ModuleRegistry.load(modules_path) if modules_path.exists() else ModuleRegistry({})
+        self._files: dict[str, Path] = {}
 
     # 路径与模块
 
@@ -194,10 +199,32 @@ class Gate:
         entries = []
         for path in sorted(folder.glob("*.md")) if folder.is_dir() else []:
             try:
-                entries.append(Entry.from_markdown(path.read_text(encoding="utf-8-sig")))
+                entry = Entry.from_markdown(path.read_text(encoding="utf-8-sig"))
             except Exception:  # noqa: BLE001, S112
                 continue
+            entries.append(entry)
+            self._files[entry.id] = path
         return entries
+
+    def stale_problems(self, entries: list[Entry]) -> dict[str, list[str]]:
+        try:
+            checker = AnchorChecker(self.root, detect_vcs(self.root, self.config.get("vcs")))
+            return checker.check(entries, self._files)
+        except Exception:  # noqa: BLE001
+            return {}
+
+    def memory_lines(self, entries: list[Entry]) -> list[str]:
+        """摘要行：类型｜议题｜日期：预览；关联代码之后改过的标“需核实”。"""
+        problems = self.stale_problems(entries)
+        lines = []
+        for e in entries:
+            mark = f"（⚠ {STALE_LABEL}：{'；'.join(problems[e.id])}）" if e.id in problems else ""
+            lines.append(f"- {KIND_LABELS.get(e.kind, e.kind)}｜{e.entity}｜{e.note_date}{mark}："
+                         f"{preview(e.content, DIGEST_PREVIEW)}")
+        if problems:
+            lines.append(f"标“{STALE_LABEL}”的记忆写下后关联代码又改过，依赖前先对照代码："
+                         "仍成立就 confirm_memory，不成立就写 correction 替代。")
+        return lines
 
     def _watched(self, rel: str) -> bool:
         ignore = self.config.get("gate.ignore") or []
@@ -259,9 +286,7 @@ class Gate:
             f"[pmem] {intro}，该模块有 {len(current_entries(entries))} 条现行研发记忆。回答或修改前先看这些结论"
             f"（摘要；要全文或更多请调用 search_memory(module=\"{module}\", query=\"<问题要点>\")）："
         )
-        lines = [f"- {KIND_LABELS.get(e.kind, e.kind)}｜{e.entity}｜{e.note_date}：{preview(e.content, DIGEST_PREVIEW)}"
-                 for e in picked]
-        return "\n".join([intro_line, *lines])
+        return "\n".join([intro_line, *self.memory_lines(picked)])
 
     def _read_digest(self, args: dict) -> dict:
         rel = self.relative(str(args.get("file_path") or args.get("path") or ""))
@@ -310,7 +335,13 @@ class Gate:
                 f"查过之后才能修改该模块。MCP 工具不可用时，在终端运行 pmem search --module {module} 也算；"
                 "检索报错同样视为查过。确实不需要记忆时，请用户回复“跳过记忆”。"
             )
-        self.log("gate", module=module, file=rel, mode=mode)
+        # 检索按关键词排序，可能漏掉与这次修改相关的坑；排除项和风险直接列出来
+        pitfalls = [e for e in current_entries(self.module_entries(module)) if e.kind in PITFALL_KINDS]
+        if pitfalls:
+            shown = pitfalls[:MAX_GUARD_PITFALLS]
+            more = f"（另有 {len(pitfalls) - len(shown)} 条，检索时可见）" if len(pitfalls) > len(shown) else ""
+            message += "\n该模块已知的排除项和风险，改之前先对照" + more + "：\n" + "\n".join(self.memory_lines(shown))
+        self.log("gate", module=module, file=rel, mode=mode, pitfalls=len(pitfalls) or None)
         return {"permission": "deny", "user_message": message, "agent_message": message}
 
     def on_pre_tool(self) -> dict:

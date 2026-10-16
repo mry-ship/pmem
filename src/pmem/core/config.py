@@ -40,6 +40,7 @@ DEFAULTS: dict = {
         "secret_patterns": [],
     },
     "search": {"limit": 5, "max_per_batch": 2, "recency_half_life_days": 90},
+    "wiki": {"auto": True, "dir": ".memory/wiki"},
 }
 
 _CHOICES = {

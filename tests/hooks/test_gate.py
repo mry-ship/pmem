@@ -413,10 +413,11 @@ def read_payload(root: Path, rel: str, conv="c1") -> dict:
 
 
 def add_entry(root: Path, entry_id: str, kind: str, content: str, day: str, entity="Reward", supersedes="",
-              module="gameplay.Jigsaw"):
+              module="gameplay.Jigsaw", anchors=""):
     folder = root / ".memory" / "entries" / module
     folder.mkdir(parents=True, exist_ok=True)
     extra = f"supersedes: [{supersedes}]\n" if supersedes else ""
+    extra += f"anchors: [{anchors}]\n" if anchors else ""
     text = (f"---\nid: {entry_id}\nmodule: {module}\nentity: {entity}\nkind: {kind}\nstatus: active\n"
             f"author: a\nnote_date: '{day}'\n{extra}---\n{content}\n")
     (folder / f"{entry_id}.md").write_text(text, encoding="utf-8")
@@ -450,6 +451,36 @@ def test_reading_module_code_attaches_digest_once(make_project):
 def test_no_digest_without_memories_or_for_ignored_files(make_project, rel):
     root = make_project()
     assert handle("post-tool", read_payload(root, rel), root) == {}
+
+
+def test_digest_marks_memories_whose_code_is_gone(make_project):
+    root = make_project(with_memory=False)
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A1", "risk", "旧的奖励缓存会重复发放", "2026-09-01",
+              anchors="src/Jigsaw/Gone.cs")
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A2", "decision", "奖励统一由服务端发放", "2026-09-02", entity="Server")
+    context = handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root)["additional_context"]
+    stale_line = next(line for line in context.splitlines() if "旧的奖励缓存" in line)
+    assert "⚠ 需核实：src/Jigsaw/Gone.cs 已不存在" in stale_line
+    assert "需核实" not in next(line for line in context.splitlines() if "服务端发放" in line)
+    assert "confirm_memory" in context
+
+
+def test_block_message_lists_pitfalls_of_the_module(make_project):
+    root = make_project("block", with_memory=False)
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A1", "exclusion", "不要在客户端去重", "2026-09-01")
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A2", "risk", "断线重连会重复领取", "2026-09-02", entity="Reconnect")
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A3", "conclusion", "普通结论不进拦截提示", "2026-09-03", entity="Misc")
+    message = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["user_message"]
+    assert "已知的排除项和风险" in message
+    assert "排除项｜Reward｜2026-09-01：不要在客户端去重" in message
+    assert "风险｜Reconnect" in message
+    assert "普通结论" not in message
+
+
+def test_block_message_has_no_pitfall_section_without_them(make_project):
+    root = make_project("block")
+    message = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["user_message"]
+    assert "排除项和风险" not in message
 
 
 def test_digest_puts_exclusions_first_and_hides_superseded(make_project):

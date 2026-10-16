@@ -179,7 +179,7 @@ pmem doctor</code></pre>
     <tr><td>同一议题记忆变多</td><td>对 AI 说“按 pmem-compact 技能合并记忆”</td></tr>
     <tr><td>换个说法搜不到</td><td>对 AI 说“按 pmem-normalize 技能整理同义词”</td></tr>
     <tr><td>想看效果</td><td><code>pmem report</code></td></tr>
-    <tr><td>想通读全部结论</td><td><code>pmem wiki</code>，生成每模块一页的 Markdown</td></tr>
+    <tr><td>想通读全部结论</td><td>打开 <code>.memory/wiki/index.md</code>（写入记忆后自动更新，过期的标“需核实”）</td></tr>
     <tr><td>升级 pmem</td><td><code>uv tool upgrade pmem</code></td></tr>
   </table>
 </section>
@@ -420,11 +420,12 @@ git commit -m "接入 pmem"</code></pre>
   </table>
   <ul>
     <li>拦截范围：写文件类工具（Write / StrReplace / Edit / Delete 等）和终端里的写命令。</li>
+    <li>拦截提示里直接列出该模块现行的排除项和风险（最多 5 条），即使 AI 检索时关键词没对上，也能先看到这些坑。</li>
     <li>“查过”的判定：MCP 的 <code>search_memory</code>，或终端里运行 <code>pmem search --module &lt;模块&gt;</code>。MCP 不可用时用终端也行，不会把 Agent 卡死。</li>
     <li>结束提醒：改了模块却没写记忆，提醒一次；整个对话只查了记忆、没改也没写，也提醒一次（<code>gate.analysis_reminder</code> 可关）。中断结束的回合和说了“跳过记忆”的对话不提醒。</li>
     <li>记忆审查（不改代码也生效，每个模块每个对话一次）：
       <ul>
-        <li>读代码时，附上该文件所属模块的现行结论摘要（排除项、风险优先，最多 6 条），<code>gate.read_digest</code> 可关。</li>
+        <li>读代码时，附上该文件所属模块的现行结论摘要（排除项、风险优先，最多 6 条；关联代码之后改过的标“需核实”），<code>gate.read_digest</code> 可关。</li>
         <li>回合结束时，本轮问题提到的模块有记忆、却既没查也没看过摘要，要求 AI 查过后核对回答，<code>gate.question_review</code> 可关。</li>
         <li>Claude Code 在提问时就直接附上摘要；Cursor 不允许提问时注入内容，所以只能在结束时追问。</li>
       </ul>
@@ -445,7 +446,7 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>search_memory</code></td><td>检索记忆。改代码前按文件或模块查一次</td><td><code>path</code> 或 <code>module</code>；可选 <code>entity</code>、<code>query</code>、<code>limit</code>（默认 5，上限 10）、<code>as_of</code>（按某天视角查）</td></tr>
     <tr><td><code>record_memory</code></td><td>写入一条记忆</td><td><code>module</code>、<code>entity</code>、<code>kind</code>、<code>content</code>；可选 <code>supersedes</code>、<code>anchors</code>、<code>aliases</code>、<code>draft_id</code></td></tr>
     <tr><td><code>confirm_memory</code></td><td>核对后确认仍然成立，刷新核对日期</td><td><code>ids</code></td></tr>
-    <tr><td><code>memory_graph</code></td><td>模块全貌：每个议题的最新两条结论和相关模块；带 <code>entity</code> 时看该议题的时间线（谁哪天替代了谁）</td><td><code>module</code>；可选 <code>entity</code></td></tr>
+    <tr><td><code>memory_graph</code></td><td>模块全貌：每个议题的最新两条结论（过期的带 <code>stale</code>）和相关模块；带 <code>entity</code> 时看该议题的时间线（谁哪天替代了谁）</td><td><code>module</code>；可选 <code>entity</code></td></tr>
     <tr><td><code>list_modules</code></td><td>列出模块、记忆数量和常用议题</td><td>可选 <code>category</code></td></tr>
   </table>
   <p>检索结果里几个关键字段：<code>stale</code>（关联代码已变）、<code>check</code>（具体哪些文件变了）、<code>fallback: module</code>（议题内没命中，退回整个模块）、<code>related</code>（相关模块）。</p>
@@ -463,7 +464,7 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem record</code></td><td>写入一条记忆，规则与 MCP 相同；长正文用 <code>--content-file</code></td></tr>
     <tr><td><code>pmem confirm &lt;id&gt;...</code></td><td>核对后确认仍然成立</td></tr>
     <tr><td><code>pmem graph --module X</code></td><td>模块全貌，或某议题的时间线</td></tr>
-    <tr><td><code>pmem wiki [--out 目录]</code></td><td>生成每模块一页的 Markdown Wiki（默认 <code>.memory/wiki/</code>）：议题、现行结论、历史、相关模块、代码链接；只覆盖它自己生成的页面</td></tr>
+    <tr><td><code>pmem wiki [--out 目录]</code></td><td>生成每模块一页的 Markdown Wiki（默认 <code>.memory/wiki/</code>）：议题、现行结论、历史、相关模块、代码链接，过期的标“需核实”；只覆盖它自己生成的页面。写入或确认记忆后会自动运行（<code>wiki.auto</code>）</td></tr>
     <tr><td><code>pmem list</code></td><td>模块与记忆数量</td></tr>
     <tr><td><code>pmem terms</code></td><td>记忆里的高频词，用于整理同义词</td></tr>
     <tr><td><code>pmem compact</code></td><td>列出零碎记忆较多的议题；指定议题时输出全部正文供合并</td></tr>
@@ -498,6 +499,9 @@ gate:
   analysis_reminder: true   <span class="c"># 只查了记忆、没改也没写时，结束提醒一次</span>
   read_digest: true         <span class="c"># 读代码时附上该模块的记忆摘要</span>
   question_review: true     <span class="c"># 问题提到的模块没查过时，结束时要求核对</span>
+wiki:
+  auto: true                <span class="c"># 写入或确认记忆后自动重新生成 Wiki</span>
+  dir: .memory/wiki         <span class="c"># 首次生成时自带 .gitignore，不进版本库；想提交就删掉它</span>
 write:
   default_status: active    <span class="c"># active 直接生效 / draft 需人工审阅</span>
   content_min: 20

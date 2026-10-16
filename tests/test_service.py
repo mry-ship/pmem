@@ -158,6 +158,18 @@ def test_confirm_refreshes_verified_date(svc, project):
     assert f"verified: '{result['verified']}'" in text
 
 
+def test_graph_marks_stale_current_memories(svc, project):
+    gone = record(svc, anchors=["src/Jigsaw/Gone.cs"])
+    fine = record(svc, entity="Server", content=LONG + "服务端")
+    overview = svc.graph("gameplay.Jigsaw")
+    rows = {row["id"]: row for topic in overview["topics"] for row in topic["latest"]}
+    assert rows[gone["id"]]["stale"] is True and rows[gone["id"]]["check"] == ["src/Jigsaw/Gone.cs 已不存在"]
+    assert "stale" not in rows[fine["id"]]
+    assert "verify_hint" in overview
+    timeline = svc.graph("gameplay.Jigsaw", entity="Reward")["timeline"]
+    assert timeline[0]["stale"] is True
+
+
 def test_search_rejects_bad_as_of(svc):
     assert svc.search(module="gameplay.Jigsaw", as_of="昨天")["ok"] is False
 

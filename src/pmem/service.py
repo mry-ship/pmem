@@ -317,6 +317,7 @@ class MemoryService:
             hints.append(SIMILAR_HINT)
         if hints:
             response["hints"] = hints + [HINTS_FOOTER]
+        self._refresh_wiki(response)
         self._log(
             "record",
             conv=source_conversation,
@@ -418,13 +419,25 @@ class MemoryService:
             entry.verified = today
             path.write_text(entry.to_markdown(), encoding="utf-8", newline="\n")
             confirmed.append(entry_id)
-        if confirmed:
-            self.index.refresh(force=True)
         self._log("confirm", conv=source_conversation, ids=confirmed)
         response: dict = {"ok": bool(confirmed) or not missing, "confirmed": confirmed, "verified": today}
         if missing:
             response["missing"] = missing
+        if confirmed:
+            self.index.refresh(force=True)
+            self._refresh_wiki(response)
         return response
+
+    def _refresh_wiki(self, response: dict) -> None:
+        """记忆变了就重新生成 Wiki（wiki.auto）；生成失败不影响写入本身，只附一条提醒。"""
+        if not self.config.get("wiki.auto"):
+            return
+        from pmem.generate.wiki import write_wiki
+
+        try:
+            write_wiki(self, self.root / str(self.config.get("wiki.dir")))
+        except Exception as exc:  # noqa: BLE001
+            response.setdefault("warnings", []).append(f"Wiki 重新生成失败（记忆已写入）：{exc}")
 
     # ---- memory_graph ----
 
@@ -433,15 +446,29 @@ class MemoryService:
         module_id = self._module_id(module)
         model = self.graph_model()
         if not entity:
-            return {"ok": True, "module": module_id, "topics": model.topics(module_id),
-                    "related": model.related(module_id)}
+            topics = model.topics(module_id)
+            response = {"ok": True, "module": module_id, "topics": topics, "related": model.related(module_id)}
+            return self._mark_stale(response, [row for t in topics for row in t["latest"]])
         entity_id = self.registry.resolve_entity(module_id, entity)
         timeline = model.timeline(module_id, entity_id)
         if not timeline:
             return _fail(f"{module_id}/{entity_id} 下没有记忆",
                          entities=[t["entity"] for t in model.topics(module_id)][:20])
-        return {"ok": True, "module": module_id, "entity": entity_id, "timeline": timeline,
-                "related": model.related(module_id, entity_id)}
+        response = {"ok": True, "module": module_id, "entity": entity_id, "timeline": timeline,
+                    "related": model.related(module_id, entity_id)}
+        return self._mark_stale(response, [row for row in timeline if "superseded_by" not in row])
+
+    def _mark_stale(self, response: dict, rows: list[dict]) -> dict:
+        """给现行记忆的行标上 stale/check，与检索结果同一口径。"""
+        entries = [e for e in (self.index.find(row["id"]) for row in rows) if e is not None]
+        problems = self.index.check_anchors(entries)
+        for row in rows:
+            if row["id"] in problems:
+                row["stale"] = True
+                row["check"] = problems[row["id"]]
+        if problems:
+            response["verify_hint"] = VERIFY_HINT
+        return response
 
     # ---- terms ----
 

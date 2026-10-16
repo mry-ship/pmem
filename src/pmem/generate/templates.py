@@ -53,6 +53,9 @@ write:
   max_per_day_per_entity: 5
 embedding:
   backend: auto           # auto：装了 pmem[embed] 就用语义检索，否则关键词检索
+wiki:
+  auto: true              # 写入或确认记忆后自动重新生成浏览用的 Wiki
+  dir: .memory/wiki       # 首次生成时放一个 .gitignore 不进版本库；想提交就删掉它
 """
 
 MODULES_HEADER = """\

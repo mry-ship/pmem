@@ -1,9 +1,12 @@
+import os
+from datetime import datetime
 from pathlib import Path
 
 import pytest
 
 from pmem.cli.main import main
 from pmem.cli.wiki_cmd import MARKER
+from pmem.service import MemoryService
 
 CONFIG = "project: { name: demo }\nvcs: none\nembedding: { backend: none }\n"
 MODULES = """
@@ -45,13 +48,47 @@ def test_wiki_writes_index_and_module_pages(root):
     assert sorted(p.name for p in wiki.glob("*.md")) == ["economy.Shop.md", "gameplay.Jigsaw.md", "index.md"]
     index = (wiki / "index.md").read_text(encoding="utf-8")
     assert index.startswith(MARKER)
-    assert "[gameplay.Jigsaw](gameplay.Jigsaw.md) | 1 | 1 | 2026-10-01" in index
+    assert "[gameplay.Jigsaw](gameplay.Jigsaw.md) | 1 | 1 | 1 | 2026-10-01" in index
+    assert (wiki / ".gitignore").read_text(encoding="utf-8") == "*\n"
     page = (wiki / "gameplay.Jigsaw.md").read_text(encoding="utf-8")
     assert "别名：Puzzle" in page and "## Reward" in page
-    assert "### 排除项 · 2026-10-01 · a" in page and "不要在客户端去重" in page
+    assert "### 排除项 · 2026-10-01 · a · ⚠ 需核实" in page and "不要在客户端去重" in page
+    assert "> ⚠ 需核实：src/Jigsaw/Reward.cs 已不存在" in page
     assert "[src/Jigsaw/Reward.cs](../../src/Jigsaw/Reward.cs) `Claim`" in page
     assert "历史：1 条已被替代" in page and "被 `01JA7K3M2X9F4Q8W6ZB1C2D3A2` 替代" in page
     assert "[economy.Shop](economy.Shop.md)：共享代码" in page
+
+
+def test_wiki_marks_only_memories_whose_code_changed(root):
+    code = root / "src" / "Jigsaw" / "Reward.cs"
+    code.parent.mkdir(parents=True)
+    code.write_text("class Reward { void Claim() {} }", encoding="utf-8")
+    old = datetime(2026, 9, 1).timestamp()
+    os.utime(code, (old, old))
+    main(["wiki", "--root", str(root)])
+    page = (root / ".memory" / "wiki" / "gameplay.Jigsaw.md").read_text(encoding="utf-8")
+    assert "需核实" not in page
+
+
+def test_record_regenerates_wiki(root):
+    service = MemoryService(root)
+    try:
+        result = service.record("economy.Shop", "Price", "decision", "价格统一走服务端下发，客户端只做展示，不在本地缓存价格")
+    finally:
+        service.close()
+    assert result["ok"] and "warnings" not in result
+    page = (root / ".memory" / "wiki" / "economy.Shop.md").read_text(encoding="utf-8")
+    assert "价格统一走服务端下发" in page
+
+
+def test_wiki_auto_off_skips_regeneration(root):
+    (root / ".memory" / "config.yaml").write_text(CONFIG + "wiki: { auto: false }\n", encoding="utf-8")
+    service = MemoryService(root)
+    try:
+        service.record("economy.Shop", "Price", "decision", "价格统一走服务端下发，客户端只做展示，不在本地缓存价格")
+    finally:
+        service.close()
+    assert not (root / ".memory" / "wiki").exists()
 
 
 def test_wiki_rerun_removes_stale_generated_pages_only(root):

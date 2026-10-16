@@ -111,6 +111,9 @@ def test_deprecate_makes_module_read_only_and_undo_restores(project, capsys):
     assert rejected["ok"] is False and "已废弃" in rejected["error"]
     assert listed["economy.Shop"]["deprecated"] is True
     assert main(["migrate", "deprecate", "economy.Shop", "--root", str(project)]) == 1
+    capsys.readouterr()
+    assert main(["migrate", "merge", "economy.Store", "economy.Shop", "--root", str(project)]) == 0
+    assert "已废弃，并入后这些记忆同样只读" in capsys.readouterr().out
     assert main(["migrate", "deprecate", "economy.Shop", "--undo", "--root", str(project), "--apply"]) == 0
     assert "status" not in modules_yaml(project)[1]["modules"]["economy.Shop"]
     record(project, "economy.Shop", TEXT + "恢复后。")

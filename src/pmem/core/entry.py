@@ -80,7 +80,8 @@ class Entry:
 
         meta = yaml.safe_load(match.group(1)) or {}
         source = meta.get("source") or {}
-        archived = meta.get("archived") or {}
+        archived = meta.get("archived") if isinstance(meta.get("archived"), dict) else {}
+        restored = str(archived.get("from") or "")
         return cls(
             id=str(meta["id"]),
             module=str(meta["module"]),
@@ -97,5 +98,5 @@ class Entry:
             aliases=[str(x) for x in meta.get("aliases") or []],
             verified=str(meta["verified"]) if meta.get("verified") else None,
             archived_on=str(archived["on"]) if archived.get("on") else None,
-            archived_from=str(archived["from"]) if archived.get("from") else None,
+            archived_from=restored if restored in STATUSES and restored != "archived" else None,
         )

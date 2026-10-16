@@ -144,6 +144,14 @@ def _plan_merge_unregistered(data: dict, registry: ModuleRegistry, source: str, 
 
 
 def plan_merge(data: dict, registry: ModuleRegistry, source: str, target: str) -> tuple[dict, list[str]]:
+    out, notes = _plan_merge(data, registry, source, target)
+    dst_id = _module_key(data, registry, target)
+    if registry.modules[dst_id].deprecated:
+        notes.append(f"注意：{dst_id} 已废弃，并入后这些记忆同样只读")
+    return out, notes
+
+
+def _plan_merge(data: dict, registry: ModuleRegistry, source: str, target: str) -> tuple[dict, list[str]]:
     dst_id = _module_key(data, registry, target)
     if not registry.resolve_module(source).known:
         return _plan_merge_unregistered(data, registry, source, dst_id)

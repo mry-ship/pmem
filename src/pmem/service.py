@@ -299,6 +299,9 @@ class MemoryService:
             draft_id = None
         # 覆盖草稿时没传（None）的列表沿用原值，传空列表才清空；否则替代关系丢失，旧记忆会悄悄恢复现行
         old = self.index.find(draft_id) if draft_id else None
+        if old is not None and old.status == "archived":
+            return _fail(f"记忆 {draft_id} 已归档，不能覆盖；要接着用就先 pmem archive {draft_id} --restore，"
+                         f"要写新结论就新建一条并在 supersedes 中写 {draft_id}")
         if old is not None:
             supersedes = old.supersedes if supersedes is None else supersedes
             anchors = old.anchors if anchors is None else anchors

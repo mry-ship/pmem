@@ -59,6 +59,27 @@ def test_superseding_own_draft_creates_a_new_memory(svc):
     assert _ids(svc, module="gameplay.Jigsaw", query="奖励") == [again["id"]]
 
 
+def test_archived_draft_cannot_be_overwritten(svc):
+    rid = svc.record("gameplay.Jigsaw", "Reward", "conclusion", TEXT)["id"]
+    svc.change_status([rid], "archive")
+    again = svc.record("gameplay.Jigsaw", "Reward", "conclusion", TEXT + "补充。", draft_id=rid)
+    assert again["ok"] is False and "已归档" in again["error"]
+    assert svc.storage.get(rid).status == "archived"
+
+
+def test_bad_archived_header_falls_back_to_active(svc):
+    rid = svc.record("gameplay.Jigsaw", "Reward", "conclusion", TEXT)["id"]
+    svc.change_status([rid], "archive")
+    path = svc.storage.find_path(rid)
+    text = path.read_text(encoding="utf-8")
+    path.write_text(text.replace("from: active", "from: bogus"), encoding="utf-8")
+    assert svc.change_status([rid], "restore")["changed"] == [rid]
+    assert svc.storage.get(rid).status == "active"
+    path.write_text(path.read_text(encoding="utf-8").replace("status: active", "status: archived\narchived: oops"),
+                    encoding="utf-8")
+    assert svc.storage.get(rid).archived_on is None
+
+
 def test_restore_returns_rejected_seed_to_seed(svc):
     rid = svc.record("gameplay.Jigsaw", "Reward", "conclusion", TEXT, status="seed")["id"]
     svc.change_status([rid], "reject")

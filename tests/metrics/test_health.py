@@ -35,6 +35,8 @@ def test_reject_reasons_are_classified():
     assert reject_reason("gameplay.Jigsaw/Reward 今天已有 5 条记忆，达到上限 5；请……带 draft_id 覆盖") == "当天同议题条数达到上限"
     assert reject_reason("未知大类 'x'") == "大类不存在"
     assert reject_reason("莫名其妙") == "其他"
+    assert reject_reason("模块 economy.Shop 已废弃（只读），不再接受新记忆") == "模块已废弃（只读）"
+    assert reject_reason("记忆 X 已提交到版本库，不能覆盖；请新建一条") == "草稿覆盖不被允许"
 
 
 def test_health_lists_problems_for_owners(project, capsys):

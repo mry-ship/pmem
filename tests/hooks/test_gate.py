@@ -209,6 +209,20 @@ def test_shell_write_targets_reads_scripts_and_patches(tmp_path):
     assert shell_write_targets("git apply c.patch", str(tmp_path)) == ["src/P.cs"]
 
 
+def test_multiline_command_registers_every_pmem_call(make_project):
+    root = make_project("block")
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    command = ("$t = $env:TEMP\n"
+               "uv run pmem search --root . --module gameplay.Jigsaw --brief\n"
+               "uv run pmem record --root . --module economy.Shop --entity Price `\n"
+               "  --kind risk --content-file $t\\a.txt\r\n")
+    shell = {"conversation_id": "c1", "tool_name": "Shell", "tool_input": {"command": command, "cwd": ""}}
+    assert handle("pre-tool", shell, root)["permission"] == "allow"
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+    assert handle("stop", stop_payload(), root) == {}
+    assert cli_args(command, "record") == [{"module": "economy.Shop"}]
+
+
 def test_search_in_same_command_only_unlocks_that_module(make_project):
     root = make_project("block")
     mixed = {"conversation_id": "c1", "tool_name": "Shell",

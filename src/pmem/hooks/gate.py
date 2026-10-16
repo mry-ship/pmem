@@ -63,8 +63,9 @@ _PATH_TOKEN = re.compile(r"[\w.\-]*[/\\][\w./\\\-]+")
 # ---- 终端命令里的写文件目标 ----
 
 def _segments(command: str) -> list[str]:
-    """按 ; && || | 拆成单条命令。"""
-    return re.split(r"\s*(?:\|\||&&|[;|])\s*", command or "")
+    """按换行和 ; && || | 拆成单条命令；行尾的 ` 或 \\ 是续行，先接回去。"""
+    joined = re.sub(r"[`\\][ \t]*\r?\n", " ", command or "")
+    return re.split(r"\s*(?:\|\||&&|[;|\r\n])\s*", joined)
 
 
 def _tokens(segment: str) -> list[str]:

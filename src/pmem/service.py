@@ -44,6 +44,14 @@ ANCHOR_HINT = (
     "（如 src/Reward.cs#Claim），只有这个函数改了才需要核实。"
 )
 HINTS_FOOTER = "以上只是提示，已写入；如需修改，带上 draft_id 再写一次即可覆盖。"
+WRITABLE_STATUSES = ("active", "seed", "draft")
+# 动作 → (允许的原状态, 新状态)；记忆文件写入后只有这些状态变更由负责人通过命令行发起
+STATUS_ACTIONS = {
+    "archive": (("active", "seed", "draft"), "archived"),
+    "restore": (("archived",), "active"),
+    "accept": (("seed",), "active"),
+    "reject": (("seed",), "archived"),
+}
 
 
 def _fail(message: str, **extra) -> dict:
@@ -247,7 +255,6 @@ class MemoryService:
 
     # ---- record_memory ----
 
-    @_returns_errors
     def record(
         self,
         module: str,
@@ -259,8 +266,21 @@ class MemoryService:
         draft_id: str | None = None,
         source_conversation: str | None = None,
         aliases: list[str] | None = None,
+        status: str | None = None,
     ) -> dict:
+        response = self._record(module, entity, kind, content, supersedes, anchors, draft_id,
+                                source_conversation, aliases, status)
+        if not response.get("ok"):
+            self._log("record_rejected", conv=source_conversation, module=module, entity=entity or None,
+                      error=str(response.get("error") or "")[:200])
+        return response
+
+    @_returns_errors
+    def _record(self, module, entity, kind, content, supersedes, anchors, draft_id, source_conversation, aliases,
+                status) -> dict:
         resolved = self.registry.resolve_module(module)
+        if status and status not in WRITABLE_STATUSES:
+            return _fail(f"status 只能是 {' / '.join(WRITABLE_STATUSES)}，当前为 {status!r}")
         content = (content or "").strip()
         problem = self._invalid_content(kind, content)
         if problem:
@@ -275,6 +295,8 @@ class MemoryService:
             supersedes = old.supersedes if supersedes is None else supersedes
             anchors = old.anchors if anchors is None else anchors
             aliases = old.aliases if aliases is None else aliases
+            if status is None and old.status in WRITABLE_STATUSES:
+                status = old.status
 
         today = date.today().isoformat()
         supersedes = list(dict.fromkeys(s for s in supersedes or [] if s))
@@ -302,7 +324,7 @@ class MemoryService:
             note_date=today,
             author=self.vcs.current_user(),
             revision=self.vcs.revision(),
-            status=str(self.config.get("write.default_status")),
+            status=status or str(self.config.get("write.default_status")),
             supersedes=replaced_ids,
             anchors=[a.replace("\\", "/") for a in anchors or []],
             source_conversation=source_conversation or None,
@@ -442,6 +464,48 @@ class MemoryService:
             self.index.refresh(force=True)
             self._refresh_wiki(response)
         return response
+
+    # ---- archive / seed ----
+
+    def change_status(self, ids: list[str], action: str) -> dict:
+        """归档、恢复、种子转正或退回。只改 YAML 头的 status，正文与替代关系不变。"""
+        allowed, target = STATUS_ACTIONS[action]
+        changed, missing, skipped = [], [], []
+        for entry_id in dict.fromkeys(i for i in ids or [] if i):
+            path = self.storage.find_path(entry_id)
+            if path is None:
+                missing.append(entry_id)
+                continue
+            entry = self.storage.read(path)
+            if entry.status not in allowed:
+                skipped.append({"id": entry_id, "status": entry.status})
+                continue
+            entry.status = target
+            path.write_text(entry.to_markdown(), encoding="utf-8", newline="\n")
+            changed.append(entry_id)
+        self._log("status", action=action, ids=changed)
+        response: dict = {"ok": bool(changed) or not (missing or skipped), "action": action, "status": target,
+                          "changed": changed}
+        if missing:
+            response["missing"] = missing
+        if skipped:
+            response["skipped"] = skipped
+        if changed:
+            self.index.refresh(force=True)
+            self._refresh_wiki(response)
+        return response
+
+    @_returns_errors
+    def seeds(self, module: str | None = None) -> dict:
+        """待确认的种子记忆，按模块、议题排列。"""
+        module = self._module_id(module) if module else None
+        rows = [
+            {"id": e.id, "module": e.module, "entity": e.entity, "kind": e.kind, "date": e.note_date,
+             "author": e.author, "preview": preview(e.content)}
+            for e in sorted(self.index.visible(), key=lambda e: (e.module, e.entity.lower(), e.id))
+            if e.status == "seed" and (module is None or e.module == module)
+        ]
+        return {"ok": True, "module": module, "seeds": rows}
 
     def _refresh_wiki(self, response: dict) -> None:
         """记忆变了就重新生成 Wiki（wiki.auto）；生成失败不影响写入本身，只附一条提醒。"""

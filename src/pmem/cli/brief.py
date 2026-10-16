@@ -34,7 +34,8 @@ def _search(result: dict) -> list[str]:
     lines = [head]
     for item in items:
         where = f"{item['module']} · " if item.get("module") else ""
-        lines.append(f"- {where}{_kind(item['kind'])}｜{item['entity']}｜{item['date']}｜{item['id']}："
+        seed = "（种子，待确认）" if item.get("status") == "seed" else ""
+        lines.append(f"- {where}{_kind(item['kind'])}{seed}｜{item['entity']}｜{item['date']}｜{item['id']}："
                      f"{preview(item['content'], PREVIEW)}")
         lines += _stale(item)
     return lines + _tail(result)

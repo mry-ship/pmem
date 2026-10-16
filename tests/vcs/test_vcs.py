@@ -80,6 +80,23 @@ def test_svn_revision_add_and_uncommitted(svn_wc, monkeypatch):
     assert vcs.is_uncommitted(new_file) is True
 
 
+def test_svn_move_keeps_history_for_versioned_files_only(svn_wc):
+    vcs = detect_vcs(svn_wc)
+    old = svn_wc / ".memory" / "entries" / "gameplay.A" / "x.md"
+    old.parent.mkdir(parents=True)
+    old.write_text("x", encoding="utf-8")
+    vcs.add(old)
+    subprocess.run(["svn", "commit", "-q", "-m", "m", "--username", "t", str(svn_wc)], check=True, capture_output=True)
+    new = svn_wc / ".memory" / "entries" / "gameplay.B" / "x.md"
+    vcs.move(old, new)
+    assert new.exists() and not old.exists() and vcs.status_code(new) == "A"
+
+    loose = svn_wc / "loose.md"
+    loose.write_text("y", encoding="utf-8")
+    vcs.move(loose, svn_wc / "sub" / "loose.md")
+    assert vcs.status_code(svn_wc / "sub" / "loose.md") == "?"
+
+
 def test_svn_counts_uncommitted_memories(svn_wc):
     vcs = detect_vcs(svn_wc)
     entries = svn_wc / ".memory" / "entries"

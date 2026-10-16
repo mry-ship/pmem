@@ -645,7 +645,7 @@ score   = (rel + bonus) * (0.7 + 0.3 * recency)
 | 版本 | 范围 |
 |---|---|
 | v0.1 | `init`（通用扫描 + Unity/Node 适配）、带路径与别名的模块目录、文件存储 + SQLite 混合索引、3 个 MCP 工具、闸门全套事件、Git/SVN 适配、`doctor`、`reindex`、`import --lancedb`、bootstrap 技能 |
-| v0.2 | seed 与 consolidate 技能、`report`、`sync`、`migrate`、`archive`、代码锚点过时校验完善、Java/.NET/Go/Python 适配器 |
+| v0.2 | 已完成：`pmem-seed` 技能与 `pmem seed`、健康报告 `pmem health`（`pmem report` 已用作收益报告）、`migrate rename/merge/tidy`、`archive`、代码锚点过时校验（按函数）；consolidate 由 `pmem-compact`、`pmem-normalize` 两个技能覆盖。待做：`sync`、`migrate split/deprecate`；语言适配器因扫描改为通用轻量扫描、由 Agent 划分模块，只需补充忽略目录 |
 | v0.3+ | `RemoteStorage` 中心服务、身份与权限、审计、看板 |
 
 ### 14.1 v0.1 验收标准

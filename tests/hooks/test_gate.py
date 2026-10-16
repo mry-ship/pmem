@@ -460,6 +460,19 @@ def test_record_injection_adds_files_edited_in_module(make_project):
     assert handle("pre-tool", payload, root)["updated_input"]["anchors"] == ["src/Shop/Shop.cs#Buy"]
 
 
+def test_record_injection_skips_anchors_when_payload_was_only_partly_parsed(make_project):
+    from pmem.hooks.payload import parse_payload
+
+    root = make_project()
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    raw = ('{"conversation_id": "c1", "tool_name": "record_memory", "tool_input": {"module": "economy.Shop", '
+           '"entity": "Price", "anchors": ["src/Shop/Shop.cs#Buy"], "content": "broken \\q escape"}}')
+    payload = parse_payload(raw.encode("utf-8"))
+    assert payload["_partial"] and "anchors" not in payload["tool_input"]
+    updated = handle("pre-tool", payload, root)["updated_input"]
+    assert updated["module"] == "economy.Shop" and "anchors" not in updated
+
+
 def _analysis_turn(root: Path, prompt: str, conv="c1") -> dict:
     handle("prompt", {"conversation_id": conv, "prompt": prompt}, root)
     search_done(root, conv=conv)

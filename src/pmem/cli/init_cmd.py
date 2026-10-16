@@ -29,6 +29,7 @@ from pmem.generate.templates import (
     PLAIN_MCP_SERVER,
     RULE,
     RULE_BLOCK,
+    SEED_SKILL,
 )
 
 SUPPORTED_AGENTS = ("cursor", "claude", "codex")
@@ -161,7 +162,7 @@ def _write_text(path: Path, text: str) -> None:
 
 def _write_skills(folder: Path) -> None:
     for name, body in (("pmem-bootstrap", BOOTSTRAP_SKILL), ("pmem-compact", COMPACT_SKILL),
-                       ("pmem-normalize", NORMALIZE_SKILL)):
+                       ("pmem-normalize", NORMALIZE_SKILL), ("pmem-seed", SEED_SKILL)):
         _write_text(folder / name / "SKILL.md", body.format(generated=GENERATED))
 
 

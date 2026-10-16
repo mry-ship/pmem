@@ -8,7 +8,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from pmem.core.registry import RegistryError
-from pmem.index.store import ulid_ms
+from pmem.index.store import VISIBLE_STATUSES, ulid_ms
 from pmem.metrics.cite import assistant_text, judge
 from pmem.metrics.events import read_events
 from pmem.scan.lite import file_heat
@@ -208,7 +208,7 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
     authored = [(ulid_ms(e.id) / 1000, e.id) for e in entries if e.author == user]
     for c in convs.values():
         c["recorded"].update(i for ts, i in authored if c["start"] - OWN_WRITE_SLACK <= ts <= c["end"] + OWN_WRITE_SLACK)
-    visible = [e for e in entries if e.id not in hidden and e.status != "deprecated"]
+    visible = [e for e in entries if e.id not in hidden and e.status in VISIBLE_STATUSES]
     authors_by_module: dict[str, set] = defaultdict(set)
     for e in visible:
         authors_by_module[e.module].add(e.author)

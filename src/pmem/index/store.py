@@ -20,6 +20,8 @@ from pmem.index.tokenize import tokenize
 from pmem.storage.files import FilesStorage
 
 VISIBLE_STATUSES = ("active", "seed", "draft")
+# 归档的记忆不再出现，但它替代过的旧记忆也不该因此恢复现行
+REPLACING_STATUSES = (*VISIBLE_STATUSES, "archived")
 BOOSTED_KINDS = ("exclusion", "correction")
 _BATCH_WINDOW_MS = 90 * 60 * 1000
 SYNONYM_WEIGHT = 0.8
@@ -173,7 +175,7 @@ class MemoryIndex:
         """被替代的记忆 id；给出 as_of 时只算那天及之前写下的替代关系。"""
         hidden: set[str] = set()
         for item in self._items.values():
-            if item.entry.status in VISIBLE_STATUSES and (as_of is None or item.entry.note_date <= as_of):
+            if item.entry.status in REPLACING_STATUSES and (as_of is None or item.entry.note_date <= as_of):
                 hidden.update(item.entry.supersedes)
         return hidden
 

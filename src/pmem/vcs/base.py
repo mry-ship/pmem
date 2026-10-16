@@ -46,6 +46,10 @@ class VCS:
     def add(self, path: Path) -> None:
         return None
 
+    def move(self, src: Path, dst: Path) -> None:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        src.replace(dst)
+
     def file_at(self, rel: str, day: str) -> str | None:
         """day（YYYY-MM-DD）当天结束时已提交的文件内容；不支持或取不到时返回 None。"""
         return None

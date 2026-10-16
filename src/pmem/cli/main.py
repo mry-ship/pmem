@@ -90,10 +90,46 @@ def build_parser():
     p.add_argument("--alias", action="extend", nargs="*", default=None,
                    help="常用的其他叫法，如 --alias 闪退 崩溃；含空格的叫法要加引号" + keep)
     p.add_argument("--draft-id", default="", help="上次写入返回的 draft_id：同一任务再次写入时覆盖那一条")
+    p.add_argument("--seed", action="store_true", help="写成种子记忆（pmem-seed 技能用），负责人确认后才转正")
     p.add_argument("--brief", action="store_true", help=BRIEF_HELP)
     p.add_argument("--root", default=".")
 
     p = sub.add_parser("list", help="列出模块与记忆数量")
+    p.add_argument("--root", default=".")
+
+    p = sub.add_parser("archive", help="归档记忆：不再出现在检索里，文件保留可追溯（负责人用）")
+    p.add_argument("ids", nargs="+")
+    p.add_argument("--restore", action="store_true", help="撤销归档，恢复为正式记忆")
+    p.add_argument("--root", default=".")
+
+    p = sub.add_parser("seed", help="种子记忆：候选模块、待确认列表、转正与退回（配合 pmem-seed 技能）")
+    p.add_argument("ids", nargs="*")
+    p.add_argument("--module", default="")
+    p.add_argument("--plan", action="store_true", help="按改动热度列出值得先补种子记忆的模块")
+    p.add_argument("--top", type=int, default=10)
+    action = p.add_mutually_exclusive_group()
+    action.add_argument("--accept", action="store_true", help="确认：转为正式记忆")
+    action.add_argument("--reject", action="store_true", help="退回：标为归档")
+    p.add_argument("--all", action="store_true", help="配合 --accept：确认全部待确认的种子记忆")
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--root", default=".")
+
+    p = sub.add_parser("migrate", help="模块改名、合并，并把记忆搬到新模块下（默认只预览）")
+    msub = p.add_subparsers(dest="action", required=True)
+    for name, help_text, args in (
+        ("rename", "改名：旧名成为别名", ("old", "new")),
+        ("merge", "合并：source 并入 target（source 可以是未登记模块）", ("source", "target")),
+        ("tidy", "把还在旧模块名下的记忆搬到新名下", ()),
+    ):
+        mp = msub.add_parser(name, help=help_text)
+        for arg in args:
+            mp.add_argument(arg)
+        mp.add_argument("--apply", action="store_true", help="执行；不加只预览")
+        mp.add_argument("--root", default=".")
+
+    p = sub.add_parser("health", help="健康报告：未登记与重复模块、检索落空、过时记忆、被拒写入等（负责人定期看）")
+    p.add_argument("--days", type=int, default=60)
+    p.add_argument("--json", action="store_true")
     p.add_argument("--root", default=".")
 
     p = sub.add_parser("wiki", help="从记忆生成可浏览的模块 Wiki（Markdown，每个模块一页）")
@@ -270,6 +306,27 @@ def _wiki(args) -> int:
     return run_wiki(_project_root(args.root), args.out)
 
 
+def _seed(args) -> int:
+    from pmem.cli.seed_cmd import run_seed
+
+    return run_seed(_project_root(args.root), args.ids, args.module, args.plan, args.top, args.accept, args.reject,
+                    args.all, args.json)
+
+
+def _migrate(args) -> int:
+    from pmem.cli.migrate_cmd import run_migrate
+
+    first = getattr(args, "old", None) or getattr(args, "source", None)
+    second = getattr(args, "new", None) or getattr(args, "target", None)
+    return run_migrate(_project_root(args.root), args.action, first, second, args.apply)
+
+
+def _health(args) -> int:
+    from pmem.metrics.health import run_health
+
+    return run_health(_project_root(args.root), args.days, args.json)
+
+
 COMMANDS = {
     "hook": _hook,
     "serve": _serve,
@@ -284,6 +341,9 @@ COMMANDS = {
     "anchors": _anchors,
     "format": _format,
     "wiki": _wiki,
+    "seed": _seed,
+    "migrate": _migrate,
+    "health": _health,
 }
 
 
@@ -298,7 +358,8 @@ def _record_content(args) -> str:
 SERVICE_COMMANDS = {
     "list": lambda s, a: s.list_modules(),
     "record": lambda s, a: s.record(a.module, a.entity, a.kind, _record_content(a), a.supersedes, a.anchor,
-                                    a.draft_id or None, aliases=a.alias),
+                                    a.draft_id or None, aliases=a.alias, status="seed" if a.seed else None),
+    "archive": lambda s, a: s.change_status(a.ids, "restore" if a.restore else "archive"),
     "confirm": lambda s, a: s.confirm(a.ids),
     "graph": lambda s, a: s.graph(a.module, a.entity or None),
     "terms": lambda s, a: s.terms(a.module or None, a.top, a.min),

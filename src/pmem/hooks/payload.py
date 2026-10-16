@@ -12,7 +12,7 @@ _FIELDS = ("conversation_id", "generation_id", "hook_event_name", "tool_name", "
            "transcript_path")
 _TRANSCRIPT_TAIL = 512 * 1024
 _USER_QUERY = re.compile(r"<user_query>\s*(.*?)\s*</user_query>", re.DOTALL)
-_INPUT_FIELDS = ("file_path", "command", "cwd", "module", "path", "entity", "query", "target_directory")
+_INPUT_FIELDS = ("file_path", "command", "cwd", "module", "path", "entity", "query", "target_directory", "draft_id")
 _PATH_KEYS = ("file_path", "path", "target_file", "target_directory")
 _PATH_LIST_KEYS = ("target_directories", "paths")
 

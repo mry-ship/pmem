@@ -54,6 +54,7 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 3. **打开开关**：Cursor 设置 → MCP → 启用 `pmem`（Claude Code、Codex 首次打开项目时批准即可）。
 4. **划分模块**：对 AI 说“按 pmem-bootstrap 技能划分模块”，确认它给出的表格。
 5. **提交**：运行 `pmem doctor` 自检，然后把 `.memory/` 和 `.cursor/` 提交到版本库。
+6. **（建议）种子记忆**：对 AI 说“按 pmem-seed 技能提炼种子记忆”，从提交说明和文档里为常改的模块先补一批结论，确认后转正，记忆库就不是从空开始。
 
 队友拉代码后，只需要做第 1 步和第 3 步。需要 [uv](https://docs.astral.sh/uv/)（Python 包管理工具）和 Python 3.10 以上。
 
@@ -68,7 +69,10 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 | 记忆多了，合并零碎记忆 | 对 AI 说“按 pmem-compact 技能合并记忆” |
 | 换个说法搜不到 | 对 AI 说“按 pmem-normalize 技能整理同义词”（如“闪退 / 崩溃”） |
 | 新增了业务模块 | 在 `.memory/modules.yaml` 里加模块和它的路径 |
+| 模块改名、合并 | `pmem migrate rename <旧> <新>` / `pmem migrate merge <被并入> <保留>`，记忆随之搬家（默认预览，加 `--apply` 执行）；队友之后写到旧名下的，`pmem migrate tidy --apply` |
+| 去掉过时的记忆 | `pmem archive <id>`：不再出现在检索里，文件保留可追溯；`--restore` 撤销 |
 | 体检 | `pmem doctor`：提示没提交的记忆、可以合并的议题 |
+| 定期收口（模块负责人） | `pmem health`：未登记和疑似重复的模块、没有归属模块的代码目录、反复查不到的问题、可能过时的记忆、被拒绝的写入、待确认的种子 |
 | 看收益 | `pmem report`：命中率、避坑次数、跨人复用 |
 | 通读全部结论 | 打开 `.memory/wiki/index.md`，每个模块一页，写入记忆后自动更新 |
 | 升级 | `uv tool upgrade pmem`，再在项目里运行一次 `pmem init`（不会覆盖已有配置） |
@@ -161,6 +165,10 @@ pmem search --module <模块> "关键词"    # 按模块和关键词查；加 --
 pmem list                              # 模块和记忆数量
 pmem doctor                            # 体检
 pmem report                            # 本机收益报告
+pmem health                            # 健康报告（负责人收口用）
+pmem seed                              # 待确认的种子记忆；--accept / --reject 处理
+pmem archive <id>                      # 归档过时记忆；--restore 撤销
+pmem migrate tidy                      # 把还在旧模块名下的记忆搬到新名下（加 --apply 执行）
 pmem wiki                              # 生成浏览用的模块 Wiki
 pmem format --apply                    # 把旧记忆里一整行的长正文断行（新写入的会自动整理）
 ```

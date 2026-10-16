@@ -124,3 +124,12 @@ class SvnVCS(VCS):
 
     def add(self, path: Path) -> None:
         run_tool(["svn", "add", "--parents", "-q", "--non-interactive", str(path)], self.root)
+
+    def move(self, src: Path, dst: Path) -> None:
+        # 已纳入版本库的用 svn mv 保留历史；未纳入的照常移动，保持未纳入
+        if self._item_status(src) in (None, "unversioned"):
+            super().move(src, dst)
+            return
+        proc = run_tool(["svn", "mv", "--parents", "-q", "--non-interactive", str(src), str(dst)], self.root)
+        if proc.returncode != 0:
+            raise OSError(proc.stderr.decode("utf-8", errors="replace").strip() or f"svn mv {src} 失败")

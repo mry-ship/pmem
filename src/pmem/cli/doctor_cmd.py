@@ -12,7 +12,7 @@ from pathlib import Path
 from pmem.core.config import Config
 from pmem.core.quality import similar_entity_pairs
 from pmem.core.registry import ModuleRegistry, RegistryError
-from pmem.index.store import VISIBLE_STATUSES
+from pmem.index.store import REPLACING_STATUSES, VISIBLE_STATUSES
 from pmem.scan.lite import iter_code_files
 from pmem.service import COMPACT_MIN_GROUP
 from pmem.storage.files import FilesStorage
@@ -112,7 +112,7 @@ def run_doctor(root: Path) -> int:
 
     storage = FilesStorage(root, vcs)
     entries = list(storage.iter_all())
-    hidden = {s for _, e in entries if e.status in VISIBLE_STATUSES for s in e.supersedes}
+    hidden = {s for _, e in entries if e.status in REPLACING_STATUSES for s in e.supersedes}
     visible = [e for _, e in entries if e.status in VISIBLE_STATUSES and e.id not in hidden]
     line(OK if not storage.warnings else WARN,
          f"现行记忆 {len(visible)} 条（记忆文件共 {len(entries)} 个，其余已被替代或停用）")

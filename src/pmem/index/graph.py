@@ -13,6 +13,7 @@ from pmem.core.entry import Entry
 from pmem.core.registry import ModuleRegistry, RegistryError
 
 VISIBLE = ("active", "seed", "draft")
+REPLACING = (*VISIBLE, "archived")
 PREVIEW_CHARS = 80
 LATEST_PER_TOPIC = 2
 KIND_LABELS = {"exclusion": "排除项", "risk": "风险", "correction": "更正", "decision": "决定", "conclusion": "结论"}
@@ -28,7 +29,7 @@ def preview(text: str, limit: int = PREVIEW_CHARS) -> str:
 def current_entries(entries: list[Entry]) -> list[Entry]:
     """可见且没有被替代的记忆，从新到旧。"""
     visible = [e for e in entries if e.status in VISIBLE]
-    replaced = {old for e in visible for old in e.supersedes}
+    replaced = {old for e in entries if e.status in REPLACING for old in e.supersedes}
     return sorted((e for e in visible if e.id not in replaced), key=lambda e: (e.note_date, e.id), reverse=True)
 
 
@@ -62,7 +63,8 @@ class MemoryGraph:
         self.registry = registry
         self.entries = sorted((e for e in entries if e.status in VISIBLE), key=lambda e: (e.note_date, e.id))
         self.superseded_by: dict[str, Entry] = {}
-        for entry in self.entries:
+        replacing = sorted((e for e in entries if e.status in REPLACING), key=lambda e: (e.note_date, e.id))
+        for entry in replacing:
             for old in entry.supersedes:
                 self.superseded_by.setdefault(old, entry)
         self.current = [e for e in self.entries if e.id not in self.superseded_by]

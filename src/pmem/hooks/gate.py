@@ -208,7 +208,8 @@ class Gate:
         lines = []
         for e in entries:
             mark = f"（⚠ {STALE_LABEL}：{'；'.join(problems[e.id])}）" if e.id in problems else ""
-            lines.append(f"- {KIND_LABELS.get(e.kind, e.kind)}｜{e.entity}｜{e.note_date}{mark}："
+            seed = "（种子，待确认）" if e.status == "seed" else ""
+            lines.append(f"- {KIND_LABELS.get(e.kind, e.kind)}{seed}｜{e.entity}｜{e.note_date}{mark}："
                          f"{preview(e.content, DIGEST_PREVIEW)}")
         if problems:
             lines.append(f"标“{STALE_LABEL}”的记忆写下后关联代码又改过，依赖前先对照代码："
@@ -453,8 +454,9 @@ class Gate:
         draft = self.state.data["written"].get(draft_key(module, entity)) if module else None
         if draft and not args.get("draft_id"):
             updated["draft_id"] = draft
-        # 覆盖草稿时不补锚点，让服务沿用草稿原有的锚点
-        if module and not args.get("anchors") and not updated.get("draft_id"):
+        # 覆盖草稿时不补锚点，让服务沿用草稿原有的锚点；
+        # 载荷被转码损坏、只按字段抠出了部分参数时，看不到 Agent 写的 anchors，补了会把它覆盖成只到文件
+        if module and not args.get("anchors") and not updated.get("draft_id") and not self.payload.get("_partial"):
             files = [item.split("|", 1)[1] for item in self.state.data["edited_files"] if item.startswith(module + "|")]
             if files:
                 updated["anchors"] = files[-MAX_AUTO_ANCHORS:]

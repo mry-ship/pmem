@@ -179,6 +179,10 @@ pmem doctor</code></pre>
     <tr><td>新增业务模块</td><td>在 <code>.memory/modules.yaml</code> 里加模块和路径</td></tr>
     <tr><td>同一议题记忆变多</td><td>对 AI 说“按 pmem-compact 技能合并记忆”</td></tr>
     <tr><td>换个说法搜不到</td><td>对 AI 说“按 pmem-normalize 技能整理同义词”</td></tr>
+    <tr><td>刚接入、记忆库还空</td><td>对 AI 说“按 pmem-seed 技能提炼种子记忆”，负责人用 <code>pmem seed</code> 过目后转正</td></tr>
+    <tr><td>模块改名、合并</td><td><code>pmem migrate rename</code> / <code>merge</code>，记忆随之搬家（默认预览，<code>--apply</code> 执行）</td></tr>
+    <tr><td>某条记忆已过时、又没有替代结论</td><td><code>pmem archive &lt;id&gt;</code>，<code>--restore</code> 撤销</td></tr>
+    <tr><td>定期收口（模块负责人）</td><td><code>pmem health</code></td></tr>
     <tr><td>想看效果</td><td><code>pmem report</code></td></tr>
     <tr><td>想通读全部结论</td><td>打开 <code>.memory/wiki/index.md</code>（写入记忆后自动更新，过期的标“需核实”）</td></tr>
     <tr><td>升级 pmem</td><td><code>uv tool upgrade pmem</code></td></tr>
@@ -274,6 +278,10 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
       <h4>别名 aliases 与同义词 synonyms</h4>
       <p>写记忆时把现象的其他叫法填进 <code>aliases</code>；团队常用同义叫法登记在 <code>modules.yaml</code> 的 <code>synonyms</code>，检索时自动扩展。</p>
     </div>
+    <div class="card">
+      <h4>状态 status</h4>
+      <p><code>active</code> 正式；<code>seed</code> 种子，从提交说明和文档提炼、待负责人确认，能检索到并标“种子，待确认”；<code>draft</code> 草稿（<code>write.default_status: draft</code> 时）；<code>archived</code> 已归档，不再出现在检索里，它替代过的旧记忆也保持隐藏。</p>
+    </div>
   </div>
 
   <h3>五种记忆类型（kind）</h3>
@@ -367,6 +375,10 @@ git add .memory .cursor
 git commit -m "接入 pmem"</code></pre>
       <p>接入了 Claude Code 或 Codex 的话，把对应文件一并提交。SVN 项目同理用 <code>svn add</code> / <code>svn commit</code>。</p>
     </li>
+    <li>
+      <strong>（建议）提炼种子记忆</strong><span class="tag each">每个项目一次</span>
+      <p>对 Agent 说：<strong>“按 pmem-seed 技能提炼种子记忆”</strong>。它用 <code>pmem seed --plan</code> 找出最常改的模块，从提交说明、文档和代码注释里为每个模块提炼 10～20 条结论，写成种子记忆。负责人运行 <code>pmem seed</code> 过目，<code>pmem seed --accept --module &lt;模块&gt;</code> 转正，不要的 <code>pmem seed --reject &lt;id&gt;</code>。这样记忆库不是从空开始。</p>
+    </li>
   </ol>
 
   <div class="callout ok">
@@ -408,6 +420,7 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td>按 pmem-bootstrap 技能划分模块</td><td>首次生成 <code>modules.yaml</code></td></tr>
     <tr><td>按 pmem-compact 技能合并记忆</td><td>把同一议题的零碎记忆合并成一两条现状</td></tr>
     <tr><td>按 pmem-normalize 技能整理同义词</td><td>找出同一件事的不同叫法，登记同义词组</td></tr>
+    <tr><td>按 pmem-seed 技能提炼种子记忆</td><td>为常改的模块从提交说明、文档里提炼一批待确认的结论</td></tr>
   </table>
 </section>
 
@@ -456,7 +469,7 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>memory_graph</code></td><td>模块全貌：每个议题的最新两条结论（过期的带 <code>stale</code>）和相关模块；带 <code>entity</code> 时看该议题的时间线（谁哪天替代了谁）</td><td><code>module</code>；可选 <code>entity</code></td></tr>
     <tr><td><code>list_modules</code></td><td>列出模块、记忆数量和常用议题</td><td>可选 <code>category</code></td></tr>
   </table>
-  <p>检索结果里几个关键字段：<code>stale</code>（关联代码已变）、<code>check</code>（具体哪些文件变了）、<code>fallback: module</code>（议题内没命中，退回整个模块）、<code>related</code>（相关模块）。</p>
+  <p>检索结果里几个关键字段：<code>stale</code>（关联代码已变）、<code>check</code>（具体哪些文件变了）、<code>fallback: module</code>（议题内没命中，退回整个模块）、<code>related</code>（相关模块）、<code>status</code>（只在不是正式记忆时出现，如 <code>seed</code>）。MCP 不提供改状态的工具，转正、退回、归档只能由人在命令行操作。</p>
 </section>
 
 <!-- ============ CLI ============ -->
@@ -468,8 +481,12 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem doctor</code></td><td>自检：配置、模块覆盖率、路径重叠、各工具接入、语义模型、可合并议题、最近 Hook 错误</td></tr>
     <tr><td><code>pmem scan</code></td><td>输出目录概览和提交热度，供 Agent 划分模块</td></tr>
     <tr><td><code>pmem search</code></td><td>检索：<code>--path</code> / <code>--module</code> / <code>--entity</code> / <code>--as-of</code>，加关键词；<code>--brief</code> 每条一行（<code>graph</code>、<code>record</code> 同样支持）</td></tr>
-    <tr><td><code>pmem record</code></td><td>写入一条记忆，规则与 MCP 相同；长正文用 <code>--content-file</code>；<code>--alias</code>、<code>--anchor</code>、<code>--supersedes</code> 可跟多个值</td></tr>
+    <tr><td><code>pmem record</code></td><td>写入一条记忆，规则与 MCP 相同；长正文用 <code>--content-file</code>；<code>--alias</code>、<code>--anchor</code>、<code>--supersedes</code> 可跟多个值；<code>--seed</code> 写成种子记忆</td></tr>
     <tr><td><code>pmem confirm &lt;id&gt;...</code></td><td>核对后确认仍然成立</td></tr>
+    <tr><td><code>pmem seed</code></td><td>列出待确认的种子记忆；<code>--plan</code> 看候选模块；<code>--accept</code>（给 id、<code>--module</code> 或 <code>--all</code>）转正；<code>--reject &lt;id&gt;</code> 退回（归档）</td></tr>
+    <tr><td><code>pmem archive &lt;id&gt;...</code></td><td>归档：不再出现在检索里，文件保留；<code>--restore</code> 恢复为正式记忆</td></tr>
+    <tr><td><code>pmem migrate rename|merge|tidy</code></td><td>模块改名、合并，把记忆文件搬到新模块名下；<code>tidy</code> 只搬还在旧名下的记忆。默认预览，<code>--apply</code> 执行；<code>--root</code>、<code>--apply</code> 写在子命令之后</td></tr>
+    <tr><td><code>pmem health [--days 60]</code></td><td>健康报告：未登记和疑似重复的模块、还在旧模块名下的记忆、无归属的代码目录、检索落空热点、可能过时的记忆、没人检索的模块、被拒绝的写入、待确认的种子</td></tr>
     <tr><td><code>pmem graph --module X</code></td><td>模块全貌，或某议题的时间线</td></tr>
     <tr><td><code>pmem wiki [--out 目录]</code></td><td>生成每模块一页的 Markdown Wiki（默认 <code>.memory/wiki/</code>）：议题、现行结论、历史、相关模块、代码链接，过期的标“需核实”；只覆盖它自己生成的页面。写入或确认记忆后会自动运行（<code>wiki.auto</code>）</td></tr>
     <tr><td><code>pmem list</code></td><td>模块与记忆数量</td></tr>
@@ -600,6 +617,22 @@ embedding:
     <div class="card">
       <h4>重建索引</h4>
       <p>换了嵌入模型或检索结果异常时运行 <code>pmem reindex</code>，同时会列出无法解析的记忆文件。</p>
+    </div>
+    <div class="card">
+      <h4>种子记忆（pmem-seed）</h4>
+      <p>解决刚接入时记忆库为空的问题。Agent 读提交说明、文档和注释，用 <code>pmem record --seed</code> 写入；种子立即可检索并标“种子，待确认”。负责人用 <code>pmem seed</code> 过目后转正或退回。不做自动生成：哪些结论仍成立只有读懂才能判断。</p>
+    </div>
+    <div class="card">
+      <h4>归档</h4>
+      <p>记忆已过时、又没有新结论可替代时用 <code>pmem archive &lt;id&gt;</code>。归档的记忆不再被检索到，它替代过的旧记忆也不会因此重新出现；文件保留在版本库可追溯。</p>
+    </div>
+    <div class="card">
+      <h4>模块改名与合并（pmem migrate）</h4>
+      <p><code>rename A B</code>：旧名登记为别名，读写自动转到新名。<code>merge A B</code>：A 的路径、别名、议题并入 B，A 标为 <code>merged_into</code>；A 是写入时自动新建的未登记模块或冷候选时，登记为 B 的别名。两者都会把记忆文件搬到新模块下（索引按文件里的模块名过滤，不搬就查不到）。队友迁移前写到旧名下的记忆，拉取后运行 <code>pmem migrate tidy --apply</code>。重写 <code>modules.yaml</code> 只保留文件开头的注释，预览时会提示丢失几行。</p>
+    </div>
+    <div class="card">
+      <h4>健康报告（pmem health）</h4>
+      <p>给模块负责人定期收口用，只列有问题的段落并附处理办法。检索、拒绝等数据只来自本机事件日志；“没人检索的模块”在本机检索少于 20 次时不统计。</p>
     </div>
   </div>
 </section>

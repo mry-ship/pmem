@@ -39,7 +39,7 @@ modules:
     entities: [Record, Search, Secrets]
   feature.ModuleCatalog:
     description: modules.yaml 的解析、别名归一与路径映射
-    paths: [src/pmem/core/registry.py, tests/core/test_registry_*.py, tests/core/conftest.py]
+    paths: [src/pmem/core/registry.py, src/pmem/cli/migrate_cmd.py, tests/core/test_registry_*.py, tests/core/conftest.py, tests/test_migrate.py]
     aliases: [Registry]
   feature.Storage:
     description: 记忆文件存储与 Git/SVN 适配
@@ -60,8 +60,8 @@ modules:
     paths: [src/pmem/importers/**, src/pmem/cli/import_cmd.py, tests/importers/**]
     aliases: [Importer, LanceDB]
   feature.Curation:
-    description: 记忆整理：写入质量提示、相近实体、合并零碎记忆、补关联代码
-    paths: [src/pmem/core/quality.py, src/pmem/cli/compact_cmd.py, src/pmem/cli/anchors_cmd.py, tests/core/test_quality.py, tests/test_compact.py, tests/test_anchors_cmd.py]
+    description: 记忆整理：写入质量提示、相近实体、合并零碎记忆、补关联代码、种子记忆与归档
+    paths: [src/pmem/core/quality.py, src/pmem/cli/compact_cmd.py, src/pmem/cli/anchors_cmd.py, src/pmem/cli/seed_cmd.py, tests/core/test_quality.py, tests/test_compact.py, tests/test_anchors_cmd.py, tests/test_lifecycle.py]
     aliases: [Compact, Quality, Anchors]
     entities: [WriteHints, Merge, Anchors]
   infra.Model:

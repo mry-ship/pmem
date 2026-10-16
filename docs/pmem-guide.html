@@ -207,8 +207,9 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
   <h3>没有记忆 → 有记忆</h3>
   <p class="muted">TileMatch 项目上一代记忆服务上线前后的真实对话对比（改过代码的对话：上线前 122 个，上线后 62 个）。是前后对比而非对照实验。pmem 在上一代基础上全面加强（见下表），这组数字可以看作保守参考。</p>
   <table>
-    <tr><th>被用户纠正的比例</th><th>每次改代码的耗时</th><th>读写 token</th><th>长对话全程不回退</th></tr>
-    <tr><td><strong>−54% ~ −69%</strong></td><td><strong>−36% ~ −44%</strong></td><td><strong>−18%</strong></td><td>27% → 52%</td></tr>
+    <tr><th></th><th>被用户纠正的比例</th><th>每次改代码的耗时</th><th>读写 token</th><th>长对话全程不回退</th></tr>
+    <tr><th>上一代系统</th><td><strong>−54% ~ −69%</strong></td><td><strong>−36% ~ −44%</strong></td><td><strong>−18%</strong></td><td>27% → 52%</td></tr>
+    <tr><th>pmem</th><td>待实测（正确结论排进前 3：6 → 16 个）</td><td>待实测（单次检索 300~400 ms → 9 ms）</td><td>待实测（自身开销见下文）</td><td>待实测（终端写命令也拦）</td></tr>
   </table>
 
   <h3>上一代记忆服务 → pmem（853 条真实记忆离线回放）</h3>

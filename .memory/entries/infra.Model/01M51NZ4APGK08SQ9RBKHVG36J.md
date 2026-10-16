@@ -19,4 +19,6 @@ aliases:
 
 原因：已接入的项目升级 pmem 后，config.yaml 里没有这两个键，读取时按 Config 的默认值合并，所以升级后直接生效，不用改配置。gate.mode 为 off 时两者都不触发。
 
-风险：读代码时的摘要依赖 postToolUse Hook。老项目必须重新运行 pmem init，或者手工在 hooks.json 里加 "pmem hook post-tool"（matcher: Read），否则只有结束时的核对生效。pmem doctor 会对此给出警告。
+风险：读代码时的摘要依赖 postToolUse Hook。
+老项目必须重新运行 pmem init，或者手工在 hooks.json 里加 "pmem hook post-tool"（matcher: Read），否则只有结束时的核对生效。
+pmem doctor 会对此给出警告。

@@ -162,6 +162,7 @@ pmem list                              # 模块和记忆数量
 pmem doctor                            # 体检
 pmem report                            # 本机收益报告
 pmem wiki                              # 生成浏览用的模块 Wiki
+pmem format --apply                    # 把旧记忆里一整行的长正文断行（新写入的会自动整理）
 ```
 
 全部命令、配置项和常见问题见 [使用手册](https://mry-ship.github.io/pmem/pmem-guide.html)。

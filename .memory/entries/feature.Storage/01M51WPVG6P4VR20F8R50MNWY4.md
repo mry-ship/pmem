@@ -15,4 +15,7 @@ aliases:
 - PMEM_CACHE_DIR
 - 测试隔离
 ---
-决定：tests/conftest.py 增加自动生效的夹具，把 PMEM_CACHE_DIR 指向每个用例自己的临时目录。原因：配置解析缓存（parsed/）和过期核对缓存（anchors.json）都写在用户缓存目录，测试项目建在随机临时目录，不隔离就会往 %LOCALAPPDATA%\pmem 里不断堆积文件。注意：测试里的缓存文件不能放进 git_repo 夹具的仓库目录，否则它会变成未跟踪文件，让工作区指纹每次都变、缓存永远不命中；需要单独缓存路径时用 tmp_path_factory。
+决定：tests/conftest.py 增加自动生效的夹具，把 PMEM_CACHE_DIR 指向每个用例自己的临时目录。
+原因：配置解析缓存（parsed/）和过期核对缓存（anchors.json）都写在用户缓存目录，测试项目建在随机临时目录，不隔离就会往 %LOCALAPPDATA%\pmem 里不断堆积文件。
+注意：测试里的缓存文件不能放进 git_repo 夹具的仓库目录，否则它会变成未跟踪文件，让工作区指纹每次都变、缓存永远不命中；
+需要单独缓存路径时用 tmp_path_factory。

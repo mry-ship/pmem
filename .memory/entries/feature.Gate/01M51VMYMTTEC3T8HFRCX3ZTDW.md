@@ -33,7 +33,9 @@ aliases:
 - 只查了记忆：有新结论就写，没有就说明“已核对，无新结论”。
 
 强制模式下怎样算“查过”（2026-10-16 收紧，推翻了原先“尝试过检索就放行，成败不论”）：
-- MCP 检索在返回 ok: true 之后才登记（Cursor 的 afterMCPExecution，Claude Code、Codex 的 PostToolUse）；preToolUse、beforeMCPExecution 不再登记，调用失败也不算。日志核对过：Cursor 下 18 次 MCP 检索的 afterMCPExecution 全部送达并解析成功，不会因此卡死。
+- MCP 检索在返回 ok: true 之后才登记（Cursor 的 afterMCPExecution，Claude Code、Codex 的 PostToolUse）；
+  preToolUse、beforeMCPExecution 不再登记，调用失败也不算。
+  日志核对过：Cursor 下 18 次 MCP 检索的 afterMCPExecution 全部送达并解析成功，不会因此卡死。
 - 终端 pmem search/graph --module 仍在执行前登记（同一条命令里先查再写要能放行），但输出被丢弃（> $null、*> 文件、| Out-Null/Out-File/Set-Content）时不算，因为 Agent 并没有看到记忆。
 - 只算现行记忆：模块里的记忆全部被替代或停用时不再拦截，拦截提示里的条数也只算现行的。
 - 查了哪个模块只放行哪个模块。MCP 不可用时的出口仍是终端 pmem search，以及让用户说“跳过记忆”。

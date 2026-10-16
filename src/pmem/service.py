@@ -13,6 +13,7 @@ from pmem.core.ids import new_ulid
 from pmem.core.quality import content_hints, entity_hint
 from pmem.core.registry import ModuleRegistry, RegistryError, ResolvedModule
 from pmem.core.secrets import find_secrets
+from pmem.core.textfmt import format_content
 from pmem.index.embedder import make_embedder
 from pmem.index.graph import MemoryGraph, preview
 from pmem.index.store import MemoryIndex, SearchResult
@@ -297,7 +298,7 @@ class MemoryService:
             module=resolved.id,
             entity=entity_id,
             kind=kind,
-            content=content,
+            content=format_content(content),
             note_date=today,
             author=self.vcs.current_user(),
             revision=self.vcs.revision(),

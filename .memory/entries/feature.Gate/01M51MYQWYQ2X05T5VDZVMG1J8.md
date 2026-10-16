@@ -26,4 +26,8 @@ aliases:
 - stop：followup_message 作为下一条用户消息自动提交，受 loop_limit 限制（默认 5，pmem 设 1）。
 Claude Code 的 UserPromptSubmit 可以每次提问返回 additionalContext，与 Cursor 不同。
 
-可行做法：提问时用 beforeSubmitPrompt 只记下问题；读代码时用 postToolUse 注入该模块的记忆摘要，或像改代码那样拦一次；回合结束时用 stop 核对“问题涉及模块却没查记忆”，再用 followup_message 补查一轮。问题原文以 transcript_path 指向的 UTF-8 对话记录为准，不依赖可能乱码的 prompt 字段。尚未在 Cursor 中实测 postToolUse 的 additional_context。
+可行做法：提问时用 beforeSubmitPrompt 只记下问题；
+读代码时用 postToolUse 注入该模块的记忆摘要，或像改代码那样拦一次；
+回合结束时用 stop 核对“问题涉及模块却没查记忆”，再用 followup_message 补查一轮。
+问题原文以 transcript_path 指向的 UTF-8 对话记录为准，不依赖可能乱码的 prompt 字段。
+尚未在 Cursor 中实测 postToolUse 的 additional_context。

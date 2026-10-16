@@ -476,6 +476,7 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem terms</code></td><td>记忆里的高频词，用于整理同义词</td></tr>
     <tr><td><code>pmem compact</code></td><td>列出零碎记忆较多的议题；指定议题时输出全部正文供合并</td></tr>
     <tr><td><code>pmem anchors [--apply]</code></td><td>给没有关联代码的旧记忆补 anchors（默认只预览）</td></tr>
+    <tr><td><code>pmem format [--apply]</code></td><td>把旧记忆里一整行的长正文按句号、分号和编号断行，编号小项缩进两格，方便直接打开文件阅读（默认只预览；新写入和导入的记忆会自动整理）</td></tr>
     <tr><td><code>pmem import</code></td><td>从 LanceDB 记忆库只读导入</td></tr>
     <tr><td><code>pmem reindex</code></td><td>清空本机索引缓存并重建</td></tr>
     <tr><td><code>pmem report</code></td><td>本机收益报告</td></tr>

@@ -24,4 +24,5 @@ aliases:
 
 处理：计数前先对每条记忆的词排序，同票词按“记忆顺序 + 字典序”固定；计数本身不变。pmem-normalize 技能依赖这份词表起草同义词组，结果不稳定会让两次起草对不上。
 
-另：本次重构 service / store / gate 后，用 git worktree 取出改动前的代码，对本仓库真实记忆跑同一批 19 组调用（search 各种组合、graph、terms、list、compact、record 的校验失败路径）逐项比对 JSON，除 terms 外完全一致；以后做“行为不变”的重构可以照此验证。
+另：本次重构 service / store / gate 后，用 git worktree 取出改动前的代码，对本仓库真实记忆跑同一批 19 组调用（search 各种组合、graph、terms、list、compact、record 的校验失败路径）逐项比对 JSON，除 terms 外完全一致；
+以后做“行为不变”的重构可以照此验证。

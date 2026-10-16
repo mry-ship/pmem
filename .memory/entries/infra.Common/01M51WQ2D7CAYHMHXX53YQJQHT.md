@@ -15,4 +15,6 @@ aliases:
 - reindex
 - 清缓存
 ---
-决定：pmem reindex 删除的缓存文件增加 anchors.json（过期核对的跨进程缓存）。怀疑“需核实”标记不对、或改了 .gitignore 让锚点文件变成被忽略时，跑一次 pmem reindex 即可强制重新核对；平时缓存会在提交号或未提交文件变化时自动失效，最长 10 分钟。
+决定：pmem reindex 删除的缓存文件增加 anchors.json（过期核对的跨进程缓存）。
+怀疑“需核实”标记不对、或改了 .gitignore 让锚点文件变成被忽略时，跑一次 pmem reindex 即可强制重新核对；
+平时缓存会在提交号或未提交文件变化时自动失效，最长 10 分钟。

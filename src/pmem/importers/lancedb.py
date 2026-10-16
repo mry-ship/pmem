@@ -18,6 +18,7 @@ import yaml
 from pmem.core.entry import Entry
 from pmem.core.ids import new_ulid
 from pmem.core.secrets import find_secrets
+from pmem.core.textfmt import format_content
 from pmem.storage.files import FilesStorage
 
 TABLE = re.compile(r"^mem_([a-z0-9_]+)__([A-Za-z0-9_]+)$")
@@ -124,7 +125,7 @@ def import_rows(
             module=row["module"],
             entity=str(row.get("entity") or "General"),
             kind=kind,
-            content=content,
+            content=format_content(content),
             note_date=str(row.get("note_date") or "")[:10] or datetime.now().date().isoformat(),
             author=author,
             source_conversation=source,

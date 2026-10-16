@@ -70,6 +70,11 @@ def build_parser():
     p.add_argument("--apply", action="store_true", help="写回记忆文件")
     p.add_argument("--root", default=".")
 
+    p = sub.add_parser("format", help="把记忆正文里过长的行按句号、分号和编号断开，方便直接阅读（默认只预览）")
+    p.add_argument("--module", default="")
+    p.add_argument("--apply", action="store_true", help="写回记忆文件")
+    p.add_argument("--root", default=".")
+
     p = sub.add_parser("record", help="命令行写入一条记忆（规则与 MCP 的 record_memory 相同）")
     p.add_argument("--module", required=True)
     p.add_argument("--entity", required=True)
@@ -253,6 +258,12 @@ def _anchors(args) -> int:
     return run_anchors(_project_root(args.root), args.module or None, args.apply)
 
 
+def _format(args) -> int:
+    from pmem.cli.format_cmd import run_format
+
+    return run_format(_project_root(args.root), args.module or None, args.apply)
+
+
 def _wiki(args) -> int:
     from pmem.cli.wiki_cmd import run_wiki
 
@@ -271,6 +282,7 @@ COMMANDS = {
     "report": _report,
     "bench": _bench,
     "anchors": _anchors,
+    "format": _format,
     "wiki": _wiki,
 }
 

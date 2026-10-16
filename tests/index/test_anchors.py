@@ -2,6 +2,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from pmem.core.entry import Entry
 from pmem.index.anchors import AnchorChecker, symbol_block
 from pmem.vcs.detect import detect_vcs
@@ -96,6 +98,18 @@ def test_results_are_shared_across_processes_until_code_changes(git_repo, tmp_pa
     code.write_text(PY.replace("return total", "return 0"), encoding="utf-8")
     problems = AnchorChecker(git_repo, detect_vcs(git_repo), cache).check(entries, {})
     assert problems["A"] == ["calc.py 中 first 在 2026-09-05 之后改过"]
+
+
+def test_slow_dirty_listing_is_not_used_for_the_cache(git_repo, tmp_path_factory, monkeypatch):
+    code = git_repo / "calc.py"
+    code.write_text(PY, encoding="utf-8")
+    _commit(git_repo, "calc", "2026-09-01")
+    vcs = detect_vcs(git_repo)
+    monkeypatch.setattr(type(vcs), "cheap_dirty_files", False)
+    monkeypatch.setattr(type(vcs), "dirty_files", lambda self: pytest.fail("不该为指纹列未提交文件"))
+    cache = tmp_path_factory.mktemp("cache") / "anchors.json"
+    assert AnchorChecker(git_repo, vcs, cache).check([_entry("A", "calc.py#first")], {}) == {}
+    assert not cache.exists()
 
 
 def test_without_history_symbol_anchors_fall_back_to_file_level(tmp_path):

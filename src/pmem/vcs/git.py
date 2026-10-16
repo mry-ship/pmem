@@ -8,6 +8,7 @@ from pmem.vcs.base import VCS, fallback_user, run_tool
 
 class GitVCS(VCS):
     name = "git"
+    cheap_dirty_files = True
 
     def _git(self, *args: str) -> str | None:
         proc = run_tool(["git", "-c", "core.quotepath=off", *args], self.root)

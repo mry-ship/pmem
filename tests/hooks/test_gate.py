@@ -266,6 +266,10 @@ def test_git_checkout_without_dashes_restores_existing_files(tmp_path):
         ("Get-ChildItem src | ForEach-Object { Set-Content $_.FullName 'x' }", True),
         ("find src -name '*.pyc' -delete", True),
         ("find src -name '*.py'", False),
+        ("svn log -l 1; svn status --xml | Select-Object -First 5", False),
+        ("svn diff TileMatch/Assets", False),
+        ("svn update", True),
+        ("svn revert -R src", True),
     ],
 )
 def test_commands_that_may_change_unparsed_files(command, unseen):
@@ -947,6 +951,8 @@ def test_slow_snapshots_pause_for_a_day(git_project, monkeypatch):
     monkeypatch.setattr(gate_module, "SLOW_SNAPSHOT_SECONDS", -1)
     handle("pre-tool", shell("python gen.py"), root)
     assert (Config.load(root).cache_dir / gate_module.SLOW_SNAPSHOT_MARK).exists()
+    # 执行前就慢的那次也不留快照，执行后不用再等一遍
+    assert SessionState(Config.load(root).cache_dir, "c1").data["shell_before"] == {}
     handle("post-tool", shell("python gen.py"), root)
     handle("pre-tool", shell("python other.py"), root)
     assert SessionState(Config.load(root).cache_dir, "c1").data["shell_before"] == {}

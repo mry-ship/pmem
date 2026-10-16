@@ -168,7 +168,8 @@ class AnchorChecker:
             return self._state[1]
         state = None
         try:
-            dirty = self.vcs.dirty_files()
+            # 指纹每次核对都要算，列未提交文件慢的版本库（SVN）不缓存，照旧只核对选中的锚点
+            dirty = self.vcs.dirty_files() if self.vcs.cheap_dirty_files else None
             if dirty is not None:
                 parts = [self.vcs.revision(), date.today().isoformat()]
                 for rel in sorted(p for p in dirty if not p.startswith(f"{MEMORY_DIR}/")):

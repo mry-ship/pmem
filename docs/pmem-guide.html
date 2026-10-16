@@ -205,7 +205,7 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
 <section id="benefits">
   <h2>收益与适用场景</h2>
   <h3>没有记忆 → 有记忆</h3>
-  <p class="muted">TileMatch 项目上一代记忆服务上线前后的真实对话对比（改过代码的对话：上线前 122 个，上线后 62 个）。是前后对比而非对照实验。</p>
+  <p class="muted">TileMatch 项目上一代记忆服务上线前后的真实对话对比（改过代码的对话：上线前 122 个，上线后 62 个）。是前后对比而非对照实验。pmem 在上一代基础上全面加强（见下表），这组数字可以看作保守参考。</p>
   <table>
     <tr><th>被用户纠正的比例</th><th>每次改代码的耗时</th><th>读写 token</th><th>长对话全程不回退</th></tr>
     <tr><td><strong>−54% ~ −69%</strong></td><td><strong>−36% ~ −44%</strong></td><td><strong>−18%</strong></td><td>27% → 52%</td></tr>
@@ -421,7 +421,7 @@ git commit -m "接入 pmem"</code></pre>
   </table>
   <ul>
     <li>拦截范围：写文件类工具（Write / StrReplace / Edit / Delete 等）和终端里的写命令：重定向、<code>Set-Content</code>、<code>cp</code>/<code>mv</code>/<code>Copy-Item</code>、<code>git checkout/restore/apply</code>、<code>python -c</code> 及所运行脚本里写文件时的字面路径，先 <code>cd</code> 再写相对路径也能认出。同一条命令里带 <code>pmem search</code> 只放行查过的模块。</li>
-    <li>事后比对：脚本里拼出来的路径、格式化工具、<code>git stash</code>/<code>reset</code> 这类事前看不出写了什么的命令，执行前后各比对一次未提交文件（Git、SVN 都支持），改到没查过的模块时立即提醒 AI 补查。命令已经执行完，所以只能提醒、拦不住；仓库大到单次比对超过 1 秒时暂停 24 小时。</li>
+    <li>事后比对：脚本里拼出来的路径、格式化工具、<code>git stash</code>/<code>reset</code> 这类事前看不出写了什么的命令，执行前后各比对一次未提交文件（Git、SVN 都支持），改到没查过的模块时立即提醒 AI 补查。命令已经执行完，所以只能提醒、拦不住；仓库大到单次比对超过 1 秒时暂停 24 小时；<code>git</code>、<code>svn</code> 的只读子命令（status、log、diff 等）不做比对。</li>
     <li>别的记忆服务也叫 <code>search_memory</code> 时，它的结果不算“查过 pmem”。</li>
     <li>拦截提示里直接列出该模块现行的排除项、风险和更正（最多 5 条），即使 AI 检索时关键词没对上，也能先看到这些坑。</li>
     <li>“查过”的判定：MCP 的 <code>search_memory</code>，或终端里运行 <code>pmem search --module &lt;模块&gt;</code>。MCP 不可用时用终端也行，不会把 Agent 卡死。</li>

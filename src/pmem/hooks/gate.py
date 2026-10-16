@@ -569,6 +569,9 @@ class Gate:
             except OSError:
                 pass
             self.log("snapshot_slow", seconds=round(time.monotonic() - started, 1))
+            if paused_ok:
+                # 执行前就慢：放弃这次比对，免得执行后再等一遍
+                return None
         if files is None:
             return None
         snapshot = {}

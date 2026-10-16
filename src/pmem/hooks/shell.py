@@ -51,6 +51,8 @@ _READ_ONLY = {
 }
 _GIT_READ_ONLY = {"status", "log", "diff", "show", "blame", "branch", "rev-parse", "ls-files", "ls-tree", "grep",
                   "remote", "describe", "shortlog", "cat-file", "reflog", "help", "version", "fetch"}
+_SVN_READ_ONLY = {"status", "st", "stat", "log", "diff", "di", "info", "cat", "list", "ls", "blame", "praise",
+                  "annotate", "ann", "propget", "pg", "proplist", "pl", "help", "?", "h", "--version"}
 _PMEM_READ_ONLY = {"search", "graph", "list", "terms", "doctor", "report", "compact", "scan", "--help", "-h"}
 
 
@@ -261,6 +263,8 @@ def may_change_unseen(command: str) -> bool:
         if head in _READ_ONLY or (head == "pmem" and sub in _PMEM_READ_ONLY):
             continue
         if head == "git" and (sub in _GIT_READ_ONLY or (sub in ("checkout", "restore") and "--" in rest)):
+            continue
+        if head == "svn" and sub in _SVN_READ_ONLY:
             continue
         # 写命令认出了目标才算看清；目标从管道传入（ls | Remove-Item）时照样要比对
         if (head in _TEE | _RM | _COPY | _MOVE | _PS_WRITERS or _in_place(head, rest)) \

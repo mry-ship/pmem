@@ -24,6 +24,8 @@ class VCS:
     """版本控制适配接口；子类覆盖需要的方法。"""
 
     name = "none"
+    # dirty_files 是否便宜到可以每次调用（Git 走索引，几十毫秒；SVN 要遍历整个工作副本，大仓库要几秒）
+    cheap_dirty_files = False
 
     def __init__(self, root: Path):
         self.root = root

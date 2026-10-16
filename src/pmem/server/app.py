@@ -91,8 +91,8 @@ def build_server(root: Path | None) -> MCPServer:
 
     @server.tool()
     def memory_graph(module: str, entity: str = "") -> str:
-        """查看模块的记忆图谱。只传 module：列出议题（现行/已被替代条数、首末日期）和相关模块
-        （共享代码或正文提及）；再传 entity：给出该议题的时间线（谁在哪天替代了谁）和相关模块。"""
+        """查看模块的记忆图谱。只传 module：模块概览，列出各议题（现行/已被替代条数、首末日期、最新两条现行结论摘要）
+        和相关模块（共享代码或正文提及），用于一次看清模块全貌；再传 entity：给出该议题的时间线（谁在哪天替代了谁）和相关模块。"""
         if service is None:
             return _dump(missing)
         return _dump(service.graph(module, entity or None))

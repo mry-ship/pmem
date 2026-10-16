@@ -402,3 +402,159 @@ def test_events_are_logged_for_report(make_project):
     stop = events[-1]
     assert stop["input_tokens"] == 1000 and stop["returned"] == ["01JA7K3M2X9F4Q8W6ZB1C2D3E4"]
     assert stop["nudged"] == ["gameplay.Jigsaw"]
+
+
+# ---- 提问审查 ----
+
+def read_payload(root: Path, rel: str, conv="c1") -> dict:
+    return {"conversation_id": conv, "hook_event_name": "postToolUse", "tool_name": "Read",
+            "tool_input": {"file_path": str(root / rel)}}
+
+
+def add_entry(root: Path, entry_id: str, kind: str, content: str, day: str, entity="Reward", supersedes="",
+              module="gameplay.Jigsaw"):
+    folder = root / ".memory" / "entries" / module
+    folder.mkdir(parents=True, exist_ok=True)
+    extra = f"supersedes: [{supersedes}]\n" if supersedes else ""
+    text = (f"---\nid: {entry_id}\nmodule: {module}\nentity: {entity}\nkind: {kind}\nstatus: active\n"
+            f"author: a\nnote_date: '{day}'\n{extra}---\n{content}\n")
+    (folder / f"{entry_id}.md").write_text(text, encoding="utf-8")
+
+
+def transcript(tmp_path: Path, *user_texts: str) -> str:
+    path = tmp_path / "t.jsonl"
+    lines = []
+    for text in user_texts:
+        lines.append({"role": "user", "message": {"content": [{"type": "text", "text": text}]}})
+        lines.append({"role": "assistant", "message": {"content": [{"type": "text", "text": "好的"}]}})
+    path.write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in lines), encoding="utf-8")
+    return str(path)
+
+
+def stop_payload(path: str | None = None, conv="c1", **extra) -> dict:
+    return {"conversation_id": conv, "status": "completed", "transcript_path": path, **extra}
+
+
+def test_reading_module_code_attaches_digest_once(make_project):
+    root = make_project("block")
+    first = handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root)
+    assert "src/Jigsaw/Board.cs 属于 gameplay.Jigsaw" in first["additional_context"]
+    assert "旧结论" in first["additional_context"]
+    assert handle("post-tool", read_payload(root, "src/Jigsaw/Other.cs"), root) == {}
+    # 摘要不等于检索：改代码仍要先查
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
+
+
+@pytest.mark.parametrize("rel", ["src/Shop/Shop.cs", "src/Jigsaw/README.md", "tools/x.py"])
+def test_no_digest_without_memories_or_for_ignored_files(make_project, rel):
+    root = make_project()
+    assert handle("post-tool", read_payload(root, rel), root) == {}
+
+
+def test_digest_puts_exclusions_first_and_hides_superseded(make_project):
+    root = make_project(with_memory=False)
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A1", "conclusion", "最新的普通结论", "2026-10-05")
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A2", "exclusion", "不要在客户端去重", "2026-09-01", entity="Dedup")
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A3", "conclusion", "已被推翻的旧说法", "2026-08-01", entity="Old")
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A4", "correction", "更正后的说法", "2026-09-02", entity="Old",
+              supersedes="01JA7K3M2X9F4Q8W6ZB1C2D3A3")
+    text = handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root)["additional_context"]
+    assert "有 3 条现行研发记忆" in text
+    assert text.index("排除项｜Dedup") < text.index("更正｜Old") < text.index("结论｜Reward")
+    assert "已被推翻" not in text
+
+
+def test_question_about_module_is_reviewed_at_stop(make_project, tmp_path):
+    root = make_project()
+    path = transcript(tmp_path, "<timestamp>x</timestamp>\n<user_query>\nJigsaw 的奖励为什么会重复发？\n</user_query>")
+    result = handle("stop", stop_payload(path), root)
+    assert "你的问题涉及 gameplay.Jigsaw" in result["followup_message"]
+    assert "已核对记忆" in result["followup_message"]
+    assert _last_stop(root)["review"] == ["gameplay.Jigsaw"]
+    # 同一模块一个对话只追问一次
+    assert handle("stop", stop_payload(path), root) == {}
+
+
+def test_question_review_uses_paths_aliases_and_ignores_attachments(make_project, tmp_path):
+    root = make_project()
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3S1", "risk", "商店价格缓存的风险", "2026-10-01", module="economy.Shop")
+    text = "<attached_files>economy.Shop 的代码</attached_files>\n<user_query>看下 src/Jigsaw/Board.cs</user_query>"
+    result = handle("stop", stop_payload(transcript(tmp_path, text)), root)
+    assert "gameplay.Jigsaw" in result["followup_message"]
+    assert "economy.Shop" not in result["followup_message"]
+
+
+def test_no_review_when_memories_were_seen(make_project, tmp_path):
+    root = make_project()
+    path = transcript(tmp_path, "<user_query>Jigsaw 奖励为什么重复</user_query>")
+    handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root)
+    assert handle("stop", stop_payload(path), root) == {}
+    handle("before-mcp", search_payload(conv="c2", module="gameplay.Jigsaw"), root)
+    result = handle("stop", stop_payload(path, conv="c2"), root)
+    assert "你的问题涉及" not in result.get("followup_message", "")
+
+
+def test_global_search_results_count_as_reviewed(make_project, tmp_path):
+    root = make_project()
+    after = {"conversation_id": "c1", "tool_name": "MCP:search_memory",
+             "result_json": json.dumps({"ok": True, "module": None, "items": [
+                 {"id": "01JA7K3M2X9F4Q8W6ZB1C2D3E4", "module": "gameplay.Jigsaw", "kind": "conclusion"}]})}
+    handle("after-mcp", after, root)
+    path = transcript(tmp_path, "<user_query>Jigsaw 奖励为什么重复</user_query>")
+    assert "你的问题涉及" not in handle("stop", stop_payload(path), root).get("followup_message", "")
+
+
+@pytest.mark.parametrize("extra", [{"loop_count": 1}, {"stop_hook_active": True}])
+def test_followup_turns_do_not_trigger_more_followups(make_project, tmp_path, extra):
+    root = make_project()
+    path = transcript(tmp_path, "<user_query>Jigsaw 奖励为什么重复</user_query>")
+    assert handle("stop", stop_payload(path, **extra), root) == {}
+    assert "gameplay.Jigsaw" in handle("stop", stop_payload(path), root)["followup_message"]
+
+
+def test_pmem_followup_message_is_not_treated_as_a_question(make_project, tmp_path):
+    root = make_project()
+    path = transcript(tmp_path, "<user_query>[pmem] 本轮修改了 gameplay.Jigsaw，但还没有写研发记忆</user_query>")
+    assert handle("stop", stop_payload(path), root) == {}
+
+
+def test_review_falls_back_to_prompt_without_transcript(make_project):
+    root = make_project()
+    handle("prompt", {"conversation_id": "c1", "prompt": "check src/Jigsaw/Board.cs please"}, root)
+    assert "gameplay.Jigsaw" in handle("stop", stop_payload(None), root)["followup_message"]
+
+
+def test_review_combines_with_write_reminder(make_project, tmp_path):
+    root = make_project()
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    path = transcript(tmp_path, "<user_query>Jigsaw 奖励为什么重复，顺便改下商店</user_query>")
+    message = handle("stop", stop_payload(path), root)["followup_message"]
+    assert "你的问题涉及 gameplay.Jigsaw" in message and "本轮修改了 economy.Shop" in message
+
+
+def test_review_can_be_disabled_and_respects_skip(make_project, tmp_path):
+    root = make_project()
+    path = transcript(tmp_path, "<user_query>Jigsaw 奖励为什么重复</user_query>")
+    handle("prompt", {"conversation_id": "skip", "prompt": "跳过记忆，看下 Jigsaw"}, root)
+    assert handle("stop", stop_payload(path, conv="skip"), root) == {}
+    assert handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs", conv="skip"), root) == {}
+    config = root / ".memory" / "config.yaml"
+    config.write_text(config.read_text(encoding="utf-8").replace(
+        "mode: warn", "mode: warn, question_review: false, read_digest: false"), encoding="utf-8")
+    assert handle("stop", stop_payload(path), root) == {}
+    assert handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root) == {}
+
+
+def test_compaction_forgets_seen_memories(make_project):
+    root = make_project()
+    assert handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root)
+    handle("compact", {"conversation_id": "c1"}, root)
+    assert handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root)
+
+
+def test_prompt_context_agents_get_digest_at_prompt_time(make_project):
+    root = make_project()
+    payload = {"conversation_id": "c1", "prompt": "拼图 Jigsaw 的奖励怎么发", "prompt_context": True}
+    result = handle("prompt", payload, root)
+    assert result["continue"] is True and "你的问题提到了 gameplay.Jigsaw" in result["additional_context"]
+    assert "additional_context" not in handle("prompt", {"conversation_id": "c2", "prompt": "Jigsaw"}, root)

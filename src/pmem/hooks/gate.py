@@ -8,9 +8,11 @@ from pathlib import Path
 from wcmatch import glob as wglob
 
 from pmem.core.config import Config
+from pmem.core.entry import Entry
 from pmem.core.registry import ModuleRegistry, RegistryError
-from pmem.hooks.payload import fuzzy_contains, tool_input
+from pmem.hooks.payload import asks_to_skip, fuzzy_contains, last_user_text, tool_input
 from pmem.hooks.state import SessionState
+from pmem.index.graph import KIND_LABELS, current_entries, digest, preview
 from pmem.metrics.events import log_event
 
 WRITE_TOOLS = {"write", "strreplace", "edit", "multiedit", "editnotebook", "delete", "search_replace"}
@@ -24,6 +26,9 @@ TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_wri
 ALLOW = {"permission": "allow"}
 PMEM_TOOLS = ("record_memory", "search_memory", "memory_graph")
 MAX_AUTO_ANCHORS = 5
+MAX_REVIEW_MODULES = 3
+DIGEST_PREVIEW = 100
+_PATH_TOKEN = re.compile(r"[\w.\-]*[/\\][\w./\\\-]+")
 
 
 # ---- 终端命令里的写文件目标 ----
@@ -172,9 +177,34 @@ class Gate:
             return self.module_of(self.relative(str(args["path"])))
         return None
 
+    def modules_in_text(self, text: str) -> list[str]:
+        """文字里提到的模块：完整模块 id、模块名或别名，以及能映射到模块的文件路径。"""
+        lowered = text.lower()
+        found = [mid for mid in self.registry.modules if mid.lower() in lowered]
+        found += [mid for mid, pattern in self.registry.name_patterns().items() if pattern.search(text)]
+        found += [m for m in (self.module_of(self.relative(t.strip("."))) for t in _PATH_TOKEN.findall(text)) if m]
+        return list(dict.fromkeys(found))
+
     def memory_count(self, module: str) -> int:
         folder = self.config.entries_dir / module
         return sum(1 for _ in folder.glob("*.md")) if folder.is_dir() else 0
+
+    def module_entries(self, module: str) -> list[Entry]:
+        folder = self.config.entries_dir / module
+        entries = []
+        for path in sorted(folder.glob("*.md")) if folder.is_dir() else []:
+            try:
+                entries.append(Entry.from_markdown(path.read_text(encoding="utf-8-sig")))
+            except Exception:  # noqa: BLE001, S112
+                continue
+        return entries
+
+    def _watched(self, rel: str) -> bool:
+        ignore = self.config.get("gate.ignore") or []
+        watch = self.config.get("gate.watch") or []
+        if any(wglob.globmatch(rel, p, flags=_GLOB) for p in ignore):
+            return False
+        return not watch or any(wglob.globmatch(rel, p, flags=_GLOB) for p in watch)
 
     def save(self) -> None:
         if self.state is not None:
@@ -188,26 +218,73 @@ class Gate:
     def on_prompt(self) -> dict:
         text = str(self.payload.get("prompt") or "")
         markers = self.config.get("gate.skip_markers") or []
-        skip = any(fuzzy_contains(text, str(m)) for m in markers)
+        skip = any(asks_to_skip(text, str(m)) for m in markers)
         analysis = any(
             fuzzy_contains(text.lower() if m.isascii() else text, m.lower() if m.isascii() else m)
             for m in (str(m) for m in self.config.get("gate.analysis_markers") or [])
         )
-        if self.state is not None and (skip or analysis):
+        asked = self.modules_in_text(text) if self.state is not None else []
+        if self.state is not None:
             self.state.data["skip"] = self.state.data["skip"] or skip
             self.state.data["analysis"] = self.state.data["analysis"] or analysis
+            self.state.data["asked"] = asked
             self.save()
-        self.log("prompt", mode=self.payload.get("composer_mode"), skip=skip or None, analysis=analysis or None)
-        return {"continue": True}
+        self.log("prompt", mode=self.payload.get("composer_mode"), skip=skip or None, analysis=analysis or None,
+                 asked=asked or None)
+        result: dict = {"continue": True}
+        # 只有能在提问时注入上下文的工具（Claude Code）才当场附上摘要；Cursor 靠读代码时的摘要和回合结束的核对
+        if self.payload.get("prompt_context") and self._reviews_on("gate.question_review"):
+            digests = [d for d in (self._offer_digest(m, f"你的问题提到了 {m}") for m in asked[:MAX_REVIEW_MODULES]) if d]
+            if digests:
+                result["additional_context"] = "\n\n".join(digests)
+        return result
+
+    # 提问审查：让 Agent 在回答、修改之前看到相关模块的记忆
+
+    def _reviews_on(self, setting: str) -> bool:
+        return self.state is not None and not self.state.data["skip"] and self._reminders_on(setting, True)
+
+    def _offer_digest(self, module: str, intro: str) -> str | None:
+        """本对话还没看过该模块的记忆时，给出现行记忆摘要并记为已看过。"""
+        if self.state is None or self.state.has("reviewed", module):
+            return None
+        entries = self.module_entries(module)
+        picked = digest(entries)
+        if not picked:
+            return None
+        self.state.add("reviewed", module)
+        self.save()
+        self.log("digest", module=module, ids=[e.id for e in picked])
+        intro_line = (
+            f"[pmem] {intro}，该模块有 {len(current_entries(entries))} 条现行研发记忆。回答或修改前先看这些结论"
+            f"（摘要；要全文或更多请调用 search_memory(module=\"{module}\", query=\"<问题要点>\")）："
+        )
+        lines = [f"- {KIND_LABELS.get(e.kind, e.kind)}｜{e.entity}｜{e.note_date}：{preview(e.content, DIGEST_PREVIEW)}"
+                 for e in picked]
+        return "\n".join([intro_line, *lines])
+
+    def _read_digest(self, args: dict) -> dict:
+        rel = self.relative(str(args.get("file_path") or args.get("path") or ""))
+        if rel is None or not self._watched(rel) or not self._reviews_on("gate.read_digest"):
+            return {}
+        module = self.module_of(rel)
+        message = self._offer_digest(module, f"你正在看的 {rel} 属于 {module}") if module else None
+        return {"additional_context": message} if message else {}
+
+    def _unreviewed_question(self) -> list[str]:
+        """最近一次提问提到了、本对话却还没看过记忆的模块（有记忆的才算）。"""
+        if not self._reviews_on("gate.question_review"):
+            return []
+        text = last_user_text(self.payload.get("transcript_path"))
+        if text is not None and text.lstrip().startswith("[pmem]"):
+            return []
+        asked = self.modules_in_text(text) if text is not None else self.state.data["asked"]
+        return [m for m in asked
+                if not self.state.has("reviewed", m) and not self.state.has("review_nudged", m)
+                and self.memory_count(m)][:MAX_REVIEW_MODULES]
 
     def _guard(self, rel: str | None) -> dict | None:
-        if rel is None:
-            return None
-        ignore = self.config.get("gate.ignore") or []
-        watch = self.config.get("gate.watch") or []
-        if any(wglob.globmatch(rel, p, flags=_GLOB) for p in ignore):
-            return None
-        if watch and not any(wglob.globmatch(rel, p, flags=_GLOB) for p in watch):
+        if rel is None or not self._watched(rel):
             return None
         module = self.module_of(rel)
         mode = self.config.get("gate.mode")
@@ -297,8 +374,8 @@ class Gate:
     def _mark_searched(self, args: dict, via: str) -> None:
         module = self.module_from_args(args)
         if module and self.state is not None:
-            self.state.add("searched", module)
-            self.state.add("consulted", module)
+            for key in ("searched", "consulted", "reviewed"):
+                self.state.add(key, module)
             self.save()
         self.log("search_call", module=module, via=via)
 
@@ -328,6 +405,9 @@ class Gate:
             if module:
                 self.state.add("searched", module)
                 self.state.add("consulted", module)
+            # 不限模块的检索：结果里出现过的模块也算看过记忆
+            for seen in {str(r["module"]) for r in rows if r.get("module")} | ({module} if module else set()):
+                self.state.add("reviewed", seen)
             for mid in ids:
                 self.state.add("returned", mid)
             self.log("mcp_search", module=module, ids=ids)
@@ -349,20 +429,23 @@ class Gate:
             self.log("edit", module=module, file=rel)
 
     def on_post_tool(self) -> dict:
-        """Claude Code / Codex 的 PostToolUse：pmem 工具的返回与编辑过的文件。"""
+        """工具调用之后：读代码时附上该模块的记忆摘要；Claude Code / Codex 另由此处理 pmem 工具的返回与编辑过的文件。"""
         from pmem.hooks.agents import edited_files
 
         name = str(self.payload.get("tool_name") or "")
         if any(t in name for t in PMEM_TOOLS):
             return self.on_after_mcp()
+        if name.lower() == "read":
+            return self._read_digest(tool_input(self.payload))
         for path in edited_files(self.payload):
             self._mark_edited(path)
         return {}
 
     def on_compact(self) -> dict:
         if self.state is not None:
-            self.state.data["searched"] = []
-            self.state.data["warned"] = []
+            # 压缩后之前看过的记忆可能已不在上下文里
+            for key in ("searched", "warned", "reviewed"):
+                self.state.data[key] = []
             self.save()
         return {}
 
@@ -399,11 +482,14 @@ class Gate:
             return {}
         self.state.cleanup_old()
         status = self.payload.get("status")
-        # 中断或出错结束的回合、用户说了“跳过记忆”的对话，都不提醒
+        # 中断或出错结束的回合、用户说了“跳过记忆”的对话都不提醒；由提醒触发的续跑回合
+        # （Cursor 的 loop_count、Claude Code 的 stop_hook_active）也不再追加，留到下一个回合
         finished = status in (None, "completed") and not self.state.data["skip"]
-        pending = self._pending_nudges() if finished else []
+        follow = finished and not (self.payload.get("loop_count") or self.payload.get("stop_hook_active"))
+        review = self._unreviewed_question() if follow else []
+        pending = self._pending_nudges() if follow else []
         analyzed = self._analyzed() if finished else []
-        consulted_pending = self._consulted_only() if finished else []
+        consulted_pending = self._consulted_only() if follow else []
         usage = {k: self.payload.get(k) for k in TOKEN_FIELDS if isinstance(self.payload.get(k), int)}
         self.save()
         self.log(
@@ -415,26 +501,37 @@ class Gate:
             recorded=self.state.data["recorded"] or None,
             edited=self.state.data["edited"] or None,
             analyzed=analyzed or None,
+            review=review or None,
             nudged=(pending + consulted_pending) or None,
             **usage,
         )
-        if not pending and not consulted_pending:
+        if not review and not pending and not consulted_pending:
             return {}
+        for module in review:
+            self.state.add("review_nudged", module)
         for module in pending + consulted_pending:
             self.state.add("nudged", module)
         self.save()
+        messages = []
+        if review:
+            names = "、".join(review)
+            messages.append(
+                f"[pmem] 你的问题涉及 {names}，这些模块已有研发记忆，但本轮回答前没有查过。"
+                f"请对每个模块调用 search_memory(module=\"<模块>\", query=\"<问题要点>\") 核对："
+                "与回答一致就简短说明“已核对记忆”；记忆里有排除项、风险或不同结论，请据此修正回答。"
+            )
         parts = []
         if pending:
             parts.append(f"本轮修改了 {'、'.join(pending)}，但还没有写研发记忆")
         if consulted_pending:
             parts.append(f"本轮查了 {'、'.join(consulted_pending)} 的记忆，没有改代码也没有写记忆")
-        return {
-            "followup_message": (
+        if parts:
+            messages.append(
                 f"[pmem] {'；'.join(parts)}。如果得出了值得留给后人的结论"
                 "（根因、排除过的方向、做出的决定、潜在风险），请用 record_memory 各记一条；"
                 "只是机械改动或查阅、没有新结论的话，回复“无需记录”即可。"
             )
-        }
+        return {"followup_message": "\n".join(messages)}
 
 
 HANDLERS = {

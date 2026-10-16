@@ -37,6 +37,10 @@
     "postToolUse": [
       {
         "command": "python spike/cursor_hooks/record.py postToolUse"
+      },
+      {
+        "command": "pmem hook post-tool",
+        "matcher": "Read"
       }
     ],
     "postToolUseFailure": [

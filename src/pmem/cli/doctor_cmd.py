@@ -117,6 +117,8 @@ def run_doctor(root: Path) -> int:
     line(OK if "pmem" in mcp else BAD, ".cursor/mcp.json 已注册 pmem" if "pmem" in mcp else ".cursor/mcp.json 缺少 pmem，请运行 pmem init")
     hooks = json.dumps(_load(cursor / "hooks.json"))
     line(OK if "pmem hook" in hooks else WARN, "Hooks 已接入" if "pmem hook" in hooks else "Hooks 未接入（闸门不生效），请运行 pmem init")
+    if "pmem hook" in hooks and "pmem hook post-tool" not in hooks:
+        line(WARN, "读代码时的记忆摘要未接入（postToolUse），请重新运行 pmem init")
     line(OK if (cursor / "rules" / "pmem.mdc").exists() else WARN, "规则文件 .cursor/rules/pmem.mdc")
     for agent, label, hooks_path, wired_mcp in (
         ("claude", "Claude Code", root / ".claude" / "settings.json", "pmem" in _load(root / ".mcp.json").get("mcpServers", {})),

@@ -6,7 +6,6 @@
 """
 from __future__ import annotations
 
-import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
@@ -15,12 +14,35 @@ from pmem.core.registry import ModuleRegistry, RegistryError
 
 VISIBLE = ("active", "seed", "draft")
 PREVIEW_CHARS = 80
-MIN_ASCII_NAME = 4
+LATEST_PER_TOPIC = 2
+KIND_LABELS = {"exclusion": "排除项", "risk": "风险", "correction": "更正", "decision": "决定", "conclusion": "结论"}
+# 先看的顺序：排除项、风险最能避免走弯路
+KIND_ORDER = {kind: i for i, kind in enumerate(KIND_LABELS)}
 
 
 def preview(text: str, limit: int = PREVIEW_CHARS) -> str:
     flat = " ".join(text.split())
     return flat if len(flat) <= limit else flat[:limit] + "…"
+
+
+def current_entries(entries: list[Entry]) -> list[Entry]:
+    """可见且没有被替代的记忆，从新到旧。"""
+    visible = [e for e in entries if e.status in VISIBLE]
+    replaced = {old for e in visible for old in e.supersedes}
+    return sorted((e for e in visible if e.id not in replaced), key=lambda e: (e.note_date, e.id), reverse=True)
+
+
+def digest(entries: list[Entry], limit: int = 6, per_topic: int = 2) -> list[Entry]:
+    """一个模块最值得先看的现行记忆：排除项、风险、更正、决定在前，同类从新到旧，每个议题最多 per_topic 条。"""
+    picked: list[Entry] = []
+    per: Counter = Counter()
+    for entry in sorted(current_entries(entries), key=lambda e: KIND_ORDER.get(e.kind, len(KIND_ORDER))):
+        if per[entry.entity.lower()] < per_topic:
+            picked.append(entry)
+            per[entry.entity.lower()] += 1
+        if len(picked) == limit:
+            break
+    return picked
 
 
 @dataclass
@@ -44,20 +66,10 @@ class MemoryGraph:
             for old in entry.supersedes:
                 self.superseded_by.setdefault(old, entry)
         self.current = [e for e in self.entries if e.id not in self.superseded_by]
-        self._patterns = self._name_patterns()
+        self._patterns = registry.name_patterns()
         # (模块, 实体小写) → 对端模块 → 关系
         self.links: dict[tuple[str, str], dict[str, Link]] = defaultdict(dict)
         self._build()
-
-    def _name_patterns(self) -> dict[str, re.Pattern]:
-        patterns = {}
-        for mid, module in self.registry.modules.items():
-            names = [n for n in (module.name, *module.aliases) if "." not in n]
-            names = [n for n in names if (len(n) >= MIN_ASCII_NAME if n.isascii() else len(n) >= 2)]
-            if names:
-                alternation = "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True))
-                patterns[mid] = re.compile(rf"(?<![A-Za-z0-9_])(?:{alternation})(?![A-Za-z0-9_])")
-        return patterns
 
     def _owner(self, rel: str) -> str | None:
         try:
@@ -152,6 +164,8 @@ class MemoryGraph:
                 "first": items[0].note_date,
                 "last": items[-1].note_date,
                 "kinds": dict(Counter(e.kind for e in current)),
+                "latest": [{"id": e.id, "kind": e.kind, "date": e.note_date, "preview": preview(e.content)}
+                           for e in reversed(current[-LATEST_PER_TOPIC:])],
             })
         rows.sort(key=lambda r: (r["last"], r["current"]), reverse=True)
         return rows

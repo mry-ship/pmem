@@ -24,6 +24,8 @@ DEFAULTS: dict = {
         "skip_markers": ["跳过记忆", "skip-memory"],
         "stop_reminder": True,
         "analysis_reminder": True,
+        "read_digest": True,
+        "question_review": True,
         "analysis_markers": [
             "为什么", "原因", "根因", "排查", "定位", "分析", "怎么回事", "复现", "报错", "崩溃", "闪退",
             "卡死", "不生效", "异常", "bug", "why", "debug", "investigate",

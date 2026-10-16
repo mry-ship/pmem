@@ -9,7 +9,9 @@ alwaysApply: true
 
 ## 何时查
 - 修改代码前，按要改的文件查一次：`search_memory(path="<文件路径>")`；同一模块一个对话查一次即可。
+- 回答涉及某个模块的问题（原因、方案、现状）前，同样先查：`search_memory(module=..., query="<问题要点>")`。
 - 排查问题时把现象写进 `query`；不确定模块名时先 `list_modules()`。
+- 想一次看清模块全貌（各议题的现行结论）：`memory_graph(module=...)`。
 - 想知道一个议题怎么演变、和哪些模块相关：`memory_graph(module=..., entity=...)`；
   问“当时的结论”时给 `search_memory` 带 `as_of="YYYY-MM-DD"`。
 

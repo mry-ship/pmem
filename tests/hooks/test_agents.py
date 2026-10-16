@@ -119,6 +119,19 @@ def test_post_tool_record_counts_as_written(root):
     assert run("claude", "stop", {"session_id": "s6"}, root) == {}
 
 
+def test_claude_gets_memory_digest_on_prompt_and_on_read(root):
+    prompt = run("claude", "prompt", {"session_id": "s8", "prompt": "Jigsaw 的奖励怎么发"}, root)
+    output = prompt["hookSpecificOutput"]
+    assert output["hookEventName"] == "UserPromptSubmit" and "旧结论" in output["additionalContext"]
+    read = {"session_id": "s9", "tool_name": "Read", "tool_input": {"file_path": str(root / "src/Jigsaw/Board.cs")}}
+    output = run("claude", "post-tool", read, root)["hookSpecificOutput"]
+    assert output["hookEventName"] == "PostToolUse" and "gameplay.Jigsaw" in output["additionalContext"]
+
+
+def test_codex_prompt_gets_no_context(root):
+    assert run("codex", "prompt", {"session_id": "s10", "prompt": "Jigsaw 的奖励怎么发"}, root) == {}
+
+
 def test_hook_cli_with_agent_flag_finds_project_from_payload_cwd(root, tmp_path, capsys, monkeypatch):
     monkeypatch.chdir(tmp_path)
     raw = json.dumps(claude_edit(root, "src/Jigsaw/Board.cs", "s7"), ensure_ascii=False).encode("utf-8")

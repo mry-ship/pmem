@@ -43,6 +43,8 @@ gate:
   ignore: ["**/*.md", "docs/**", ".memory/**", ".cursor/**"]
   skip_markers: ["跳过记忆", "skip-memory"]
   analysis_reminder: true   # 对话只查了记忆、没改代码也没写记忆时，结束时提醒一次（可回“无需记录”）
+  read_digest: true         # Agent 读某模块的代码时，自动附上该模块的记忆摘要（每个对话每个模块一次）
+  question_review: true     # 提问涉及某模块、回答前却没看过它的记忆时，回合结束让 Agent 补查并核对回答
 write:
   default_status: active  # active 直接生效 / draft 需审阅
   content_min: 20
@@ -74,7 +76,9 @@ RULE_BODY = """\
 
 ## 何时查
 - 修改代码前，按要改的文件查一次：`search_memory(path="<文件路径>")`；同一模块一个对话查一次即可。
+- 回答涉及某个模块的问题（原因、方案、现状）前，同样先查：`search_memory(module=..., query="<问题要点>")`。
 - 排查问题时把现象写进 `query`；不确定模块名时先 `list_modules()`。
+- 想一次看清模块全貌（各议题的现行结论）：`memory_graph(module=...)`。
 - 想知道一个议题怎么演变、和哪些模块相关：`memory_graph(module=..., entity=...)`；
   问“当时的结论”时给 `search_memory` 带 `as_of="YYYY-MM-DD"`。
 
@@ -210,6 +214,7 @@ HOOK_EVENTS = {
     "beforeMCPExecution": {"command": "pmem hook before-mcp"},
     "afterMCPExecution": {"command": "pmem hook after-mcp"},
     "afterFileEdit": {"command": "pmem hook edited"},
+    "postToolUse": {"command": "pmem hook post-tool", "matcher": "Read"},
     "preCompact": {"command": "pmem hook compact"},
     "stop": {"command": "pmem hook stop", "loop_limit": 1},
 }
@@ -235,7 +240,7 @@ def _agent_hooks(agent: str, pre_matcher: str, post_matcher: str) -> dict:
 CLAUDE_HOOKS = _agent_hooks(
     "claude",
     "^(Write|Edit|MultiEdit|NotebookEdit|Bash|mcp__pmem__.*)$",
-    "^(Write|Edit|MultiEdit|NotebookEdit|mcp__pmem__.*)$",
+    "^(Write|Edit|MultiEdit|NotebookEdit|Read|mcp__pmem__.*)$",
 )
 CODEX_HOOKS = _agent_hooks("codex", "^(Bash|apply_patch|mcp__pmem__.*)$", "^(apply_patch|mcp__pmem__.*)$")
 CODEX_MCP_TOML = '[mcp_servers.pmem]\ncommand = "pmem"\nargs = ["serve"]\n'

@@ -83,6 +83,10 @@ def build_parser():
     p = sub.add_parser("list", help="列出模块与记忆数量")
     p.add_argument("--root", default=".")
 
+    p = sub.add_parser("wiki", help="从记忆生成可浏览的模块 Wiki（Markdown，每个模块一页）")
+    p.add_argument("--out", default=None, help="输出目录，默认 .memory/wiki")
+    p.add_argument("--root", default=".")
+
     p = sub.add_parser("compact", help="列出积累了多条零碎记忆的议题；指定议题时输出全部正文，供 Agent 合并成一条")
     p.add_argument("--module", default="")
     p.add_argument("--entity", default="")
@@ -241,6 +245,12 @@ def _anchors(args) -> int:
     return run_anchors(_project_root(args.root), args.module or None, args.apply)
 
 
+def _wiki(args) -> int:
+    from pmem.cli.wiki_cmd import run_wiki
+
+    return run_wiki(_project_root(args.root), args.out)
+
+
 COMMANDS = {
     "hook": _hook,
     "serve": _serve,
@@ -253,6 +263,7 @@ COMMANDS = {
     "report": _report,
     "bench": _bench,
     "anchors": _anchors,
+    "wiki": _wiki,
 }
 
 

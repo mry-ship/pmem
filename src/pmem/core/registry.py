@@ -14,6 +14,7 @@ _NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 _GLOB_FLAGS = wglob.GLOBSTAR | wglob.BRACE | wglob.DOTGLOB | wglob.FORCEUNIX | wglob.IGNORECASE
 _WILDCARD = re.compile(r"\*\*|\*|\?|\[[^\]]*\]|\{[^}]*\}")
 _MERGED_PREFIX = "merged_into:"
+MIN_ASCII_NAME = 4
 
 
 class RegistryError(ValueError):
@@ -200,6 +201,17 @@ class ModuleRegistry:
         if cand:
             return ResolvedModule(cand, category, cand.split(".", 1)[1], known=False, candidate=True)
         return ResolvedModule(f"{category}.{name}", category, name, known=False)
+
+    def name_patterns(self) -> dict[str, re.Pattern]:
+        """文字里提到某个模块的匹配式：模块名与不带点的别名，英文至少 4 个字符且按词边界，中文至少 2 个字。"""
+        patterns = {}
+        for mid, module in self.modules.items():
+            names = [n for n in (module.name, *module.aliases) if "." not in n]
+            names = [n for n in names if (len(n) >= MIN_ASCII_NAME if n.isascii() else len(n) >= 2)]
+            if names:
+                alternation = "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True))
+                patterns[mid] = re.compile(rf"(?<![A-Za-z0-9_])(?:{alternation})(?![A-Za-z0-9_])")
+        return patterns
 
     def is_global_entity(self, name: str) -> bool:
         return self._entity_vocab.get(name.lower()) == name

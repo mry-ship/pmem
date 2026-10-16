@@ -17,12 +17,12 @@ flowchart LR
     subgraph Agent[Cursor / Claude Code / Codex]
         R[规则 pmem.mdc 等]
         M[MCP 工具<br/>search_memory<br/>record_memory<br/>confirm_memory<br/>memory_graph<br/>list_modules]
-        H[Hooks<br/>改前拦截<br/>记下查过和改过<br/>结束提醒]
+        H[Hooks<br/>读码附摘要<br/>改前拦截<br/>结束审查与提醒]
     end
     subgraph pmem 命令
         S[serve]
         HK[hook]
-        CLI[命令行<br/>读写记忆、接入<br/>体检、报告]
+        CLI[命令行<br/>读写记忆、接入<br/>体检、报告、Wiki]
     end
     SV[MemoryService<br/>业务规则]
     REG[ModuleRegistry<br/>modules.yaml]
@@ -50,16 +50,24 @@ flowchart LR
 | `index` | 分词（中文二元组 + 英文词 + camelCase 拆分）、BM25、嵌入器（ONNX / Ollama / OpenAI 兼容）、SQLite 向量缓存、混合排序 |
 | `service` | 五个 MCP 工具背后的规则：长度、类型、密钥、每日上限、新模块提示、检索参数归一、同义词扩展；模块和存储错误统一转成 `ok: false` 返回；MCP 与 CLI 共用 |
 | `server` | MCP stdio 服务，只做参数转发 |
-| `hooks` | Hook 输入解析（兼容 Windows 转码）、按对话隔离的状态、闸门与结束提醒；事件有 prompt、pre-tool、before-mcp、after-mcp、edited、post-tool、compact、stop |
+| `hooks` | Hook 输入解析（兼容 Windows 转码，提问原文从对话记录读取）、按对话隔离的状态、记忆审查、闸门与结束提醒；事件有 prompt、pre-tool、before-mcp、after-mcp、edited、post-tool、compact、stop |
 | `metrics` | 事件日志、收益报告、引用识别 |
 | `bench` | 基于 Cursor SDK 的有/无记忆对照实验 |
-| `cli` / `generate` / `scan` | 命令入口（两张分发表：search、record、confirm、graph、list、terms 直接调 `MemoryService`；init、scan、doctor、compact、anchors、import、reindex、report、bench、serve、hook 各自实现）、`init` 生成的文件模板、目录与提交热度扫描（供 Agent 划分模块） |
+| `cli` / `generate` / `scan` | 命令入口（两张分发表：search、record、confirm、graph、list、terms 直接调 `MemoryService`；init、scan、doctor、compact、anchors、import、reindex、report、wiki、bench、serve、hook 各自实现）、`init` 生成的文件模板、目录与提交热度扫描（供 Agent 划分模块） |
 
-## 四条主流程
+## 五条主流程
 
 **检索**：Agent 调用 `search_memory(path=...)`。服务先用 `modules.yaml` 把路径映射到模块，查询词按同义词表和记忆的 `aliases` 扩展，再在该模块内排序：相关度 = 0.6 × 向量相似度 + 0.4 × BM25；议题匹配加 0.15；排除项和更正加 0.05；再乘时间系数 0.7 + 0.3 × 0.5^(天数/90)（越新越靠前，最旧也保留七成，核对过的按核对日期算）；同一批次（同一对话，或同一作者 90 分钟内）最多返回 2 条。命中议题为空时退回到整个模块，并标注 `fallback: module`。锚点代码变化过的条目带 `stale: true`，核对后用 `confirm_memory` 刷新核对日期。带 `as_of` 时只看那天有效的记忆。
 
-**写入**：`record_memory` 依次校验模块、类型、长度、密钥、每日上限，然后写文件、刷新索引，返回 `draft_id`、同模块最相近的已有记忆（`similar`）和写作提示。Hook 在调用前注入对话 id 和本对话上一次的 `draft_id`，同一任务再写时会覆盖，而不是新增。替代关系可用 `memory_graph` 按议题看时间线。
+**写入**：`record_memory` 依次校验模块、类型、长度、密钥、每日上限，然后写文件、刷新索引，返回 `draft_id`、同模块最相近的已有记忆（`similar`）和写作提示。Hook 在调用前注入对话 id 和本对话上一次的 `draft_id`，同一任务再写时会覆盖，而不是新增。`memory_graph(module=...)` 给出模块全貌：每个议题的最新两条结论、相关模块；带 `entity` 时看该议题的替代时间线。`pmem wiki` 把同样的内容生成每模块一页的 Markdown，供人浏览，不进版本库。
+
+**审查**：不改代码的问答也要对照记忆。三层，各模块每个对话只触发一次：
+
+- 提问时：Claude Code 的 UserPromptSubmit 直接附上问题提到的模块的摘要；Cursor 的 beforeSubmitPrompt 不能注入内容，只记下提到了哪些模块。
+- 读代码时（postToolUse，匹配 Read）：附上该文件所属模块的现行结论摘要（按排除项、风险、更正、决定、结论排序，每议题最多 2 条，共 6 条）。
+- 回合结束时：从对话记录取本轮提问，提到的模块有记忆、本轮却既没查也没看过摘要，就用 `followup_message` 要求 Agent 查过后核对回答；中断结束和已追问过的回合不再追问。
+
+`gate.question_review`、`gate.read_digest` 可分别关闭。“跳过记忆”只在作为独立短语出现时生效，“如何避免跳过记忆”这类说法不算。
 
 **闸门**：preToolUse 拦截写文件的工具和终端里的写命令，把目标路径映射到模块。如果该模块已有记忆、本对话还没查过：`warn` 档拒绝一次，并在 `user_message` 里写明该调用什么；`block` 档一直拒绝，直到查过为止。MCP 检索、终端里的 `pmem search --module <模块>`（模块名要写字面值）都算“已查过”。上下文压缩后状态清零。stop 时提醒一次：改了模块却没写记忆；或整个对话只查了记忆、没改也没写（`gate.analysis_reminder`）。中断结束的回合和说了“跳过记忆”的对话不提醒。
 
@@ -90,6 +98,7 @@ flowchart LR
 | 默认语义模型 bge-small-zh-v1.5（ONNX，约 90 MB），按需加载 | 在 `tests/fixtures/eval` 上效果足够、体积小；首次调用才加载，避免 MCP 启动卡住约 30 秒 |
 | 闸门指引写在 `user_message` | Cursor 3.9 实测拒绝时只把 `user_message` 交给 Agent，`agent_message` 不会送达 |
 | Hook 只依赖 ASCII 字段，输出纯 ASCII | Windows 中文代码页下 Cursor 会把 Hook 输入按 GBK 误解码，JSON 常被破坏 |
+| Cursor 下的问答审查放在 stop 追问 | Cursor 的 beforeSubmitPrompt 只能放行或拦截，sessionStart 只在新对话触发一次；能每轮生效的只有 postToolUse 的 `additional_context` 和 stop 的 `followup_message`（读码摘要已实测送达） |
 | `warn` 只拒绝一次 | 不打断节奏；Agent 并行发出的多个编辑实际逐个执行，只有第一个被拒，需要重做的只有那一处 |
 | 引用识别只看字面重合（阈值 0.15） | 语义相似度在长对话里取最大值后，无关对话也能到 0.8，区分不开；字面重合在无关对话中不超过 0.11 |
 | bench 两组都不加载项目设置 | 只比较“记忆内容”的价值，排除规则、Hooks 等其他变量 |

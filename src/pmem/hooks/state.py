@@ -11,6 +11,8 @@ _DEFAULTS = {
     "searched": [], "warned": [], "edited": [], "written": {}, "nudged": [], "skip": False,
     "returned": [], "recorded": [], "cli_recorded": [], "edited_files": [],
     "consulted": [], "analysis": False,
+    # 提问审查：本对话里 Agent 看过记忆（检索过或收到过摘要）的模块、最近一次提问提到的模块
+    "reviewed": [], "asked": [], "review_nudged": [],
 }
 
 

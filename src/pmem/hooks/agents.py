@@ -38,6 +38,8 @@ def normalize(agent: str, payload: dict) -> dict:
         return payload
     data = dict(payload)
     data["conversation_id"] = payload.get("session_id") or payload.get("conversation_id") or ""
+    # Claude Code 的 UserPromptSubmit 可以给这一轮加上下文；Cursor 的 beforeSubmitPrompt 不行
+    data["prompt_context"] = agent == "claude"
     name = str(payload.get("tool_name") or "")
     args = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
     cwd = payload.get("cwd")
@@ -92,4 +94,7 @@ def render(agent: str, event: str, result: dict) -> dict:
         if agent == "claude":
             return {"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": message}}
         return {"decision": "block", "reason": message}
+    if event in ("prompt", "post-tool") and result.get("additional_context") and agent == "claude":
+        return {"hookSpecificOutput": {"hookEventName": _EVENT_NAMES[event],
+                                       "additionalContext": result["additional_context"]}}
     return {}

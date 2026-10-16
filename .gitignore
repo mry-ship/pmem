@@ -8,3 +8,4 @@ dist/
 spike/cursor_hooks/captures/
 
 bench-results/
+.memory/wiki/

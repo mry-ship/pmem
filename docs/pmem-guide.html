@@ -179,6 +179,7 @@ pmem doctor</code></pre>
     <tr><td>同一议题记忆变多</td><td>对 AI 说“按 pmem-compact 技能合并记忆”</td></tr>
     <tr><td>换个说法搜不到</td><td>对 AI 说“按 pmem-normalize 技能整理同义词”</td></tr>
     <tr><td>想看效果</td><td><code>pmem report</code></td></tr>
+    <tr><td>想通读全部结论</td><td><code>pmem wiki</code>，生成每模块一页的 Markdown</td></tr>
     <tr><td>升级 pmem</td><td><code>uv tool upgrade pmem</code></td></tr>
   </table>
 </section>
@@ -191,6 +192,7 @@ pmem doctor</code></pre>
     <li><strong>不需要服务器和数据库</strong>：记忆就是仓库里的文件；检索索引只是本机缓存，删了能重建。</li>
     <li><strong>按模块寻址</strong>：改哪个文件，就自动查那个文件所属模块的记忆。</li>
     <li><strong>Agent 主动 + Hooks 兜底</strong>：规则告诉 AI 何时查、何时写；它漏了，Hooks（工具调用前后的拦截脚本）会提醒，任何异常都直接放行，不会卡住开发。</li>
+    <li><strong>问答也审查</strong>：读到哪个模块的代码，就附上该模块现行结论的摘要；问题提到的模块本轮没查过，回合结束时要求 AI 查过再核对回答。</li>
     <li><strong>收益可量化</strong>：<code>pmem report</code> 统计命中率、避坑次数、跨人复用；<code>pmem bench</code> 做有记忆 / 无记忆对照实验。</li>
   </ul>
   <pre><code>你：修一下拼图奖励重复发放
@@ -421,10 +423,18 @@ git commit -m "接入 pmem"</code></pre>
     <li>拦截范围：写文件类工具（Write / StrReplace / Edit / Delete 等）和终端里的写命令。</li>
     <li>“查过”的判定：MCP 的 <code>search_memory</code>，或终端里运行 <code>pmem search --module &lt;模块&gt;</code>。MCP 不可用时用终端也行，不会把 Agent 卡死。</li>
     <li>结束提醒：改了模块却没写记忆，提醒一次；整个对话只查了记忆、没改也没写，也提醒一次（<code>gate.analysis_reminder</code> 可关）。中断结束的回合和说了“跳过记忆”的对话不提醒。</li>
+    <li>记忆审查（不改代码也生效，每个模块每个对话一次）：
+      <ul>
+        <li>读代码时，附上该文件所属模块的现行结论摘要（排除项、风险优先，最多 6 条），<code>gate.read_digest</code> 可关。</li>
+        <li>回合结束时，本轮问题提到的模块有记忆、却既没查也没看过摘要，要求 AI 查过后核对回答，<code>gate.question_review</code> 可关。</li>
+        <li>Claude Code 在提问时就直接附上摘要；Cursor 不允许提问时注入内容，所以只能在结束时追问。</li>
+      </ul>
+    </li>
+    <li>“跳过记忆”只在作为独立短语出现时生效；“如何避免跳过记忆”这类说法不算。</li>
     <li>上下文压缩后状态清零；会话状态 7 天过期。</li>
     <li>Hook 出任何异常都直接放行，错误写入用户缓存目录的 <code>hook-errors.log</code>，<code>pmem doctor</code> 会显示最近的错误。</li>
   </ul>
-  <p class="muted">Cursor 接入的 Hook 事件：beforeSubmitPrompt、preToolUse、beforeMCPExecution、afterMCPExecution、afterFileEdit、preCompact、stop。三个工具共用同一套闸门逻辑，统一调用 <code>pmem hook &lt;事件&gt; --agent &lt;工具&gt;</code>。</p>
+  <p class="muted">Cursor 接入的 Hook 事件：beforeSubmitPrompt、preToolUse、beforeMCPExecution、afterMCPExecution、afterFileEdit、postToolUse（只匹配 Read）、preCompact、stop。三个工具共用同一套闸门逻辑，统一调用 <code>pmem hook &lt;事件&gt; --agent &lt;工具&gt;</code>。</p>
 </section>
 
 <!-- ============ MCP ============ -->
@@ -436,7 +446,7 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>search_memory</code></td><td>检索记忆。改代码前按文件或模块查一次</td><td><code>path</code> 或 <code>module</code>；可选 <code>entity</code>、<code>query</code>、<code>limit</code>（默认 5，上限 10）、<code>as_of</code>（按某天视角查）</td></tr>
     <tr><td><code>record_memory</code></td><td>写入一条记忆</td><td><code>module</code>、<code>entity</code>、<code>kind</code>、<code>content</code>；可选 <code>supersedes</code>、<code>anchors</code>、<code>aliases</code>、<code>draft_id</code></td></tr>
     <tr><td><code>confirm_memory</code></td><td>核对后确认仍然成立，刷新核对日期</td><td><code>ids</code></td></tr>
-    <tr><td><code>memory_graph</code></td><td>模块的议题时间线（谁哪天替代了谁）和相关模块</td><td><code>module</code>；可选 <code>entity</code></td></tr>
+    <tr><td><code>memory_graph</code></td><td>模块全貌：每个议题的最新两条结论和相关模块；带 <code>entity</code> 时看该议题的时间线（谁哪天替代了谁）</td><td><code>module</code>；可选 <code>entity</code></td></tr>
     <tr><td><code>list_modules</code></td><td>列出模块、记忆数量和常用议题</td><td>可选 <code>category</code></td></tr>
   </table>
   <p>检索结果里几个关键字段：<code>stale</code>（关联代码已变）、<code>check</code>（具体哪些文件变了）、<code>fallback: module</code>（议题内没命中，退回整个模块）、<code>related</code>（相关模块）。</p>
@@ -453,7 +463,8 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem search</code></td><td>检索：<code>--path</code> / <code>--module</code> / <code>--entity</code> / <code>--as-of</code>，加关键词</td></tr>
     <tr><td><code>pmem record</code></td><td>写入一条记忆，规则与 MCP 相同；长正文用 <code>--content-file</code></td></tr>
     <tr><td><code>pmem confirm &lt;id&gt;...</code></td><td>核对后确认仍然成立</td></tr>
-    <tr><td><code>pmem graph --module X</code></td><td>议题时间线与相关模块</td></tr>
+    <tr><td><code>pmem graph --module X</code></td><td>模块全貌，或某议题的时间线</td></tr>
+    <tr><td><code>pmem wiki [--out 目录]</code></td><td>生成每模块一页的 Markdown Wiki（默认 <code>.memory/wiki/</code>）：议题、现行结论、历史、相关模块、代码链接；只覆盖它自己生成的页面</td></tr>
     <tr><td><code>pmem list</code></td><td>模块与记忆数量</td></tr>
     <tr><td><code>pmem terms</code></td><td>记忆里的高频词，用于整理同义词</td></tr>
     <tr><td><code>pmem compact</code></td><td>列出零碎记忆较多的议题；指定议题时输出全部正文供合并</td></tr>
@@ -486,6 +497,8 @@ gate:
   ignore: ["**/*.md", "docs/**", ".memory/**", ".cursor/**"]
   skip_markers: ["跳过记忆", "skip-memory"]
   analysis_reminder: true   <span class="c"># 只查了记忆、没改也没写时，结束提醒一次</span>
+  read_digest: true         <span class="c"># 读代码时附上该模块的记忆摘要</span>
+  question_review: true     <span class="c"># 问题提到的模块没查过时，结束时要求核对</span>
 write:
   default_status: active    <span class="c"># active 直接生效 / draft 需人工审阅</span>
   content_min: 20

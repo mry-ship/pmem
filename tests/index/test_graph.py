@@ -1,6 +1,6 @@
 from pmem.core.entry import Entry
 from pmem.core.registry import ModuleRegistry
-from pmem.index.graph import MemoryGraph
+from pmem.index.graph import MemoryGraph, digest
 
 REGISTRY = ModuleRegistry({
     "modules": {
@@ -28,6 +28,21 @@ def test_timeline_shows_who_replaced_whom_and_when():
     assert timeline[1]["replaces"] == ["A1"] and "superseded_by" not in timeline[1]
     topics = {t["entity"]: t for t in graph.topics("gameplay.Jigsaw")}
     assert topics["reward"]["current"] == 1 and topics["reward"]["superseded"] == 1
+    assert [r["id"] for r in topics["reward"]["latest"]] == ["A2"]
+    assert topics["reward"]["latest"][0]["preview"] == "改为领取时发奖励"
+
+
+def test_digest_prefers_exclusions_and_caps_each_topic():
+    entries = [
+        entry("C1", "gameplay.Jigsaw", "Reward", "结论一", "2026-10-03"),
+        entry("C2", "gameplay.Jigsaw", "Reward", "结论二", "2026-10-02"),
+        entry("C3", "gameplay.Jigsaw", "Reward", "结论三", "2026-10-01"),
+        entry("E1", "gameplay.Jigsaw", "Ads", "不要在客户端去重", "2026-09-01", kind="exclusion"),
+        entry("O1", "gameplay.Jigsaw", "Ads", "旧排除项", "2026-08-01", kind="exclusion"),
+        entry("O2", "gameplay.Jigsaw", "Ads", "更正", "2026-08-02", kind="correction", supersedes=["O1"]),
+    ]
+    assert [e.id for e in digest(entries)] == ["E1", "O2", "C1", "C2"]
+    assert [e.id for e in digest(entries, limit=2)] == ["E1", "O2"]
 
 
 def test_related_modules_via_shared_code_and_mentions():

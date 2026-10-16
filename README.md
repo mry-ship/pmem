@@ -9,6 +9,7 @@
 ## 它做什么
 
 - **改前先查**：AI 要改某个文件时，pmem 找到它所属的业务模块（如 `gameplay.Jigsaw`），把以前的根因、排除过的方向、风险交给 AI。
+- **问答也查**：AI 读到某个模块的代码时，自动附上该模块现行结论的摘要；问题提到的模块本轮没查过，回合结束时要求 AI 查过再核对一遍回答。
 - **改后记录**：确认根因、排除了某个方向、改完验证通过时，AI 按模块写一条记忆。
 - **自动兜底**：AI 忘了查就去改，Hook（工具调用前后自动执行的脚本）会拦下修改，直到查过为止；改了代码却没记，回合结束时提醒一次。
 - **不用过期结论**：记忆关联的代码后来改过或被删了，检索时会标出“需核实”。
@@ -62,6 +63,7 @@ anchors: [Assets/Game/Jigsaw/JigsawReward.cs#Claim]
 | 新增业务模块 | 在 `.memory/modules.yaml` 里加模块和它的路径 |
 | 不定期 | `pmem doctor` 体检；它会提示没提交的记忆和可以合并的议题 |
 | 想看效果 | `pmem report`：命中率、避坑次数、跨人复用 |
+| 想通读全部结论 | `pmem wiki`：生成每模块一页的 Markdown（默认 `.memory/wiki/`），含议题、现行结论、相关模块和代码链接 |
 | 升级 | `uv tool upgrade pmem` |
 
 ## 效果
@@ -82,6 +84,7 @@ pmem search --module <模块> "关键词"    # 按模块和关键词查
 pmem list                              # 模块和记忆数量
 pmem doctor                            # 体检
 pmem report                            # 本机收益报告
+pmem wiki                              # 生成浏览用的模块 Wiki
 ```
 
 全部命令、配置项和常见问题见 [使用手册](https://mry-ship.github.io/pmem/pmem-guide.html)；设计取舍见 [架构说明](docs/architecture.md)。
@@ -89,5 +92,5 @@ pmem report                            # 本机收益报告
 ## 已知限制
 
 - Claude Code、Codex 的接入只做过模拟测试，还没在真实会话里跑过。
-- 不会在提问时自动注入记忆，主要在改代码前后起作用。
+- Cursor 不允许在提问时注入内容，所以纯问答（不读代码）的记忆审查发生在回合结束时：AI 先回答，再被要求查记忆并修正。Claude Code 可以在提问时直接附上摘要。
 - 收益报告只统计本机数据。

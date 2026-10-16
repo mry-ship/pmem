@@ -27,6 +27,7 @@ class Entry:
     verified: str | None = None
     archived_on: str | None = None
     archived_from: str | None = None
+    archived_by: str | None = None
 
     @property
     def checked_date(self) -> str:
@@ -64,6 +65,8 @@ class Entry:
             meta["verified"] = self.verified
         if self.archived_on:
             meta["archived"] = {"on": self.archived_on, "from": self.archived_from or "active"}
+            if self.archived_by:
+                meta["archived"]["by"] = self.archived_by
         if self.source_conversation:
             meta["source"] = {"conversation": self.source_conversation}
         import yaml
@@ -99,4 +102,5 @@ class Entry:
             verified=str(meta["verified"]) if meta.get("verified") else None,
             archived_on=str(archived["on"]) if archived.get("on") else None,
             archived_from=restored if restored in STATUSES and restored != "archived" else None,
+            archived_by=str(archived["by"]) if archived.get("by") else None,
         )

@@ -85,9 +85,11 @@ def test_restore_returns_rejected_seed_to_seed(svc):
     svc.change_status([rid], "reject")
     entry = svc.storage.get(rid)
     assert (entry.status, entry.archived_from) == ("archived", "seed") and entry.archived_on
+    assert entry.archived_by == svc.user
     svc.change_status([rid], "restore")
     entry = svc.storage.get(rid)
     assert (entry.status, entry.archived_on, entry.archived_from) == ("seed", None, None)
+    assert entry.archived_by is None
 
 
 def test_as_of_still_sees_memories_archived_later(svc):

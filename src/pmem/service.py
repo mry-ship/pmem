@@ -494,11 +494,11 @@ class MemoryService:
                 skipped.append({"id": entry_id, "status": entry.status})
                 continue
             if target == "archived":
-                entry.archived_on, entry.archived_from = today, entry.status
+                entry.archived_on, entry.archived_from, entry.archived_by = today, entry.status, self.user
                 entry.status = target
             else:
                 entry.status = (entry.archived_from or target) if action == "restore" else target
-                entry.archived_on = entry.archived_from = None
+                entry.archived_on = entry.archived_from = entry.archived_by = None
             path.write_text(entry.to_markdown(), encoding="utf-8", newline="\n")
             changed.append(entry_id)
         self._log("status", action=action, ids=changed)

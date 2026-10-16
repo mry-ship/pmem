@@ -214,6 +214,25 @@ def test_draft_overwrite_keeps_id(svc):
     assert found["items"][0]["content"].endswith("更新")
 
 
+def test_draft_overwrite_keeps_lists_that_were_not_passed(svc):
+    old = record(svc, entity="Config")
+    first = record(svc, supersedes=[old["id"]], anchors=["src/Jigsaw/Board.cs#Claim"], aliases=["连点"])
+    record(svc, content=LONG + "更新", draft_id=first["id"])
+    entry = svc.index.find(first["id"])
+    assert entry.supersedes == [old["id"]]
+    assert entry.anchors == ["src/Jigsaw/Board.cs#Claim"]
+    assert entry.aliases == ["连点"]
+    assert [i["id"] for i in svc.search(module="gameplay.Jigsaw")["items"]] == [first["id"]]
+
+
+def test_draft_overwrite_clears_lists_passed_empty(svc):
+    old = record(svc, entity="Config")
+    first = record(svc, supersedes=[old["id"]], aliases=["连点"])
+    record(svc, content=LONG + "更新", draft_id=first["id"], supersedes=[], aliases=[])
+    entry = svc.index.find(first["id"])
+    assert entry.supersedes == [] and entry.aliases == []
+
+
 def test_draft_overwrite_is_exempt_from_daily_cap(svc):
     first = record(svc)
     record(svc, content=LONG + "补充一")

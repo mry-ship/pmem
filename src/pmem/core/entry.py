@@ -3,8 +3,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-import yaml
-
 KINDS = ("conclusion", "exclusion", "correction", "risk", "decision")
 STATUSES = ("draft", "seed", "active", "archived")
 
@@ -58,6 +56,8 @@ class Entry:
             meta["verified"] = self.verified
         if self.source_conversation:
             meta["source"] = {"conversation": self.source_conversation}
+        import yaml
+
         head = yaml.safe_dump(meta, allow_unicode=True, sort_keys=False).rstrip()
         return f"---\n{head}\n---\n{self.content.strip()}\n"
 
@@ -66,6 +66,8 @@ class Entry:
         match = _FRONT_MATTER.match(text)
         if not match:
             raise ValueError("记忆文件缺少 YAML 头（以 --- 开始和结束）")
+        import yaml
+
         meta = yaml.safe_load(match.group(1)) or {}
         source = meta.get("source") or {}
         return cls(

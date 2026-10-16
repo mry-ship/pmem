@@ -10,6 +10,7 @@ anchors:
 revision: git:e258c6e
 author: 1002378395@qq.com
 note_date: '2026-10-14'
+verified: '2026-10-16'
 ---
 Windows 中文系统（ANSI 代码页 936）上，Cursor 3.9 经 PowerShell 转发 Hook 标准输入：UTF-8 字节先被按 GBK 解码，再以带 BOM 的 UTF-8 写出。只要 payload 含中文（例如 Write 的 content），JSON 常被破坏（引号被并入乱码字符），json.loads 失败。改用 cmd /c 或 .cmd 包装无效。
 

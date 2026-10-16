@@ -69,6 +69,17 @@ def test_draft_overwrite_of_missing_entry_is_rejected(storage):
         storage.write(make_entry(), draft_id="01JA7K3M2X9F4Q8W6ZB1C2D3E9")
 
 
+@pytest.mark.parametrize("bad_id", ["../../src/x", "*", "01JA7K3M2X9F4Q8W6ZB1C2D3E*", "01ja7k3m2x9f4q8w6zb1c2d3e4"])
+def test_ids_that_are_not_ulids_never_reach_the_filesystem(storage, tmp_path, bad_id):
+    storage.write(make_entry())
+    outside = tmp_path / "src" / "x.md"
+    outside.parent.mkdir()
+    outside.write_text(make_entry().to_markdown(), encoding="utf-8")
+    assert storage.find_path(bad_id) is None
+    with pytest.raises(StorageError, match="ULID"):
+        storage.write(make_entry(content="覆盖"), draft_id=bad_id)
+
+
 def test_draft_overwrite_of_committed_file_is_rejected(git_repo):
     storage = FilesStorage(git_repo, detect_vcs(git_repo))
     result = storage.write(make_entry(author="tester"))

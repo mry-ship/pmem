@@ -29,6 +29,14 @@ def test_record_and_search_through_tools(project):  # noqa: F811
     assert listing["project_root"] == str(project.resolve())
 
 
+def test_every_response_is_marked_as_pmem(project):  # noqa: F811
+    """闸门靠这个标记区分别家记忆服务的同名工具。"""
+    server = build_server(project)
+    assert call(server, "search_memory", {"module": "gameplay.Jigsaw"})["server"] == "pmem"
+    assert call(server, "list_modules", {})["server"] == "pmem"
+    assert call(build_server(None), "search_memory", {"query": "x"})["server"] == "pmem"
+
+
 def test_without_project_tools_explain_how_to_init(tmp_path):
     server = build_server(None)
     assert "pmem init" in call(server, "search_memory", {"query": "x"})["error"]

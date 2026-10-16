@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import json
 import os
 import sys
 from pathlib import Path
-
-import yaml
 
 MEMORY_DIR = ".memory"
 CONFIG_FILE = "config.yaml"
@@ -85,6 +84,32 @@ def user_cache_base() -> Path:
     return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "pmem"
 
 
+def load_yaml(path: Path, encoding: str = "utf-8"):
+    """读 YAML；解析结果按文件修改时间缓存成 JSON，钩子这类短进程命中时不必导入 yaml（约 30 毫秒）。"""
+    stat = path.stat()
+    stamp = [stat.st_mtime_ns, stat.st_size]
+    key = hashlib.sha1(str(path.resolve()).lower().encode("utf-8")).hexdigest()[:16]
+    cache = user_cache_base() / "parsed" / f"{key}.json"
+    try:
+        cached = json.loads(cache.read_text(encoding="utf-8"))
+        if cached.get("stamp") == stamp:
+            return cached.get("value")
+    except (OSError, ValueError, AttributeError):
+        pass
+    import yaml
+
+    value = yaml.safe_load(path.read_text(encoding=encoding))
+    try:
+        text = json.dumps({"stamp": stamp, "value": value}, ensure_ascii=False)
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cache.with_name(f"{cache.name}.{os.getpid()}.tmp")
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, cache)
+    except (OSError, TypeError, ValueError):
+        pass
+    return value
+
+
 class Config:
     def __init__(self, root: Path, data: dict):
         self.root = root
@@ -101,7 +126,7 @@ class Config:
     def load(cls, root: str | Path) -> Config:
         root = Path(root).resolve()
         path = root / MEMORY_DIR / CONFIG_FILE
-        raw = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else None
+        raw = load_yaml(path) if path.exists() else None
         return cls(root, _merge(DEFAULTS, raw or {}))
 
     def get(self, dotted: str, default=None):

@@ -56,6 +56,13 @@ class GitVCS(VCS):
         wanted = {p.replace("\\", "/") for p in paths}
         return {k: v for k, v in found.items() if k in wanted}
 
+    def dirty_files(self) -> list[str] | None:
+        # ls-files 的输出相对当前目录，项目是仓库子目录时也直接相对项目根
+        proc = run_tool(["git", "ls-files", "-m", "-d", "-o", "--exclude-standard", "-z"], self.root)
+        if proc.returncode != 0:
+            return None
+        return list(dict.fromkeys(p for p in proc.stdout.decode("utf-8", errors="replace").split("\0") if p))
+
     def uncommitted_count(self, folder: Path, suffix: str = ".md") -> int | None:
         out = self._git("status", "--porcelain", "--untracked-files=all", "--", str(folder))
         if out is None:

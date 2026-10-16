@@ -268,6 +268,13 @@ class MemoryService:
         if not entity_id:
             return _fail("entity 不能为空，用于区分模块内的议题，如 Reward、Config")
 
+        # 覆盖草稿时没传（None）的列表沿用原值，传空列表才清空；否则替代关系丢失，旧记忆会悄悄恢复现行
+        old = self.index.find(draft_id) if draft_id else None
+        if old is not None:
+            supersedes = old.supersedes if supersedes is None else supersedes
+            anchors = old.anchors if anchors is None else anchors
+            aliases = old.aliases if aliases is None else aliases
+
         today = date.today().isoformat()
         supersedes = list(dict.fromkeys(s for s in supersedes or [] if s))
         replaced = [old for s in supersedes if (old := self.index.find(s)) is not None]

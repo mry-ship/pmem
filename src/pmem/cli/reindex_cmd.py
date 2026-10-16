@@ -3,9 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from pmem.core.config import Config
+from pmem.index.anchors import ANCHOR_CACHE
 from pmem.service import MemoryService
 
-CACHE_FILES = ("vectors.db", "vectors.db-wal", "vectors.db-shm", "cites.json")
+CACHE_FILES = ("vectors.db", "vectors.db-wal", "vectors.db-shm", "cites.json", ANCHOR_CACHE)
 
 
 def run_reindex(root: Path) -> int:

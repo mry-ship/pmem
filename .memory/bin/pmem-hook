@@ -1,0 +1,12 @@
+#!/bin/sh
+# 由 pmem init 生成，重新运行 pmem init 会覆盖；如需调整请改 .memory/config.yaml
+# Hook 入口：装了 pmem 就交给它；没装时给出提醒，而不是让 Hook 报错后静默放行。
+if command -v pmem >/dev/null 2>&1; then
+  exec pmem hook "$@"
+fi
+case "$1" in
+  session) printf '%s' '{"additional_context": "[pmem] \u672c\u673a\u627e\u4e0d\u5230 pmem \u547d\u4ee4\uff1a\u672c\u9879\u76ee\u7684\u7814\u53d1\u8bb0\u5fc6\u68c0\u67e5\u548c\u6539\u4ee3\u7801\u524d\u7684\u95f8\u95e8\u90fd\u6ca1\u6709\u751f\u6548\u3002\u8bf7\u5728\u8fd9\u6b21\u56de\u590d\u91cc\u5148\u544a\u8bc9\u7528\u6237\uff1a\u6309\u9879\u76ee README \u5b89\u88c5 pmem\uff08\u9700\u8981 uv\uff09\uff0c\u88c5\u597d\u540e\u91cd\u542f Cursor\u3002"}' ;;
+  pre-tool) printf '%s' '{"permission":"allow"}' ;;
+  prompt) printf '%s' '{"continue":true}' ;;
+  *) printf '%s' '{}' ;;
+esac

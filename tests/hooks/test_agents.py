@@ -63,6 +63,9 @@ def test_claude_edit_is_denied_until_module_searched(root):
     search = {"session_id": "s1", "tool_name": "mcp__pmem__search_memory", "tool_input": {"module": "gameplay.Jigsaw"}}
     marked = run("claude", "pre-tool", search, root)
     assert marked["hookSpecificOutput"]["updatedInput"]["source_conversation"] == "s1"
+    assert run("claude", "pre-tool", claude_edit(root, "src/Jigsaw/Board.cs"), root)  # 还没返回结果
+    result = {"content": [{"type": "text", "text": json.dumps({"ok": True, "module": "gameplay.Jigsaw", "items": []})}]}
+    run("claude", "post-tool", {**search, "tool_response": result}, root)
     assert run("claude", "pre-tool", claude_edit(root, "src/Jigsaw/Board.cs"), root) == {}
 
 

@@ -116,6 +116,15 @@ def test_git_changed_after_commits_and_local_edits(git_repo):
     assert vcs.changed_after(["README.md"], "2000-01-01") == {"README.md": today}
 
 
+def test_svn_lists_dirty_files_relative_to_root(svn_wc):
+    vcs = detect_vcs(svn_wc)
+    assert vcs.dirty_files() == []
+    (svn_wc / "README.md").write_text("changed\n", encoding="utf-8")
+    (svn_wc / "newdir" / "deep").mkdir(parents=True)
+    (svn_wc / "newdir" / "deep" / "a.cs").write_text("x", encoding="utf-8")
+    assert sorted(vcs.dirty_files()) == ["README.md", "newdir/deep/a.cs"]
+
+
 def test_svn_changed_after_reads_commit_date_and_local_edits(svn_wc):
     vcs = detect_vcs(svn_wc)
     found = vcs.changed_after(["README.md", "missing.ts"], "2000-01-01")

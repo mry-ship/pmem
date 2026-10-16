@@ -9,6 +9,11 @@ def run(cmd: list[str], cwd: Path) -> str:
     return subprocess.run(cmd, cwd=cwd, check=True, capture_output=True, text=True).stdout
 
 
+@pytest.fixture(autouse=True)
+def _isolated_cache(tmp_path_factory, monkeypatch):
+    monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path_factory.mktemp("pmem-cache")))
+
+
 @pytest.fixture
 def git_repo(tmp_path: Path) -> Path:
     if not shutil.which("git"):

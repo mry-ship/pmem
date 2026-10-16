@@ -7,6 +7,7 @@ from pathlib import Path
 from pmem.vcs.base import VCS, run_tool
 
 _UNCOMMITTED = {"unversioned", "added", "modified", "replaced"}
+_DIRTY = _UNCOMMITTED | {"deleted", "missing", "conflicted"}
 _CODES = {
     "unversioned": "?",
     "added": "A",
@@ -99,6 +100,27 @@ class SvnVCS(VCS):
                 found[(entry.get("path") or "").replace("\\", "/")] = today
         wanted = {p.replace("\\", "/") for p in paths}
         return {k: v for k, v in found.items() if k in wanted}
+
+    def dirty_files(self) -> list[str] | None:
+        # 只读本地工作副本，不访问服务器；未纳入版本库的目录展开成其中的文件
+        status = self._xml("status", "--ignore-externals", str(self.root))
+        if status is None:
+            return None
+        files: list[str] = []
+        for entry in status.iter("entry"):
+            node = entry.find("wc-status")
+            if node is None or node.get("item") not in _DIRTY:
+                continue
+            path = Path(entry.get("path") or "")
+            if not path.is_absolute():
+                path = self.root / path
+            found = [p for p in path.rglob("*") if p.is_file()] if path.is_dir() else [path]
+            for item in found:
+                try:
+                    files.append(item.relative_to(self.root).as_posix())
+                except ValueError:
+                    continue
+        return list(dict.fromkeys(files))
 
     def add(self, path: Path) -> None:
         run_tool(["svn", "add", "--parents", "-q", "--non-interactive", str(path)], self.root)

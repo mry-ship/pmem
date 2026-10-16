@@ -13,7 +13,7 @@ import numpy as np
 
 from pmem.core.entry import Entry
 from pmem.core.ids import ALPHABET
-from pmem.index.anchors import AnchorChecker
+from pmem.index.anchors import ANCHOR_CACHE, AnchorChecker
 from pmem.index.embedder import Embedder
 from pmem.index.synonyms import expansions
 from pmem.index.tokenize import tokenize
@@ -127,7 +127,7 @@ class MemoryIndex:
         self.warnings: list[str] = []
         self.synonyms: list[list[str]] = []
         self.version = 0
-        self.checker = AnchorChecker(storage.root, storage.vcs)
+        self.checker = AnchorChecker(storage.root, storage.vcs, cache_dir / ANCHOR_CACHE if cache_dir else None)
 
     def close(self) -> None:
         self.vectors.close()

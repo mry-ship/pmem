@@ -15,7 +15,8 @@ INSTRUCTIONS = (
 
 
 def _dump(data: dict) -> str:
-    return json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    # 来源标记：Cursor 传给 Hook 的工具名不带服务名，闸门靠它区分别家记忆服务的同名工具
+    return json.dumps({**data, "server": "pmem"}, ensure_ascii=False, separators=(",", ":"))
 
 
 def resolve_root(raw: str | None) -> Path | None:
@@ -72,13 +73,14 @@ def build_server(root: Path | None) -> MCPServer:
         content：自包含的结论（为什么、证据、影响范围），不要写“改了哪个方法”这类版本库已有的信息。
         aliases：现象和关键术语的其他常用叫法（如 ["闪退", "崩溃", "crash"]），以后换个说法也能搜到。
         推翻旧结论时在 supersedes 写旧记忆 id；anchors 写相关代码位置（相对路径#符号），不填时系统按本次对话改过的该模块文件补上。
-        同一任务对同一模块再次写入时，带上次返回的 draft_id 覆盖，避免重复。
+        同一任务对同一模块再次写入时，带上次返回的 draft_id 覆盖，避免重复；覆盖时没填的 supersedes / anchors / aliases 沿用原值。
         返回的 similar 是同模块最相近的已有记忆：重复或被推翻时带 draft_id 重写并填 supersedes；hints 是写作提示。"""
         if service is None:
             return _dump(missing)
+        # 模型常给可选数组顺手填 []，且 draft_id 可能是闸门补的：空列表按“没传”处理，覆盖时沿用原值
         return _dump(
-            service.record(module, entity, kind, content, supersedes, anchors, draft_id or None,
-                           source_conversation or None, aliases)
+            service.record(module, entity, kind, content, supersedes or None, anchors or None, draft_id or None,
+                           source_conversation or None, aliases or None)
         )
 
     @server.tool()

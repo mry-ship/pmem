@@ -1,10 +1,16 @@
 import json
+import os
+import shutil
+import subprocess
+import threading
+import time
 from pathlib import Path
 
 import pytest
 
 from pmem.core.config import Config
-from pmem.hooks.gate import cli_args, handle, shell_write_targets
+from pmem.hooks.gate import cli_args, handle, may_change_unseen, shell_write_targets
+from pmem.hooks.state import SessionState
 from pmem.metrics.events import read_events
 
 CONFIG = "project: {{ name: demo }}\nvcs: none\ngate: {{ mode: {mode} }}\n"
@@ -60,6 +66,20 @@ def search_payload(conv="c1", **args) -> dict:
             "tool_input": json.dumps(args)}
 
 
+def search_done(root: Path, conv="c1", module="gameplay.Jigsaw", items=()) -> dict:
+    """MCP 检索返回了结果（afterMCPExecution）。"""
+    after = {"conversation_id": conv, "tool_name": "MCP:search_memory",
+             "result_json": json.dumps({"ok": True, "module": module, "items": list(items), "server": "pmem"})}
+    return handle("after-mcp", after, root)
+
+
+def foreign_search_done(root: Path, items=()) -> dict:
+    """别家记忆服务的同名工具返回了结果：没有 pmem 的来源标记。"""
+    after = {"conversation_id": "c1", "tool_name": "search_memory",
+             "result_json": json.dumps({"ok": True, "module": "gameplay.Jigsaw", "items": list(items)})}
+    return handle("after-mcp", after, root)
+
+
 def test_unmapped_path_is_allowed(make_project):
     root = make_project()
     assert handle("pre-tool", write_payload(root, "tools/x.py"), root)["permission"] == "allow"
@@ -83,7 +103,7 @@ def test_block_denies_until_searched(make_project):
     root = make_project("block")
     for _ in range(2):
         assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
-    handle("before-mcp", search_payload(module="gameplay.jigsaw"), root)
+    search_done(root, module="gameplay.jigsaw")
     assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
 
 
@@ -94,32 +114,41 @@ def test_block_is_the_default_mode(make_project):
         assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
 
 
-def test_failed_search_still_unlocks_block(make_project):
+def test_failed_or_unanswered_search_does_not_unlock_block(make_project):
     root = make_project("block")
+    mcp = {"conversation_id": "c1", "tool_name": "MCP:search_memory", "tool_input": {"module": "gameplay.Jigsaw"}}
+    handle("pre-tool", mcp, root)
     handle("before-mcp", search_payload(module="gameplay.Jigsaw"), root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
     failed = {"conversation_id": "c1", "tool_name": "MCP:search_memory",
               "result_json": json.dumps({"ok": False, "error": "index unavailable"})}
     handle("after-mcp", failed, root)
-    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
 
 
 def test_block_message_explains_fallbacks(make_project):
     root = make_project("block")
     message = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["agent_message"]
     assert "pmem search --module gameplay.Jigsaw" in message
+    assert "| Out-Null" in message and "检索报错同样视为查过" not in message
     assert "跳过记忆" in message
 
 
-def test_search_by_path_counts_as_searched(make_project):
+def test_search_by_path_counts_once_answered(make_project):
     root = make_project("block")
-    handle("before-mcp", search_payload(path="src/Jigsaw/Other.cs"), root)
+    payload = {"conversation_id": "c1", "tool_name": "MCP:search_memory", "tool_input": {"path": "src/Jigsaw/Other.cs"}}
+    handle("pre-tool", payload, root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
+    after = {**payload, "result_json": json.dumps({"ok": True, "module": "gameplay.Jigsaw", "resolved_from": "path",
+                                                   "items": [], "server": "pmem"})}
+    handle("after-mcp", after, root)
     assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
 
 
 def test_successful_search_result_counts_as_searched(make_project):
     root = make_project("block")
     after = {"conversation_id": "c1", "tool_name": "MCP:search_memory",
-             "result_json": json.dumps({"ok": True, "module": "gameplay.Jigsaw", "items": []})}
+             "result_json": json.dumps({"ok": True, "module": "gameplay.Jigsaw", "items": [], "server": "pmem"})}
     handle("after-mcp", after, root)
     assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
 
@@ -138,7 +167,7 @@ def test_off_mode_allows(make_project):
 
 def test_conversations_do_not_share_state(make_project):
     root = make_project("block")
-    handle("before-mcp", search_payload(conv="c1", module="gameplay.Jigsaw"), root)
+    search_done(root, conv="c1")
     assert handle("pre-tool", write_payload(root, "src/Jigsaw/B.cs", conv="c2"), root)["permission"] == "deny"
 
 
@@ -156,7 +185,7 @@ def test_skip_marker_in_prompt_disables_gate(make_project):
 
 def test_compact_resets_searched(make_project):
     root = make_project("block")
-    handle("before-mcp", search_payload(module="gameplay.Jigsaw"), root)
+    search_done(root)
     handle("compact", {"conversation_id": "c1"}, root)
     assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
 
@@ -194,10 +223,53 @@ def test_shell_write_is_gated(make_project):
         ("[IO.File]::WriteAllText('src/M.cs', 'x')", ["src/M.cs"]),
         ("uv run pytest tests/test_x.py", []),
         ("uv run pmem search --module a.B", []),
+        ("powershell -NoProfile -Command \"Set-Content src/Q.cs 1; Remove-Item src/R.cs\"", ["src/Q.cs", "src/R.cs"]),
+        ("pwsh -c 'Out-File -FilePath src/S.cs'", ["src/S.cs"]),
+        ("cmd /c \"del src\\T.cs\"", ["src\\T.cs"]),
+        ("bash -c 'rm -f src/U.cs'", ["src/U.cs"]),
+        ("Get-Content a | Tee-Object -FilePath src/V.cs", ["src/V.cs"]),
+        ("ni src/W.cs -ItemType File", ["src/W.cs"]),
+        ("powershell -Command Get-ChildItem src", []),
+        ("cd src/Jigsaw; echo x > Board.cs", [os.path.join("src", "Jigsaw", "Board.cs")]),
+        ("Set-Location src && Set-Content Jigsaw/A.cs 1", [os.path.join("src", "Jigsaw/A.cs")]),
+        ("perl -pi -e 's/a/b/' src/Y.cs", ["src/Y.cs"]),
+        ("Get-Content a | Set-Content src/Z.cs\",", ["src/Z.cs"]),
+        ("$code = @'\nSet-Content src/Q.cs 1\n'@\n$code | python -", []),
+        ("cat > notes.txt <<'EOF'\nrm -f src/E.cs\nEOF", ["notes.txt"]),
     ],
 )
 def test_shell_write_targets(command, targets):
     assert shell_write_targets(command) == targets
+
+
+def test_git_checkout_without_dashes_restores_existing_files(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "A.cs").write_text("x", encoding="utf-8")
+    assert shell_write_targets("git checkout src/A.cs", str(tmp_path)) == ["src/A.cs"]
+    assert shell_write_targets("git checkout main", str(tmp_path)) == []
+
+
+@pytest.mark.parametrize(
+    ("command", "unseen"),
+    [
+        ("git status; rg foo src | Select-Object -First 3", False),
+        ("uv run pmem search --module a.B", False),
+        ("echo hi > a.txt", False),
+        ("git checkout -- src/J.cs", False),
+        ("git stash pop", True),
+        ("git reset --hard HEAD~1", True),
+        ("git checkout src/A.cs", True),
+        ("uv run ruff format src", True),
+        ("npx prettier --write src", True),
+        ("patch -p1 < fix.diff", True),
+        ("Get-ChildItem src -Recurse | Remove-Item", True),
+        ("Get-ChildItem src | ForEach-Object { Set-Content $_.FullName 'x' }", True),
+        ("find src -name '*.pyc' -delete", True),
+        ("find src -name '*.py'", False),
+    ],
+)
+def test_commands_that_may_change_unparsed_files(command, unseen):
+    assert may_change_unseen(command) is unseen
 
 
 def test_shell_write_targets_reads_scripts_and_patches(tmp_path):
@@ -207,6 +279,9 @@ def test_shell_write_targets_reads_scripts_and_patches(tmp_path):
     assert shell_write_targets("uv run python fix.py", str(tmp_path)) == ["src/N.cs"]
     assert shell_write_targets("python read.py", str(tmp_path)) == []
     assert shell_write_targets("git apply c.patch", str(tmp_path)) == ["src/P.cs"]
+    (tmp_path / "fix.ps1").write_text("Set-Content src/X.cs 1\n", encoding="utf-8")
+    assert shell_write_targets("& ./fix.ps1", str(tmp_path)) == ["src/X.cs"]
+    assert shell_write_targets("powershell -ExecutionPolicy Bypass -File fix.ps1", str(tmp_path)) == ["src/X.cs"]
 
 
 def test_multiline_command_registers_every_pmem_call(make_project):
@@ -249,6 +324,20 @@ def test_record_injection_adds_conversation_and_draft(make_project):
     assert "draft_id" not in handle("pre-tool", other, root)["updated_input"]
     same = {**payload, "tool_input": {**payload["tool_input"], "entity": "reward"}}
     assert handle("pre-tool", same, root)["updated_input"]["draft_id"] == "01JA7K3M2X9F4Q8W6ZB1C2D3E9"
+
+
+def test_record_overwriting_draft_keeps_its_anchors(make_project):
+    root = make_project()
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Jigsaw/Board.cs")}, root)
+    payload = {"conversation_id": "c1", "tool_name": "MCP:record_memory",
+               "tool_input": {"module": "gameplay.Jigsaw", "entity": "Reward", "kind": "conclusion", "content": "x"}}
+    assert handle("pre-tool", payload, root)["updated_input"]["anchors"] == ["src/Jigsaw/Board.cs"]
+    response = {"ok": True, "id": "01JA7K3M2X9F4Q8W6ZB1C2D3E9", "module": "gameplay.Jigsaw", "entity": "Reward"}
+    handle("after-mcp", {"conversation_id": "c1", "tool_name": "record_memory", "result_json": json.dumps(response)},
+           root)
+    second = handle("pre-tool", payload, root)["updated_input"]
+    assert second["draft_id"] == "01JA7K3M2X9F4Q8W6ZB1C2D3E9"
+    assert "anchors" not in second
 
 
 def test_after_mcp_reads_module_from_nested_response_not_input(make_project):
@@ -302,10 +391,27 @@ def test_stop_is_quiet_when_aborted(make_project):
         ("python -m pmem search --path x.cs", [{"path": "x.cs"}]),
         ("pmem list", []),
         ("echo pmem search", []),
+        ("pmem search --module a.B > $null", []),
+        ("pmem search --module a.B *> out.txt", []),
+        ("pmem search --module a.B | Out-Null; pmem search --module c.D", [{"module": "c.D"}]),
+        ("pmem search --module a.B 2>&1 | Select-String x", [{"module": "a.B"}]),
     ],
 )
 def test_cli_search_args(command, args):
     assert cli_args(command, "search") == args
+
+
+def test_discarded_output_still_counts_for_record():
+    assert cli_args("pmem record --module a.B --entity X --kind risk --content x > $null", "record") == [
+        {"module": "a.B"}]
+
+
+def test_cli_search_with_discarded_output_does_not_unlock(make_project):
+    root = make_project("block")
+    shell = {"conversation_id": "c1", "tool_name": "Shell",
+             "tool_input": {"command": "pmem search --module gameplay.Jigsaw | Out-Null", "cwd": ""}}
+    handle("pre-tool", shell, root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
 
 
 def test_cli_record_in_shell_silences_stop_reminder(make_project):
@@ -352,7 +458,7 @@ def test_record_injection_adds_files_edited_in_module(make_project):
 
 def _analysis_turn(root: Path, prompt: str, conv="c1") -> dict:
     handle("prompt", {"conversation_id": conv, "prompt": prompt}, root)
-    handle("before-mcp", search_payload(conv=conv, module="gameplay.Jigsaw"), root)
+    search_done(root, conv=conv)
     return handle("stop", {"conversation_id": conv, "status": "completed"}, root)
 
 
@@ -377,7 +483,7 @@ def test_consulted_reminder_does_not_need_analysis_wording(make_project):
 
 def test_lookups_during_coding_are_not_reminded(make_project):
     root = make_project()
-    handle("before-mcp", search_payload(module="gameplay.Jigsaw"), root)
+    search_done(root)
     handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
     after = {"conversation_id": "c1", "tool_name": "record_memory",
              "result_json": json.dumps({"ok": True, "id": "01JA7K3M2X9F4Q8W6ZB1C2D3E9", "module": "economy.Shop"})}
@@ -399,7 +505,7 @@ def test_non_analysis_or_recorded_conversations_are_not_counted(make_project):
     _analysis_turn(root, "给拼图加一个新关卡", conv="plain")
     assert "analyzed" not in _last_stop(root)
     handle("prompt", {"conversation_id": "rec", "prompt": "排查一下拼图报错"}, root)
-    handle("before-mcp", search_payload(conv="rec", module="gameplay.Jigsaw"), root)
+    search_done(root, conv="rec")
     shell = {"conversation_id": "rec", "tool_name": "Shell",
              "tool_input": {"command": "pmem record --module gameplay.Jigsaw --entity A --kind risk --content-file a.md"}}
     handle("pre-tool", shell, root)
@@ -428,6 +534,36 @@ def test_search_injection_skips_other_memory_servers(make_project, tool_input):
     assert "updated_input" not in handle("pre-tool", payload, root)
 
 
+@pytest.mark.parametrize("server", [{"tool_name": "mcp__tilematch__search_memory"},
+                                    {"tool_name": "search_memory", "command": "python tilematch_server.py"}])
+def test_same_named_tool_of_other_server_is_ignored(make_project, server):
+    root = make_project("block")
+    pre = {"conversation_id": "c1", "tool_input": {"module": "gameplay.Jigsaw"}, **server}
+    assert "updated_input" not in handle("pre-tool", pre, root)
+    after = {**pre, "result_json": json.dumps({"ok": True, "module": "gameplay.Jigsaw", "items": []})}
+    handle("after-mcp", after, root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
+
+
+@pytest.mark.parametrize("items", [
+    [],
+    [{"id": "01JA7K3M2X9F4Q8W6ZB1C2D3ZZ", "kind": "conclusion"}],
+    # 实测：别家记忆服务的同名工具返回 UUID 形式的 id
+    [{"id": "518b8eb4-2846-4dc3-8413-a8ec81c47427", "module": "gameplay.Jigsaw"}],
+])
+def test_unmarked_search_result_does_not_count(make_project, items):
+    root = make_project("block")
+    foreign_search_done(root, items)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
+
+
+def test_unmarked_result_with_local_memories_counts(make_project):
+    """没有来源标记的旧版 pmem 服务：返回了本仓库的记忆仍算查过。"""
+    root = make_project("block")
+    foreign_search_done(root, [{"id": "01JA7K3M2X9F4Q8W6ZB1C2D3E4", "kind": "conclusion"}])
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+
+
 def test_events_are_logged_for_report(make_project):
     root = make_project("warn")
     handle("prompt", {"conversation_id": "c1", "prompt": "修一下", "composer_mode": "agent"}, root)
@@ -441,9 +577,9 @@ def test_events_are_logged_for_report(make_project):
     handle("stop", {"conversation_id": "c1", "status": "completed", "input_tokens": 1000, "output_tokens": 50,
                     "transcript_path": "t.jsonl"}, root)
     events = list(read_events(Config.load(root).cache_dir))
-    assert [e["type"] for e in events] == ["prompt", "gate", "search_call", "mcp_search", "edit", "stop"]
+    assert [e["type"] for e in events] == ["prompt", "gate", "mcp_search", "edit", "stop"]
     assert all(e["conv"] == "c1" for e in events)
-    assert events[3]["ids"] == ["01JA7K3M2X9F4Q8W6ZB1C2D3E4"]
+    assert events[2]["ids"] == ["01JA7K3M2X9F4Q8W6ZB1C2D3E4"]
     stop = events[-1]
     assert stop["input_tokens"] == 1000 and stop["returned"] == ["01JA7K3M2X9F4Q8W6ZB1C2D3E4"]
     assert stop["nudged"] == ["gameplay.Jigsaw"]
@@ -617,7 +753,7 @@ def test_no_review_when_memories_were_seen(make_project, tmp_path):
     path = transcript(tmp_path, "<user_query>Jigsaw 奖励为什么重复</user_query>")
     handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root)
     assert handle("stop", stop_payload(path), root) == {}
-    handle("before-mcp", search_payload(conv="c2", module="gameplay.Jigsaw"), root)
+    search_done(root, conv="c2")
     result = handle("stop", stop_payload(path, conv="c2"), root)
     assert "你的问题涉及" not in result.get("followup_message", "")
 
@@ -688,3 +824,135 @@ def test_prompt_context_agents_get_digest_at_prompt_time(make_project):
     result = handle("prompt", payload, root)
     assert result["continue"] is True and "你的问题提到了 gameplay.Jigsaw" in result["additional_context"]
     assert "additional_context" not in handle("prompt", {"conversation_id": "c2", "prompt": "Jigsaw"}, root)
+
+
+# ---- 并发、现行记忆计数、终端命令的事后核对 ----
+
+def test_parallel_hooks_do_not_lose_state_updates(tmp_path):
+    cache = tmp_path / "cache"
+    modules = [f"m{i}" for i in range(6)]
+
+    def worker(module: str) -> None:
+        state = SessionState(cache, "c1")
+        with state.locked():
+            time.sleep(0.05)
+            state.add("reviewed", module)
+            state.save()
+
+    threads = [threading.Thread(target=worker, args=(m,)) for m in modules]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(SessionState(cache, "c1").data["reviewed"]) == modules
+
+
+def test_only_current_memories_count(make_project):
+    root = make_project("block", with_memory=False)
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A1", "conclusion", "旧说法", "2026-09-01")
+    old = root / ".memory" / "entries" / "gameplay.Jigsaw" / "01JA7K3M2X9F4Q8W6ZB1C2D3A1.md"
+    old.write_text(old.read_text(encoding="utf-8").replace("status: active", "status: archived"), encoding="utf-8")
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A2", "conclusion", "被替代的", "2026-09-02", entity="X")
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A3", "correction", "新说法", "2026-09-03", entity="X",
+              supersedes="01JA7K3M2X9F4Q8W6ZB1C2D3A2")
+    message = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["user_message"]
+    assert "已有 1 条研发记忆" in message
+
+
+@pytest.fixture
+def git_project(make_project):
+    if shutil.which("git") is None:
+        pytest.skip("需要 git")
+    root = make_project("block")
+    config = root / ".memory" / "config.yaml"
+    config.write_text(config.read_text(encoding="utf-8").replace("vcs: none", "vcs: git"), encoding="utf-8")
+    (root / "src" / "Jigsaw").mkdir(parents=True)
+    (root / "src" / "Jigsaw" / "Board.cs").write_text("class Board {}\n", encoding="utf-8")
+    for args in (["init", "-q"], ["add", "-A"],
+                 ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init"]):
+        subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+    return root
+
+
+def shell(command: str, conv="c1") -> dict:
+    return {"conversation_id": conv, "tool_name": "Shell", "tool_input": {"command": command, "cwd": ""}}
+
+
+def test_script_writes_with_built_paths_are_caught_after_the_fact(git_project):
+    root = git_project
+    (root / "gen.py").write_text("import pathlib\npathlib.Path('src', 'Jig' + 'saw', 'Board.cs').write_text('x')\n",
+                                 encoding="utf-8")
+    assert handle("pre-tool", shell("python gen.py"), root)["permission"] == "allow"
+    (root / "src" / "Jigsaw" / "Board.cs").write_text("class Board { int x; }\n", encoding="utf-8")
+    context = handle("post-tool", shell("python gen.py"), root)["additional_context"]
+    assert "src/Jigsaw/Board.cs" in context and 'search_memory(module="gameplay.Jigsaw")' in context
+    assert handle("post-tool", shell("python gen.py"), root) == {}
+    assert "gameplay.Jigsaw" in handle("stop", stop_payload(), root)["followup_message"]
+
+
+def test_after_the_fact_check_is_quiet_when_searched_or_nothing_changed(git_project):
+    root = git_project
+    handle("pre-tool", shell("python gen.py"), root)
+    assert handle("post-tool", shell("python gen.py"), root) == {}
+    search_done(root)
+    handle("pre-tool", shell("python gen.py"), root)
+    (root / "src" / "Jigsaw" / "Board.cs").write_text("class Board { int y; }\n", encoding="utf-8")
+    assert handle("post-tool", shell("python gen.py"), root) == {}
+    assert "gameplay.Jigsaw" in handle("stop", stop_payload(), root)["followup_message"]
+
+
+def test_unknown_tools_that_rewrite_files_are_caught_after_the_fact(git_project):
+    root = git_project
+    assert handle("pre-tool", shell("uv run ruff format src"), root)["permission"] == "allow"
+    (root / "src" / "Jigsaw" / "Board.cs").write_text("class Board {  }\n", encoding="utf-8")
+    assert "src/Jigsaw/Board.cs" in handle("post-tool", shell("uv run ruff format src"), root)["additional_context"]
+
+
+def test_parallel_shell_commands_keep_their_own_snapshots(git_project):
+    root = git_project
+    handle("pre-tool", shell("python gen.py"), root)
+    handle("pre-tool", shell("uv run ruff format src"), root)
+    (root / "src" / "Jigsaw" / "Board.cs").write_text("class Board { int z; }\n", encoding="utf-8")
+    assert "src/Jigsaw/Board.cs" in handle("post-tool", shell("python gen.py"), root)["additional_context"]
+    assert handle("post-tool", shell("uv run ruff format src"), root) == {}
+    assert SessionState(Config.load(root).cache_dir, "c1").data["shell_before"] == {}
+
+
+def test_cd_then_relative_write_is_gated(git_project):
+    command = "cd src/Jigsaw; echo x > Board.cs"
+    assert handle("pre-tool", shell(command), git_project)["permission"] == "deny"
+
+
+def test_files_edited_by_tools_are_not_blamed_on_parallel_commands(git_project):
+    root = git_project
+    handle("pre-tool", shell("python gen.py"), root)
+    (root / "src" / "Jigsaw" / "Board.cs").write_text("class Board { int t; }\n", encoding="utf-8")
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src" / "Jigsaw" / "Board.cs")}, root)
+    assert handle("post-tool", shell("python gen.py"), root) == {}
+
+
+def test_missing_after_snapshot_does_not_blame_every_dirty_file(git_project, monkeypatch):
+    root = git_project
+    (root / "src" / "Jigsaw" / "Board.cs").write_text("class Board { int d; }\n", encoding="utf-8")
+    handle("pre-tool", shell("python gen.py"), root)
+    from pmem.vcs.git import GitVCS
+    monkeypatch.setattr(GitVCS, "dirty_files", lambda self: None)
+    assert handle("post-tool", shell("python gen.py"), root) == {}
+
+
+def test_slow_snapshots_pause_for_a_day(git_project, monkeypatch):
+    root = git_project
+    import pmem.hooks.gate as gate_module
+    monkeypatch.setattr(gate_module, "SLOW_SNAPSHOT_SECONDS", -1)
+    handle("pre-tool", shell("python gen.py"), root)
+    assert (Config.load(root).cache_dir / gate_module.SLOW_SNAPSHOT_MARK).exists()
+    handle("post-tool", shell("python gen.py"), root)
+    handle("pre-tool", shell("python other.py"), root)
+    assert SessionState(Config.load(root).cache_dir, "c1").data["shell_before"] == {}
+
+
+def test_denied_command_leaves_no_snapshot(git_project):
+    root = git_project
+    assert handle("pre-tool", shell("uv run fmt; echo x > src/Jigsaw/Board.cs"), root)["permission"] == "deny"
+    assert SessionState(Config.load(root).cache_dir, "c1").data["shell_before"] == {}

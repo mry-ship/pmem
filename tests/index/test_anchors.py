@@ -77,6 +77,27 @@ def test_only_the_changed_function_makes_a_memory_stale(git_repo):
     assert problems["C"] == ["calc.py 于 2026-09-10 改过"]
 
 
+def test_results_are_shared_across_processes_until_code_changes(git_repo, tmp_path_factory, monkeypatch):
+    code = git_repo / "calc.py"
+    code.write_text(PY, encoding="utf-8")
+    _commit(git_repo, "calc", "2026-09-01")
+    cache = tmp_path_factory.mktemp("cache") / "anchors.json"
+    entries = [_entry("A", "calc.py#first")]
+    assert AnchorChecker(git_repo, detect_vcs(git_repo), cache).check(entries, {}) == {}
+
+    calls = []
+    monkeypatch.setattr(AnchorChecker, "_check", lambda self, es, files: calls.append(es) or {})
+    fresh = AnchorChecker(git_repo, detect_vcs(git_repo), cache)
+    assert fresh.check(entries, {}) == {} and calls == []
+    fresh.check([*entries, _entry("B", "calc.py#Box.size")], {})
+    assert [e.id for e in calls[0]] == ["B"]
+
+    monkeypatch.undo()
+    code.write_text(PY.replace("return total", "return 0"), encoding="utf-8")
+    problems = AnchorChecker(git_repo, detect_vcs(git_repo), cache).check(entries, {})
+    assert problems["A"] == ["calc.py 中 first 在 2026-09-05 之后改过"]
+
+
 def test_without_history_symbol_anchors_fall_back_to_file_level(tmp_path):
     code = tmp_path / "calc.py"
     code.write_text(PY, encoding="utf-8")

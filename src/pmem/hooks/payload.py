@@ -17,11 +17,36 @@ _PATH_KEYS = ("file_path", "path", "target_file", "target_directory")
 _PATH_LIST_KEYS = ("target_directories", "paths")
 
 
+def _pua_bytes(char: str) -> bytes | None:
+    """Windows 代码页 936 把 GBK 用户自定义区的双字节解成私有区字符（U+E000–U+E765），Python 的 gbk 编码表没有
+    这段映射。UTF-8 中文的尾字节和后面的 \\ 或 " 拼成这种字符很常见（如“符\\n”变成 U+E6C2），不还原就会吞掉转义。"""
+    code = ord(char)
+    if 0xE000 <= code <= 0xE233:
+        lead, trail = divmod(code - 0xE000, 94)
+        return bytes((0xAA + lead, 0xA1 + trail))
+    if 0xE234 <= code <= 0xE4C5:
+        lead, trail = divmod(code - 0xE234, 94)
+        return bytes((0xF8 + lead, 0xA1 + trail))
+    if 0xE4C6 <= code <= 0xE765:
+        lead, offset = divmod(code - 0xE4C6, 96)
+        return bytes((0xA1 + lead, 0x40 + offset + (offset >= 0x3F)))
+    return None
+
+
 def _ungarble(text: str) -> str:
     try:
-        return text.encode("gbk", errors="replace").decode("utf-8", errors="replace")
+        data = bytearray()
+        for char in text:
+            pua = _pua_bytes(char)
+            data += pua if pua is not None else char.encode("gbk", errors="replace")
+        return data.decode("utf-8", errors="replace")
     except Exception:  # noqa: BLE001
         return text
+
+
+def _damage(text: str) -> int:
+    """误解码留下的痕迹：替换符和私有区字符的个数。"""
+    return sum(1 for c in text if c == "\ufffd" or 0xE000 <= ord(c) <= 0xF8FF)
 
 
 def _string_field(text: str, key: str) -> str | None:
@@ -66,13 +91,17 @@ def parse_payload(raw: bytes) -> dict:
     candidates = [text]
     if not text.isascii():
         candidates.append(_ungarble(text))
+    # 误解码后的 JSON 也可能恰好合法，只是丢了字符；原样和回转都能解析时取痕迹少的那份
+    parsed = []
     for candidate in candidates:
         try:
             data = json.loads(candidate)
         except json.JSONDecodeError:
             continue
         if isinstance(data, dict):
-            return data
+            parsed.append((_damage(candidate), data))
+    if parsed:
+        return min(parsed, key=lambda item: item[0])[1]
     return _extract(text)
 
 

@@ -394,7 +394,7 @@ git commit -m "接入 pmem"</code></pre>
     <li>正文自包含：现象、原因、证据、影响范围。不写“改了哪个方法”这类版本库已有的信息。</li>
     <li>正文 20～1200 字，超过 600 字会提示精简。不写密码、密钥、个人信息，含疑似密钥会被拒绝。</li>
     <li>写入会返回 <code>similar</code>（同模块最相近的已有记忆）：重复或推翻了某条，就带 <code>draft_id</code> 重写并在 <code>supersedes</code> 填旧 id。</li>
-    <li>同一任务对同一模块只留一条：再次写入时带上次返回的 <code>draft_id</code> 覆盖。</li>
+    <li>同一任务对同一模块只留一条：再次写入时带上次返回的 <code>draft_id</code> 覆盖。覆盖时没填的 <code>supersedes</code>、<code>anchors</code>、<code>aliases</code> 沿用原值。</li>
     <li>同一议题每天最多写 5 条，防止刷屏。</li>
   </ul>
 
@@ -415,12 +415,14 @@ git commit -m "接入 pmem"</code></pre>
   <p>闸门是兜底机制：Agent 忘了查记忆就去改“已有记忆的模块”时，Hooks 会拦下这次修改，告诉它该调用什么。</p>
   <table>
     <tr><th>模式</th><th>行为</th></tr>
-    <tr><td><code>block</code>（默认）</td><td>本对话没查过该模块就一直拒绝修改，查过（哪怕检索报错）即放行；只放行查过的那个模块</td></tr>
+    <tr><td><code>block</code>（默认）</td><td>本对话没查过该模块就一直拒绝修改，检索真正返回结果后放行（调用失败、终端输出被丢弃都不算）；只放行查过的那个模块</td></tr>
     <tr><td><code>warn</code></td><td>首次修改时拒绝一次，之后放行</td></tr>
     <tr><td><code>off</code></td><td>不拦截，只靠规则</td></tr>
   </table>
   <ul>
-    <li>拦截范围：写文件类工具（Write / StrReplace / Edit / Delete 等）和终端里的写命令：重定向、<code>Set-Content</code>、<code>cp</code>/<code>mv</code>/<code>Copy-Item</code>、<code>git checkout/restore/apply</code>、<code>python -c</code> 及所运行脚本里写文件时的字面路径。同一条命令里带 <code>pmem search</code> 只放行查过的模块。</li>
+    <li>拦截范围：写文件类工具（Write / StrReplace / Edit / Delete 等）和终端里的写命令：重定向、<code>Set-Content</code>、<code>cp</code>/<code>mv</code>/<code>Copy-Item</code>、<code>git checkout/restore/apply</code>、<code>python -c</code> 及所运行脚本里写文件时的字面路径，先 <code>cd</code> 再写相对路径也能认出。同一条命令里带 <code>pmem search</code> 只放行查过的模块。</li>
+    <li>事后比对：脚本里拼出来的路径、格式化工具、<code>git stash</code>/<code>reset</code> 这类事前看不出写了什么的命令，执行前后各比对一次未提交文件（Git、SVN 都支持），改到没查过的模块时立即提醒 AI 补查。命令已经执行完，所以只能提醒、拦不住；仓库大到单次比对超过 1 秒时暂停 24 小时。</li>
+    <li>别的记忆服务也叫 <code>search_memory</code> 时，它的结果不算“查过 pmem”。</li>
     <li>拦截提示里直接列出该模块现行的排除项、风险和更正（最多 5 条），即使 AI 检索时关键词没对上，也能先看到这些坑。</li>
     <li>“查过”的判定：MCP 的 <code>search_memory</code>，或终端里运行 <code>pmem search --module &lt;模块&gt;</code>。MCP 不可用时用终端也行，不会把 Agent 卡死。</li>
     <li>结束提醒：改了模块却没写记忆，提醒一次；整个对话只查了记忆、没改也没写，也提醒一次（<code>gate.analysis_reminder</code> 可关）。中断结束的回合和说了“跳过记忆”的对话不提醒。</li>
@@ -437,7 +439,7 @@ git commit -m "接入 pmem"</code></pre>
     <li>Hook 出任何异常都直接放行，错误写入用户缓存目录的 <code>hook-errors.log</code>，<code>pmem doctor</code> 只显示近 24 小时的错误次数和最近一次内容。</li>
     <li>“需核实”的判定：关联代码写成 <code>路径#函数名</code> 时（Git 项目），只看这个函数在核对日期之后有没有改；只写了文件、SVN 项目或找不到函数时按整个文件判断。所以写记忆时 anchors 尽量写到函数。</li>
   </ul>
-  <p class="muted">Cursor 接入的 Hook 事件：beforeSubmitPrompt、preToolUse、beforeMCPExecution、afterMCPExecution、afterFileEdit、postToolUse（匹配 Read、Grep、Glob、语义搜索）、preCompact、stop。三个工具共用同一套闸门逻辑，统一调用 <code>pmem hook &lt;事件&gt; --agent &lt;工具&gt;</code>。</p>
+  <p class="muted">Cursor 接入的 Hook 事件：sessionStart（经 <code>.memory/bin/pmem-hook</code> 调用，本机没装 pmem 时提示 AI 告诉用户安装）、beforeSubmitPrompt、preToolUse、afterMCPExecution、afterFileEdit、postToolUse（匹配 Read、Grep、Glob、语义搜索、Shell）、preCompact、stop。三个工具共用同一套闸门逻辑，统一调用 <code>pmem hook &lt;事件&gt; --agent &lt;工具&gt;</code>。</p>
 </section>
 
 <!-- ============ MCP ============ -->
@@ -631,9 +633,11 @@ pmem reindex</code></pre>
   <h3>没有相关记忆，为什么还返回了几条？</h3>
   <p>检索总是返回得分最高的几条，由 Agent 读正文判断是否相关。真实数据上相关和不相关的得分区间重叠，设阈值会把真命中也挡掉，所以没加。把常用叫法写全比阈值更管用。</p>
   <h3>用 SVN 可以吗？</h3>
-  <p>可以。作者和版本号取自 SVN，新记忆会自动 <code>svn add</code>。</p>
+  <p>可以。作者和版本号取自 SVN，新记忆会自动 <code>svn add</code>，终端命令的事后比对也支持。按函数判断“需核实”目前只支持 Git。</p>
   <h3>Hook 出错会卡住我吗？</h3>
   <p>不会。任何异常都直接放行，错误记在本机日志里。</p>
+  <h3>队友没装 pmem 会怎样？</h3>
+  <p>不会卡住，但闸门和审查都不生效。新对话开始时 AI 会收到提示，告诉他先安装；<code>pmem doctor</code> 也会检查。项目接入较早、没有 <code>.memory/bin/pmem-hook</code> 的，重新运行一次 <code>pmem init</code>。</p>
   <h3>多个项目会互相影响吗？</h3>
   <p>不会。每个项目的记忆在各自仓库的 <code>.memory/</code>，本机缓存按“项目名 + 路径哈希”分目录；只有语义模型是共享的。</p>
 </section>

@@ -145,6 +145,10 @@ def run_doctor(root: Path) -> int:
         line(WARN, "读代码时的记忆摘要未接入（postToolUse），请重新运行 pmem init")
     elif post and "Grep" not in str(post[0].get("matcher", "Grep")):
         line(WARN, "Hooks 是旧版：搜索代码（Grep / Glob）时不附记忆摘要，请重新运行 pmem init 更新")
+    elif post and "Shell" not in str(post[0].get("matcher", "Shell")):
+        line(WARN, "Hooks 是旧版：终端命令改了文件时不做事后核对，请重新运行 pmem init 更新")
+    elif "pmem hook" in hooks and not (root / ".memory" / "bin" / "pmem-hook.cmd").exists():
+        line(WARN, "Hooks 是旧版：队友没装 pmem 时不会提醒（缺 .memory/bin/pmem-hook），请重新运行 pmem init 更新")
     line(OK if (cursor / "rules" / "pmem.mdc").exists() else WARN, "规则文件 .cursor/rules/pmem.mdc")
     for agent, label, hooks_path, wired_mcp in (
         ("claude", "Claude Code", root / ".claude" / "settings.json", "pmem" in _load(root / ".mcp.json").get("mcpServers", {})),

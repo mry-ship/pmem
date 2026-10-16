@@ -42,6 +42,18 @@ def test_find_root_returns_none_outside_project(tmp_path):
     assert find_root(tmp_path) is None
 
 
+def test_parsed_yaml_is_cached_until_the_file_changes(tmp_path, monkeypatch):
+    write_config(tmp_path, "project: { name: demo }\n")
+    assert Config.load(tmp_path).get("project.name") == "demo"
+    import yaml
+
+    monkeypatch.setattr(yaml, "safe_load", lambda text: pytest.fail("命中缓存时不应再解析 YAML"))
+    assert Config.load(tmp_path).get("project.name") == "demo"
+    monkeypatch.undo()
+    write_config(tmp_path, "project: { name: renamed }\n")
+    assert Config.load(tmp_path).get("project.name") == "renamed"
+
+
 def test_paths_and_cache_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
     write_config(tmp_path, "")

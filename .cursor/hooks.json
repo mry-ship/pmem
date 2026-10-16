@@ -1,33 +1,12 @@
 {
   "version": 1,
   "hooks": {
-    "sessionStart": [
-      {
-        "command": "python spike/cursor_hooks/record.py sessionStart"
-      }
-    ],
-    "sessionEnd": [
-      {
-        "command": "python spike/cursor_hooks/record.py sessionEnd"
-      }
-    ],
     "beforeSubmitPrompt": [
-      {
-        "command": "python spike/cursor_hooks/record.py beforeSubmitPrompt"
-      },
       {
         "command": "pmem hook prompt"
       }
     ],
     "preToolUse": [
-      {
-        "command": "python spike/cursor_hooks/record.py preToolUse",
-        "failClosed": false
-      },
-      {
-        "command": "python spike/cursor_hooks/record.py preToolUse_matchWS",
-        "matcher": "Write|Shell"
-      },
       {
         "command": "pmem hook pre-tool",
         "matcher": "Write|StrReplace|Edit|MultiEdit|EditNotebook|Delete|Shell|MCP|record_memory|search_memory",
@@ -36,76 +15,34 @@
     ],
     "postToolUse": [
       {
-        "command": "python spike/cursor_hooks/record.py postToolUse"
-      },
-      {
         "command": "pmem hook post-tool",
-        "matcher": "Read|Grep|Glob|SemanticSearch|codebase_search"
-      }
-    ],
-    "postToolUseFailure": [
-      {
-        "command": "python spike/cursor_hooks/record.py postToolUseFailure"
-      }
-    ],
-    "beforeShellExecution": [
-      {
-        "command": "python spike/cursor_hooks/record.py beforeShellExecution"
-      }
-    ],
-    "afterShellExecution": [
-      {
-        "command": "python spike/cursor_hooks/record.py afterShellExecution"
-      }
-    ],
-    "beforeMCPExecution": [
-      {
-        "command": "python spike/cursor_hooks/record.py beforeMCPExecution"
-      },
-      {
-        "command": "pmem hook before-mcp"
+        "matcher": "Read|Grep|Glob|SemanticSearch|codebase_search|Shell"
       }
     ],
     "afterMCPExecution": [
-      {
-        "command": "python spike/cursor_hooks/record.py afterMCPExecution"
-      },
       {
         "command": "pmem hook after-mcp"
       }
     ],
     "afterFileEdit": [
       {
-        "command": "python spike/cursor_hooks/record.py afterFileEdit"
-      },
-      {
-        "command": "cmd /c python spike/cursor_hooks/record.py afterFileEdit_cmd"
-      },
-      {
-        "command": "[Console]::InputEncoding=[System.Text.Encoding]::UTF8; python spike/cursor_hooks/record.py afterFileEdit_psenc"
-      },
-      {
-        "command": "spike/cursor_hooks/record.cmd afterFileEdit_bat"
-      },
-      {
         "command": "pmem hook edited"
       }
     ],
     "preCompact": [
-      {
-        "command": "python spike/cursor_hooks/record.py preCompact"
-      },
       {
         "command": "pmem hook compact"
       }
     ],
     "stop": [
       {
-        "command": "python spike/cursor_hooks/record.py stop"
-      },
-      {
         "command": "pmem hook stop",
         "loop_limit": 1
+      }
+    ],
+    "sessionStart": [
+      {
+        "command": ".memory/bin/pmem-hook session"
       }
     ]
   }

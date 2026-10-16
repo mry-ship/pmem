@@ -4,15 +4,24 @@
 """
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 import re
 import time
 from datetime import date, timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from pmem.core.entry import Entry
-from pmem.vcs.base import VCS
+from pmem.core.config import MEMORY_DIR
+
+if TYPE_CHECKING:
+    from pmem.core.entry import Entry
+    from pmem.vcs.base import VCS
 
 CHANGE_CACHE_SECONDS = 60.0
+STATE_CACHE_SECONDS = 600.0
+ANCHOR_CACHE = "anchors.json"
 SAME_WORK_DAYS = 7
 STALE_LABEL = "需核实"
 _DEF_KEYWORDS = r"(?:def|class|function|func|fn|struct|interface|enum|record)"
@@ -79,11 +88,19 @@ def symbol_block(text: str, symbol: str) -> str | None:
 
 
 class AnchorChecker:
-    def __init__(self, root: Path, vcs: VCS):
+    """cache_path 给出时，核对结果跨进程缓存：钩子、命令行、Wiki 各自是新进程，每次都重跑 git 太慢。
+
+    缓存随工作区状态整体失效（当前提交、今天日期、记忆目录以外的未提交文件及其修改时间），
+    单条记忆再按 id、写入日、核对日和锚点命中；不在 Git 下（取不到未提交文件）时不缓存。
+    """
+
+    def __init__(self, root: Path, vcs: VCS, cache_path: Path | None = None):
         self.root = root
         self.vcs = vcs
+        self.cache_path = cache_path
         self._changes: dict[tuple, tuple[float, dict[str, str]]] = {}
         self._old_texts: dict[tuple[str, str], str | None] = {}
+        self._state: tuple[float, str | None] | None = None
 
     def _changed_after(self, files: list[str], since: str) -> dict[str, str]:
         key = (tuple(files), since)
@@ -146,11 +163,62 @@ class AnchorChecker:
         old = self._old_texts[key]
         return None if old is None else symbol_block(old, symbol) != now
 
+    def _worktree_state(self) -> str | None:
+        if self._state and time.monotonic() - self._state[0] < CHANGE_CACHE_SECONDS:
+            return self._state[1]
+        state = None
+        try:
+            dirty = self.vcs.dirty_files()
+            if dirty is not None:
+                parts = [self.vcs.revision(), date.today().isoformat()]
+                for rel in sorted(p for p in dirty if not p.startswith(f"{MEMORY_DIR}/")):
+                    try:
+                        stat = (self.root / rel).stat()
+                        parts.append(f"{rel}:{stat.st_mtime_ns}:{stat.st_size}")
+                    except OSError:
+                        parts.append(f"{rel}:-")
+                state = hashlib.sha1("\n".join(parts).encode("utf-8")).hexdigest()
+        except Exception:  # noqa: BLE001
+            state = None
+        self._state = (time.monotonic(), state)
+        return state
+
+    def _load_cache(self, state: str) -> dict[str, list[str]]:
+        try:
+            data = json.loads(self.cache_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        fresh = data.get("state") == state and time.time() - data.get("time", 0) < STATE_CACHE_SECONDS
+        return data.get("results", {}) if fresh else {}
+
+    def _save_cache(self, state: str, results: dict[str, list[str]]) -> None:
+        try:
+            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.cache_path.with_name(f"{self.cache_path.name}.{os.getpid()}.tmp")
+            tmp.write_text(json.dumps({"state": state, "time": time.time(), "results": results}, ensure_ascii=False),
+                           encoding="utf-8")
+            os.replace(tmp, self.cache_path)
+        except OSError:
+            pass
+
     def check(self, entries: list[Entry], files: dict[str, Path]) -> dict[str, list[str]]:
         """id → 问题列表（文件已删除、符号找不到、某天改过）；files 是记忆 id → 记忆文件路径。
 
         锚点带符号（文件#函数）时只看这个函数：文件改过但该函数与基准日时一致，不算过期。
         """
+        state = self._worktree_state() if self.cache_path and entries else None
+        if state is None:
+            return self._check(entries, files)
+        cached = self._load_cache(state)
+        keys = {e.id: "|".join((e.id, e.note_date, e.checked_date, *e.anchors)) for e in entries}
+        missing = [e for e in entries if keys[e.id] not in cached]
+        if missing:
+            found = self._check(missing, files)
+            cached.update({keys[e.id]: found.get(e.id, []) for e in missing})
+            self._save_cache(state, cached)
+        return {e.id: cached[keys[e.id]] for e in entries if cached[keys[e.id]]}
+
+    def _check(self, entries: list[Entry], files: dict[str, Path]) -> dict[str, list[str]]:
         texts: dict[str, str | None] = {}
         problems: dict[str, list[str]] = {}
         alive: dict[str, list[tuple[Entry, str]]] = {}

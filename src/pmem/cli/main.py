@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pmem import __version__
 
-HOOK_EVENTS = ("prompt", "pre-tool", "before-mcp", "after-mcp", "edited", "post-tool", "compact", "stop")
+HOOK_EVENTS = ("session", "prompt", "pre-tool", "before-mcp", "after-mcp", "edited", "post-tool", "compact", "stop")
 AGENTS = ("cursor", "claude", "codex")
 BRIEF_HELP = "输出精简文本（每条一行）而不是 JSON，免得再用管道筛选"
 
@@ -77,11 +77,13 @@ def build_parser():
     body = p.add_mutually_exclusive_group(required=True)
     body.add_argument("--content", help="正文；传 - 表示从标准输入读取")
     body.add_argument("--content-file", help="从 UTF-8 文件读取正文（正文含引号或较长时推荐）")
-    # extend + nargs：一个参数后可以跟多个值（--alias 闪退 崩溃），也可以重复写
-    p.add_argument("--supersedes", action="extend", nargs="+", default=[])
-    p.add_argument("--anchor", action="extend", nargs="+", default=[], help="关联代码，写成 路径#函数名")
-    p.add_argument("--alias", action="extend", nargs="+", default=[],
-                   help="常用的其他叫法，如 --alias 闪退 崩溃；含空格的叫法要加引号")
+    # extend + nargs：一个参数后可以跟多个值（--alias 闪退 崩溃），也可以重复写；
+    # 默认 None 表示没传，带 --draft-id 覆盖时沿用原值；只写参数名不跟值表示清空
+    keep = "；带 --draft-id 时不写则沿用原值，只写参数名不跟值表示清空"
+    p.add_argument("--supersedes", action="extend", nargs="*", default=None, help="被替代的旧记忆 id" + keep)
+    p.add_argument("--anchor", action="extend", nargs="*", default=None, help="关联代码，写成 路径#函数名" + keep)
+    p.add_argument("--alias", action="extend", nargs="*", default=None,
+                   help="常用的其他叫法，如 --alias 闪退 崩溃；含空格的叫法要加引号" + keep)
     p.add_argument("--draft-id", default="", help="上次写入返回的 draft_id：同一任务再次写入时覆盖那一条")
     p.add_argument("--brief", action="store_true", help=BRIEF_HELP)
     p.add_argument("--root", default=".")

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import os
+import re
 import threading
 import time
 
 ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+ULID_PATTERN = r"[0-9A-HJKMNP-TV-Z]{26}"
+_ULID_RE = re.compile(ULID_PATTERN)
 _RANDOM_BITS = 80
 _lock = threading.Lock()
 _last_ms = -1
@@ -17,6 +20,10 @@ def _encode(value: int, length: int) -> str:
         value, rem = divmod(value, 32)
         chars.append(ALPHABET[rem])
     return "".join(reversed(chars))
+
+
+def is_ulid(value: str) -> bool:
+    return bool(_ULID_RE.fullmatch(str(value or "")))
 
 
 def new_ulid(now_ms: int | None = None) -> str:

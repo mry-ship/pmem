@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -19,6 +20,9 @@ from pmem.generate.templates import (
     CONFIG_TEMPLATE,
     GENERATED,
     HOOK_EVENTS,
+    HOOK_WRAPPER,
+    HOOK_WRAPPER_CMD,
+    HOOK_WRAPPER_SH,
     MCP_SERVER,
     MODULES_HEADER,
     NORMALIZE_SKILL,
@@ -74,13 +78,34 @@ def _write_json(path: Path, data: dict) -> None:
 
 
 def _is_pmem(command) -> bool:
-    return str(command or "").startswith("pmem hook")
+    return str(command or "").startswith(("pmem hook", HOOK_WRAPPER))
+
+
+def write_hook_wrappers(root: Path) -> None:
+    """.memory/bin/pmem-hook（macOS/Linux）与 pmem-hook.cmd（Windows，PowerShell 会优先选它）。"""
+    folder = root / ".memory" / "bin"
+    _write_text(folder / "pmem-hook", HOOK_WRAPPER_SH)
+    (folder / "pmem-hook.cmd").write_text(HOOK_WRAPPER_CMD, encoding="ascii", newline="\r\n")
+    # 批处理用 LF 换行时 goto 标签可能失效，不能让 Git 按平台改换行
+    _write_text(folder / ".gitattributes", "*.cmd text eol=crlf\npmem-hook text eol=lf\n")
+    script = folder / "pmem-hook"
+    script.chmod(script.stat().st_mode | 0o755)
+    # Windows 上建的文件没有可执行位，提交后 macOS/Linux 的队友无法运行；Git 下直接在暂存区里标上（不是 Git 仓库时无效果）
+    if shutil.which("git"):
+        subprocess.run(["git", "add", "--chmod=+x", "--", str(script)], cwd=root, capture_output=True, check=False)
 
 
 def merge_hooks(path: Path) -> None:
     data = _read_json(path)
     data.setdefault("version", 1)
     hooks = data.setdefault("hooks", {})
+    for event in list(hooks):
+        if event not in HOOK_EVENTS:
+            kept = [h for h in hooks[event] if not _is_pmem(h.get("command"))]
+            if kept:
+                hooks[event] = kept
+            else:
+                del hooks[event]
     for event, entry in HOOK_EVENTS.items():
         kept = [h for h in hooks.get(event, []) if not _is_pmem(h.get("command"))]
         hooks[event] = [*kept, dict(entry)]
@@ -146,7 +171,9 @@ def setup_cursor(root: Path) -> str:
     _write_skills(cursor / "skills")
     merge_hooks(cursor / "hooks.json")
     merge_mcp(cursor / "mcp.json")
-    return "Cursor：.cursor/rules/pmem.mdc、.cursor/skills/pmem-*、合并 .cursor/hooks.json 与 .cursor/mcp.json"
+    write_hook_wrappers(root)
+    return ("Cursor：.cursor/rules/pmem.mdc、.cursor/skills/pmem-*、合并 .cursor/hooks.json 与 .cursor/mcp.json、"
+            ".memory/bin/pmem-hook*（没装 pmem 时提醒）")
 
 
 def setup_claude(root: Path) -> str:

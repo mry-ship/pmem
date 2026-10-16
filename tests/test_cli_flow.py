@@ -1,8 +1,12 @@
 import io
 import json
+import os
+import shutil
+import subprocess
 import sys
 import time
 
+import pytest
 import yaml
 
 from pmem.cli.main import main
@@ -32,6 +36,40 @@ def test_init_creates_project_files_and_merges_existing_cursor_config(tmp_path, 
     assert (cursor / "rules" / "pmem.mdc").exists()
     assert (cursor / "skills" / "pmem-bootstrap" / "SKILL.md").exists()
     assert "pmem compact" in (cursor / "skills" / "pmem-compact" / "SKILL.md").read_text(encoding="utf-8")
+    assert [h["command"] for h in hooks["sessionStart"]] == [".memory/bin/pmem-hook session"]
+    assert (tmp_path / ".memory" / "bin" / "pmem-hook").exists()
+    assert b"\r\n" in (tmp_path / ".memory" / "bin" / "pmem-hook.cmd").read_bytes()
+    main(["init", "--root", str(tmp_path)])
+    again = json.loads((cursor / "hooks.json").read_text(encoding="utf-8"))["hooks"]
+    assert len(again["sessionStart"]) == 1
+
+
+def _run_wrapper(root, event: str, path: str) -> dict:
+    """在 PATH 只含 path 的环境里运行生成的 Hook 包装脚本（Windows 用 .cmd，其他用 sh）。"""
+    script = root / ".memory" / "bin" / ("pmem-hook.cmd" if sys.platform == "win32" else "pmem-hook")
+    command = ["cmd", "/c", str(script), event] if sys.platform == "win32" else ["sh", str(script), event]
+    env = {**os.environ, "PATH": path}
+    if sys.platform == "win32":
+        command[0] = os.path.join(os.environ["SystemRoot"], "System32", "cmd.exe")
+    out = subprocess.run(command, input=b"{}", capture_output=True, env=env, cwd=root, check=True).stdout
+    return json.loads(out.decode("ascii"))
+
+
+def test_hook_wrapper_tells_agent_when_pmem_is_missing(tmp_path):
+    main(["init", "--root", str(tmp_path)])
+    # 只保留系统命令（where、sh 等），没有 pmem
+    empty = os.path.join(os.environ["SystemRoot"], "System32") if sys.platform == "win32" else "/usr/bin:/bin"
+    assert "pmem" in _run_wrapper(tmp_path, "session", empty)["additional_context"]
+    assert _run_wrapper(tmp_path, "pre-tool", empty) == {"permission": "allow"}
+    assert _run_wrapper(tmp_path, "stop", empty) == {}
+
+
+def test_hook_wrapper_hands_over_to_installed_pmem(tmp_path):
+    main(["init", "--root", str(tmp_path)])
+    pmem = shutil.which("pmem")
+    if pmem is None:
+        pytest.skip("需要已安装的 pmem")
+    assert _run_wrapper(tmp_path, "session", os.path.dirname(pmem) + os.pathsep + os.environ["PATH"]) == {}
 
 
 def test_init_wires_claude_and_codex_without_touching_their_other_settings(tmp_path, capsys):
@@ -221,6 +259,15 @@ def test_record_and_search_from_cli(tmp_path, capsys, monkeypatch):
           "--content", "登录令牌过期后由拦截器静默刷新，原因是避免用户中途被踢回登录页。", "--draft-id", written["id"]])
     again = json.loads(capsys.readouterr().out)
     assert again["id"] == written["id"] and again["overwritten"] is True
+
+    base = ["record", "--root", str(tmp_path), "--module", "feature.Login", "--entity", "Token",
+            "--kind", "conclusion", "--content", "登录令牌过期后由拦截器静默刷新，失败才跳登录页。", "--draft-id", written["id"]]
+    entry = tmp_path / ".memory" / "entries" / "feature.Login" / f"{written['id']}.md"
+    main(base + ["--alias", "掉登录"])
+    main(base)
+    assert "- 掉登录" in entry.read_text(encoding="utf-8")
+    main(base + ["--alias"])
+    assert "掉登录" not in entry.read_text(encoding="utf-8")
 
 
 def test_reindex_rebuilds_cache_and_reports_bad_files(tmp_path, capsys, monkeypatch):

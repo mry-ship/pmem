@@ -4,8 +4,9 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import yaml
 from wcmatch import glob as wglob
+
+from pmem.core.config import load_yaml
 
 DEFAULT_CATEGORIES = ("activity", "gameplay", "economy", "infra")
 
@@ -145,10 +146,14 @@ class ModuleRegistry:
     @classmethod
     def load(cls, path: str | Path) -> ModuleRegistry:
         try:
-            data = yaml.safe_load(Path(path).read_text(encoding="utf-8-sig"))
+            data = load_yaml(Path(path), encoding="utf-8-sig")
         except UnicodeDecodeError as exc:
             raise RegistryError(f"{Path(path).name} 不是 UTF-8 编码，请用 UTF-8 保存") from exc
-        except yaml.YAMLError as exc:
+        except Exception as exc:
+            import yaml
+
+            if not isinstance(exc, yaml.YAMLError):
+                raise
             mark = getattr(exc, "problem_mark", None)
             where = f"第 {mark.line + 1} 行" if mark is not None else ""
             problem = getattr(exc, "problem", None) or str(exc)

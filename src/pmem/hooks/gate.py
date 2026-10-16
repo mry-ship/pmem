@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
+import time
 from pathlib import Path
 
 from wcmatch import glob as wglob
 
 from pmem.core.config import Config
 from pmem.core.entry import Entry
+from pmem.core.ids import ULID_PATTERN
 from pmem.core.registry import ModuleRegistry, RegistryError
 from pmem.hooks.payload import (
     asks_to_skip,
@@ -19,36 +22,18 @@ from pmem.hooks.payload import (
     tool_paths,
     turn_tool_paths,
 )
+from pmem.hooks.shell import VARIABLE_PATH, cli_args, may_change_unseen, scan, shell_write_targets  # noqa: F401
 from pmem.hooks.state import SessionState
-from pmem.index.anchors import STALE_LABEL, AnchorChecker
+from pmem.index.anchors import ANCHOR_CACHE, STALE_LABEL, AnchorChecker
 from pmem.index.graph import KIND_LABELS, current_entries, digest, preview
 from pmem.metrics.events import log_event
-from pmem.vcs.detect import detect_vcs
 
 WRITE_TOOLS = {"write", "strreplace", "edit", "multiedit", "editnotebook", "delete", "search_replace"}
 _GLOB = wglob.GLOBSTAR | wglob.BRACE | wglob.DOTGLOB | wglob.FORCEUNIX | wglob.IGNORECASE
-_NULL_TARGETS = {"$null", "/dev/null", "nul", "&1", "&2"}
-_REDIRECT = re.compile(r"(?<![0-9&])>>?\s*([^\s|;&<>]+)")
-_PS_WRITERS = {"set-content", "add-content", "out-file", "new-item", "clear-content", "remove-item", "ri", "sc", "ac"}
-_RM = {"rm", "del", "erase", "rmdir", "rd"}
-_COPY = {"cp", "copy", "copy-item", "cpi"}
-_MOVE = {"mv", "move", "move-item", "mi", "rename-item", "rni", "ren"}
-_PATH_PARAMS = ("-path", "-literalpath", "-filepath", "-destination")
-_SCRIPT_SUFFIXES = (".py", ".js", ".mjs", ".cjs")
-_INTERPRETERS = {"python", "python3", "py", "node", "deno"}
-_SCRIPT_MAX_BYTES = 200_000
-_CODE_WRITES = re.compile(
-    r"open\([^)]*['\"][wax]b?\+?['\"]|write_text|write_bytes|writeFileSync|appendFileSync|\.unlink\("
-    r"|os\.(?:remove|rename|replace)\(|shutil\.(?:copy\w*|move|rmtree)\(|WriteAll\w+|AppendAll\w+"
-)
-_PATH_LITERAL = re.compile(r"['\"]([^'\"\s]*[/\\][^'\"\s]*|[^'\"\s/\\]+\.\w{1,8})['\"]")
-_DOTNET_WRITE = re.compile(r"\[(?:System\.)?IO\.File\]::(?:WriteAll\w+|AppendAll\w+|Delete|Copy|Move)\(\s*['\"]([^'\"]+)",
-                           re.IGNORECASE)
-_PATCH_FILE = re.compile(r"^(?:\+\+\+ b|--- a)/(\S+)", re.MULTILINE)
 VIEW_TOOLS = {"read", "grep", "glob", "semanticsearch", "codebase_search"}
 SEARCH_TOOLS = VIEW_TOOLS - {"read"}
 MAX_SEARCH_DIGESTS = 2
-_ULID = r"[0-9A-HJKMNP-TV-Z]{26}"
+_ULID = ULID_PATTERN
 TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens")
 ALLOW = {"permission": "allow"}
 PMEM_TOOLS = ("record_memory", "search_memory", "memory_graph")
@@ -57,144 +42,11 @@ MAX_REVIEW_MODULES = 3
 DIGEST_PREVIEW = 100
 PITFALL_KINDS = ("exclusion", "risk", "correction")
 MAX_GUARD_PITFALLS = 5
+MAX_PENDING_SNAPSHOTS = 8
+SLOW_SNAPSHOT_SECONDS = 1.0
+SLOW_SNAPSHOT_PAUSE = 24 * 3600
+SLOW_SNAPSHOT_MARK = "snapshot-slow"
 _PATH_TOKEN = re.compile(r"[\w.\-]*[/\\][\w./\\\-]+")
-
-
-# ---- 终端命令里的写文件目标 ----
-
-def _segments(command: str) -> list[str]:
-    """按换行和 ; && || | 拆成单条命令；行尾的 ` 或 \\ 是续行，先接回去。"""
-    joined = re.sub(r"[`\\][ \t]*\r?\n", " ", command or "")
-    return re.split(r"\s*(?:\|\||&&|[;|\r\n])\s*", joined)
-
-
-def _tokens(segment: str) -> list[str]:
-    return [t.strip("'\"") for t in re.findall(r"'[^']*'|\"[^\"]*\"|\S+", segment)]
-
-
-def _program(token: str) -> str:
-    return re.split(r"[\\/]", token)[-1].lower().removesuffix(".exe")
-
-
-def _expand(token: str) -> str:
-    return os.path.expandvars(re.sub(r"\$env:(\w+)", lambda m: os.environ.get(m[1], m[0]), token))
-
-
-def _read_small(path: str, base: str | None) -> str:
-    full = Path(_expand(path))
-    if not full.is_absolute():
-        full = Path(base or ".") / full
-    try:
-        return full.read_text(encoding="utf-8", errors="replace") if full.stat().st_size <= _SCRIPT_MAX_BYTES else ""
-    except OSError:
-        return ""
-
-
-def _code_targets(code: str) -> list[str]:
-    """脚本或内联代码里写了文件时，把其中像路径的字符串都当作目标；宁可多拦一次，也别漏掉。"""
-    return _PATH_LITERAL.findall(code) if _CODE_WRITES.search(code) else []
-
-
-def _script_of(tokens: list[str]) -> str | None:
-    """解释器（python、node 等）后的第一个参数：脚本路径或内联代码；`uv run x.py` 也算。不是在跑代码时为 None。"""
-    names = [_program(t) for t in tokens]
-    start = next((i + 1 for i, n in enumerate(names) if n in _INTERPRETERS), None)
-    if start is not None:
-        return next((t for t in tokens[start:] if not t.startswith("-")), "")
-    if names[:2] == ["uv", "run"]:
-        script = next((t for t in tokens[2:] if not t.startswith("-")), "")
-        return script if script.lower().endswith(_SCRIPT_SUFFIXES) else None
-    return None
-
-
-def _git_targets(rest: list[str], base: str | None) -> list[str]:
-    if not rest:
-        return []
-    sub, args = rest[0].lower(), rest[1:]
-    if sub in ("checkout", "restore") and "--" in args:
-        return args[args.index("--") + 1:]
-    if sub in ("restore", "rm", "mv"):
-        return [t for t in args if not t.startswith("-")]
-    if sub in ("apply", "am"):
-        return [p for t in args if not t.startswith("-") for p in _PATCH_FILE.findall(_read_small(t, base))]
-    return []
-
-
-def _copy_targets(head: str, rest: list[str]) -> list[str]:
-    named = {t.lower(): rest[i + 1] for i, t in enumerate(rest[:-1]) if t.lower() in _PATH_PARAMS}
-    positional = [t for t in rest if not t.startswith("-") and t not in named.values()]
-    if head in _MOVE:
-        return [*named.values(), *positional]
-    destination = named.get("-destination") or (positional[-1] if len(positional) > 1 else None)
-    return [destination] if destination else []
-
-
-def shell_write_targets(command: str, base: str | None = None) -> list[str]:
-    """终端命令会写到的文件。base 是命令的工作目录，用来读命令里引用的脚本和补丁。"""
-    targets: list[str] = _DOTNET_WRITE.findall(command or "")
-    runs_code = False
-    for segment in _segments(command):
-        targets += _REDIRECT.findall(segment)
-        tokens = _tokens(segment)
-        if not tokens:
-            continue
-        head, rest = tokens[0].lower(), tokens[1:]
-        script = _script_of(tokens)
-        if script is not None:
-            runs_code = True
-            if script.lower().endswith(_SCRIPT_SUFFIXES):
-                targets += _code_targets(_read_small(script, base))
-        if head == "sed" and any(t.startswith("-i") for t in rest) and rest:
-            targets.append(rest[-1])
-        elif head == "tee" or head in _RM:
-            targets += [t for t in rest if not t.startswith("-")]
-        elif head == "git":
-            targets += _git_targets(rest, base)
-        elif head in _COPY or head in _MOVE:
-            targets += _copy_targets(head, rest)
-        elif head in _PS_WRITERS:
-            for i, token in enumerate(rest):
-                if token.lower() in ("-path", "-filepath", "-literalpath") and i + 1 < len(rest):
-                    targets.append(rest[i + 1])
-                    break
-            else:
-                positional = [t for i, t in enumerate(rest) if not t.startswith("-") and (i == 0 or not rest[i - 1].startswith("-"))]
-                targets += positional[:1]
-    # 内联代码（python -c、heredoc、管道送入的脚本）会被分号拆散，按整条命令找
-    if runs_code:
-        targets += _code_targets(command)
-    seen: list[str] = []
-    for target in targets:
-        if target.lower() not in _NULL_TARGETS and not target.startswith("-") and target not in seen:
-            seen.append(target)
-    return seen
-
-
-# 以这些程序开头时，pmem 可以出现在它们的参数之后（如 uv run --extra embed pmem record）
-_LAUNCHERS = {"uv", "uvx", "pipx", "python", "python3", "py"}
-
-
-def cli_args(command: str, subcommand: str) -> list[dict]:
-    """终端里的 `pmem search/record ...` 与对应 MCP 工具等价，按出现顺序返回每一处的 module/path 参数。"""
-    found: list[dict] = []
-    for segment in _segments(command):
-        tokens = _tokens(segment)
-        names = [re.split(r"[\\/]", t)[-1].lower().removesuffix(".exe") for t in tokens]
-        start = next(
-            (i + 2 for i in range(len(tokens) - 1)
-             if names[i] == "pmem" and tokens[i + 1] == subcommand and (i == 0 or names[0] in _LAUNCHERS)),
-            None,
-        )
-        if start is None:
-            continue
-        rest = tokens[start:]
-        args: dict = {}
-        for i, token in enumerate(rest[:-1]):
-            if token in ("--module", "--path"):
-                args[token[2:]] = rest[i + 1]
-        found.append(args)
-    return found
-
 
 def tool_response(payload: dict) -> dict | None:
     """pmem 工具的返回 JSON。各家包装不同（Cursor 的 result_json 是多层转义的字符串，
@@ -228,6 +80,26 @@ def tool_response(payload: dict) -> dict | None:
     return walk({k: v for k, v in payload.items() if k != "tool_input"}, 0)
 
 
+_SERVER_FIELDS = ("server", "server_name", "mcp_server", "url", "command")
+
+
+def foreign_tool(payload: dict) -> bool:
+    """同名的 search_memory 等工具来自别家记忆服务。工具名或载荷里带了服务信息且不是 pmem 时为 True；
+    都没带时无法区分，按 pmem 处理。"""
+    name = str(payload.get("tool_name") or "").lower()
+    if name.startswith("mcp__"):
+        return "pmem" not in name
+    for key in _SERVER_FIELDS:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return "pmem" not in value.lower()
+    return False
+
+
+def _command_key(command: str) -> str:
+    return "cmd:" + hashlib.sha1(command.encode("utf-8", "replace")).hexdigest()[:16]
+
+
 def _around(text: str, marker: str, width: int = 12) -> str:
     """提问里触发标记的那一小段，方便看出是不是误判。"""
     flat = " ".join(text.split())
@@ -254,6 +126,7 @@ class Gate:
         modules_path = self.config.modules_path
         self.registry = ModuleRegistry.load(modules_path) if modules_path.exists() else ModuleRegistry({})
         self._files: dict[str, Path] = {}
+        self._entries: dict[str, list[Entry]] = {}
 
     # 路径与模块
 
@@ -298,10 +171,12 @@ class Gate:
         return list(dict.fromkeys(found))
 
     def memory_count(self, module: str) -> int:
-        folder = self.config.entries_dir / module
-        return sum(1 for _ in folder.glob("*.md")) if folder.is_dir() else 0
+        """现行记忆条数；已被替代或停用的不算，全部作废的模块不再拦截。"""
+        return len(current_entries(self.module_entries(module)))
 
     def module_entries(self, module: str) -> list[Entry]:
+        if module in self._entries:
+            return self._entries[module]
         folder = self.config.entries_dir / module
         entries = []
         for path in sorted(folder.glob("*.md")) if folder.is_dir() else []:
@@ -311,11 +186,18 @@ class Gate:
                 continue
             entries.append(entry)
             self._files[entry.id] = path
+        self._entries[module] = entries
         return entries
+
+    def vcs(self):
+        # 只有核对过期、终端命令前后比对才用到版本库，按需导入以缩短钩子启动
+        from pmem.vcs.detect import detect_vcs
+
+        return detect_vcs(self.root, self.config.get("vcs"))
 
     def stale_problems(self, entries: list[Entry]) -> dict[str, list[str]]:
         try:
-            checker = AnchorChecker(self.root, detect_vcs(self.root, self.config.get("vcs")))
+            checker = AnchorChecker(self.root, self.vcs(), self.config.cache_dir / ANCHOR_CACHE)
             return checker.check(entries, self._files)
         except Exception:  # noqa: BLE001
             return {}
@@ -493,45 +375,59 @@ class Gate:
             message += "然后重试本次修改。"
         else:
             message += (
-                f"查过之后才能修改该模块。MCP 工具不可用时，在终端运行 pmem search --module {module} 也算；"
-                "检索报错同样视为查过。确实不需要记忆时，请用户回复“跳过记忆”。"
+                f"查过之后才能修改该模块。MCP 工具不可用时，在终端运行 pmem search --module {module} 也算"
+                "（输出不能丢弃，如 > $null、| Out-Null）；检索要真正返回结果才算查过。"
+                "确实不需要记忆时，请用户回复“跳过记忆”。"
             )
-        # 检索按关键词排序，可能漏掉与这次修改相关的坑；排除项、风险、更正直接列出来，按这个顺序
+        text, total = self._pitfalls(module)
+        message += text
+        self.log("gate", module=module, file=rel, mode=mode, pitfalls=total or None)
+        return {"permission": "deny", "user_message": message, "agent_message": message}
+
+    def _pitfalls(self, module: str) -> tuple[str, int]:
+        """检索按关键词排序，可能漏掉与这次修改相关的坑；排除项、风险、更正直接列出来，按这个顺序。"""
         pitfalls = sorted((e for e in current_entries(self.module_entries(module)) if e.kind in PITFALL_KINDS),
                           key=lambda e: PITFALL_KINDS.index(e.kind))
-        if pitfalls:
-            shown = pitfalls[:MAX_GUARD_PITFALLS]
-            more = f"（另有 {len(pitfalls) - len(shown)} 条，检索时可见）" if len(pitfalls) > len(shown) else ""
-            message += "\n该模块已知的排除项、风险和更正，改之前先对照" + more + "：\n" + "\n".join(self.memory_lines(shown))
-        self.log("gate", module=module, file=rel, mode=mode, pitfalls=len(pitfalls) or None)
-        return {"permission": "deny", "user_message": message, "agent_message": message}
+        if not pitfalls:
+            return "", 0
+        shown = pitfalls[:MAX_GUARD_PITFALLS]
+        more = f"（另有 {len(pitfalls) - len(shown)} 条，检索时可见）" if len(pitfalls) > len(shown) else ""
+        text = "\n该模块已知的排除项、风险和更正，改之前先对照" + more + "：\n" + "\n".join(self.memory_lines(shown))
+        return text, len(pitfalls)
 
     def on_pre_tool(self) -> dict:
         name = str(self.payload.get("tool_name") or "")
         args = tool_input(self.payload)
+        if any(t in name for t in PMEM_TOOLS) and foreign_tool(self.payload):
+            return dict(ALLOW)
         if "record_memory" in name:
             return self._inject(args, with_draft=True)
+        # MCP 检索在返回结果之后（after-mcp / post-tool）才登记为查过，调用失败不算
         if "search_memory" in name:
-            self._mark_searched(args, via="mcp")
             # Cursor 的 tool_name 不带服务名，别家记忆服务的同名工具可能拒收多出的参数
             if "pmem" in name.lower() or self.module_from_args(args):
                 return self._inject(args, with_draft=False)
             return dict(ALLOW)
         if "memory_graph" in name:
-            self._mark_searched(args, via="graph")
             return dict(ALLOW)
         if name.lower() == "shell":
             command = str(args.get("command") or "")
             # 先登记命令里的 pmem search，同一条命令里对已查模块的写入才放行；其他模块的写入照样检查
             self._note_cli_calls(command)
             base = args.get("cwd") or str(self.root)
-            paths = [self.relative(t, base) for t in shell_write_targets(command, base)]
-        elif name.lower() in WRITE_TOOLS:
-            raw = args.get("file_paths") or [args.get("file_path") or args.get("path") or args.get("target_file") or ""]
-            paths = [self.relative(str(p)) for p in raw]
-        else:
+            targets, runs_code = scan(command, base)
+            denied = next((v for v in map(self._guard, [self.relative(t, base) for t in targets]) if v is not None), None)
+            if denied is not None:
+                return denied
+            # 脚本、内联代码、变量拼出来的路径和不认识的程序（格式化、git stash 等）事前看不出写了什么，
+            # 放行时记下快照，执行后比对未提交文件，见 _shell_after
+            if runs_code or any(VARIABLE_PATH.search(t) for t in targets) or may_change_unseen(command):
+                self._snapshot_before_shell(command)
             return dict(ALLOW)
-        return next((v for v in map(self._guard, paths) if v is not None), dict(ALLOW))
+        if name.lower() not in WRITE_TOOLS:
+            return dict(ALLOW)
+        raw = args.get("file_paths") or [args.get("file_path") or args.get("path") or args.get("target_file") or ""]
+        return next((v for v in map(self._guard, [self.relative(str(p)) for p in raw]) if v is not None), dict(ALLOW))
 
     def _note_cli_calls(self, command: str) -> None:
         """终端里的 pmem search/graph/record 与 MCP 工具等价，照样登记。"""
@@ -557,7 +453,8 @@ class Gate:
         draft = self.state.data["written"].get(draft_key(module, entity)) if module else None
         if draft and not args.get("draft_id"):
             updated["draft_id"] = draft
-        if module and not args.get("anchors"):
+        # 覆盖草稿时不补锚点，让服务沿用草稿原有的锚点
+        if module and not args.get("anchors") and not updated.get("draft_id"):
             files = [item.split("|", 1)[1] for item in self.state.data["edited_files"] if item.startswith(module + "|")]
             if files:
                 updated["anchors"] = files[-MAX_AUTO_ANCHORS:]
@@ -572,14 +469,12 @@ class Gate:
         self.log("search_call", module=module, via=via)
 
     def on_before_mcp(self) -> dict:
-        name = str(self.payload.get("tool_name") or "")
-        if "search_memory" in name or "memory_graph" in name:
-            self._mark_searched(tool_input(self.payload), via="mcp")
+        """旧版 hooks.json 仍会调用；检索改在返回结果之后登记，这里只放行。"""
         return dict(ALLOW)
 
     def on_after_mcp(self) -> dict:
         name = str(self.payload.get("tool_name") or "")
-        if self.state is None or not any(t in name for t in PMEM_TOOLS):
+        if self.state is None or not any(t in name for t in PMEM_TOOLS) or foreign_tool(self.payload):
             return {}
         response = tool_response(self.payload)
         if not response or response.get("ok") is not True:
@@ -588,6 +483,10 @@ class Gate:
         rows = [r for key in ("items", "timeline") for r in response.get(key) or [] if isinstance(r, dict)]
         ids = [str(i) for i in dict.fromkeys([response.get("id"), *(r.get("id") for r in rows)])
                if i and re.fullmatch(_ULID, str(i))]
+        if "record_memory" not in name and not self._from_pmem(name, response, ids):
+            # 别家记忆服务的同名工具，不算查过 pmem 的记忆
+            self.log("foreign_search", module=module)
+            return {}
         if "record_memory" in name:
             if module and response.get("id") in ids:
                 self.state.data["written"][draft_key(module, response.get("entity"))] = response["id"]
@@ -605,6 +504,17 @@ class Gate:
             self.log("mcp_search", module=module, ids=ids)
         self.save()
         return {}
+
+    def _from_pmem(self, name: str, response: dict, ids: list[str]) -> bool:
+        """结果来自 pmem：带 pmem 的来源标记、工具名里有服务名 pmem，或返回的记忆在本仓库。
+        没有标记的旧版服务返回空结果时也不算，Agent 可以改用终端 pmem search。"""
+        if response.get("server") == "pmem" or "pmem" in name.lower():
+            return True
+        return bool(ids) and self._has_local(ids)
+
+    def _has_local(self, ids: list[str]) -> bool:
+        folder = self.config.entries_dir
+        return folder.is_dir() and any(next(folder.glob(f"*/{i}.md"), None) for i in ids)
 
     def on_edited(self) -> dict:
         self._mark_edited(str(self.payload.get("file_path") or ""))
@@ -631,9 +541,104 @@ class Gate:
             return self._read_digest(tool_input(self.payload))
         if name.lower() in SEARCH_TOOLS:
             return self._search_digest(tool_input(self.payload))
+        if name.lower() == "shell":
+            return self._shell_after()
         for path in edited_files(self.payload):
             self._mark_edited(path)
         return {}
+
+    # 终端命令的事后核对：事前解析不出目标时，比对执行前后的未提交文件
+
+    def _dirty_snapshot(self, paused_ok: bool = True) -> dict[str, list[int]] | None:
+        # 大型工作副本（尤其 SVN）列未提交文件可能要好几秒；慢过一次就当天不再做，免得拖慢每条终端命令
+        slow = self.config.cache_dir / SLOW_SNAPSHOT_MARK
+        try:
+            if paused_ok and slow.exists() and time.time() - slow.stat().st_mtime < SLOW_SNAPSHOT_PAUSE:
+                return None
+        except OSError:
+            pass
+        started = time.monotonic()
+        try:
+            files = self.vcs().dirty_files()
+        except Exception:  # noqa: BLE001
+            return None
+        if time.monotonic() - started > SLOW_SNAPSHOT_SECONDS:
+            try:
+                slow.parent.mkdir(parents=True, exist_ok=True)
+                slow.write_text(f"{time.monotonic() - started:.1f}s", encoding="utf-8")
+            except OSError:
+                pass
+            self.log("snapshot_slow", seconds=round(time.monotonic() - started, 1))
+        if files is None:
+            return None
+        snapshot = {}
+        for rel in files:
+            try:
+                stat = (self.root / rel).stat()
+                snapshot[rel] = [stat.st_mtime_ns, stat.st_size]
+            except OSError:
+                snapshot[rel] = [0, -1]
+        return snapshot
+
+    def _pending_snapshots(self) -> dict:
+        # 旧版状态文件里是单个快照或 None
+        pending = self.state.data.get("shell_before")
+        return pending if isinstance(pending, dict) and all(k.startswith("cmd:") for k in pending) else {}
+
+    def _snapshot_before_shell(self, command: str) -> None:
+        """按命令分开存快照：Cursor 并行执行的几条命令各自比对，不互相覆盖。"""
+        if self.state is None or self.config.get("gate.mode") == "off" or self.state.data["skip"]:
+            return
+        snapshot = self._dirty_snapshot()
+        if snapshot is not None:
+            pending = self._pending_snapshots()
+            pending[_command_key(command)] = snapshot
+            self.state.data["shell_before"] = dict(list(pending.items())[-MAX_PENDING_SNAPSHOTS:])
+            self.save()
+
+    def _shell_after(self) -> dict:
+        """命令实际改过的文件记为已编辑（结束时提醒写记忆）；改到没查过记忆的模块时立即提醒 Agent 补查。"""
+        if self.state is None:
+            return {}
+        pending = self._pending_snapshots()
+        key = _command_key(str(tool_input(self.payload).get("command") or ""))
+        if key not in pending and len(pending) == 1:
+            # 前后两次拿到的命令文本可能因转码不同；只有一条在等时就是它
+            key = next(iter(pending))
+        before = pending.pop(key, None)
+        if before is None:
+            return {}
+        self.state.data["shell_before"] = pending
+        after = self._dirty_snapshot(paused_ok=False)
+        if after is None:
+            self.save()
+            return {}
+        changed = sorted(rel for rel in set(before) | set(after) if before.get(rel) != after.get(rel))
+        # 编辑工具改过的文件已经过闸门检查；与终端命令并行改的不算到命令头上
+        by_tools = {item.split("|", 1)[1] for item in self.state.data["edited_files"]}
+        late: dict[str, list[str]] = {}
+        for rel in changed:
+            if not self._watched(rel) or rel in by_tools:
+                continue
+            self._mark_edited(rel)
+            module = self.module_of(rel)
+            if (module and not self.state.has("searched", module) and not self.state.has("late_warned", module)
+                    and self.memory_count(module)):
+                late.setdefault(module, []).append(rel)
+        for module in late:
+            self.state.add("late_warned", module)
+        self.save()
+        if not late:
+            return {}
+        messages = []
+        for module, files in late.items():
+            self.log("late_gate", module=module, files=files[:5])
+            messages.append(
+                f"[pmem] 刚才的终端命令改了 {'、'.join(files[:5])}，属于 {module}（已有 {self.memory_count(module)} 条研发记忆），"
+                f"但本对话还没查过该模块的记忆。请立即调用 search_memory(module=\"{module}\") 核对这次修改，"
+                "与记忆冲突就改回。" + self._pitfalls(module)[0]
+            )
+        return {"additional_context": "\n\n".join(messages)}
 
     def on_compact(self) -> dict:
         if self.state is not None:
@@ -732,6 +737,8 @@ class Gate:
 
 
 HANDLERS = {
+    # 新对话开始：装了 pmem 时无事可做；没装时由 .memory/bin/pmem-hook 包装脚本提醒
+    "session": lambda gate: {},
     "prompt": Gate.on_prompt,
     "pre-tool": Gate.on_pre_tool,
     "before-mcp": Gate.on_before_mcp,
@@ -747,4 +754,8 @@ def handle(event: str, payload: dict, root: Path) -> dict:
     handler = HANDLERS.get(event)
     if handler is None:
         return {}
-    return handler(Gate(Path(root), payload))
+    gate = Gate(Path(root), payload)
+    if gate.state is None:
+        return handler(gate)
+    with gate.state.locked():
+        return handler(gate)

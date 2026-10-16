@@ -119,3 +119,52 @@ def test_last_user_text_handles_missing_file_and_cursor_path(tmp_path):
     path = _jsonl(tmp_path / "c.jsonl", [{"role": "user", "message": {"content": [{"type": "text", "text": "hi"}]}}])
     if path[1] == ":":
         assert last_user_text("/" + path.replace("\\", "/")) == "hi"
+
+
+# ---- Windows 代码页 936 误解码：私有区字符要能还原 ----
+
+def _win936_decode(data: bytes) -> str:
+    """模拟 Cursor 在中文 Windows 上把 UTF-8 字节按代码页 936 解码（含用户自定义区到私有区的映射）。"""
+    from pmem.hooks.payload import _pua_bytes
+
+    pua = {_pua_bytes(chr(c)): chr(c) for c in range(0xE000, 0xE766)}
+    out, i = [], 0
+    while i < len(data):
+        if data[i] < 0x80:
+            out.append(chr(data[i]))
+            i += 1
+            continue
+        pair = data[i:i + 2]
+        try:
+            out.append(pair.decode("gbk"))
+        except UnicodeDecodeError:
+            out.append(pua.get(pair, "\ufffd"))
+        i += 2
+    return "".join(out)
+
+
+def test_pua_mapping_matches_windows_samples():
+    from pmem.hooks.payload import _pua_bytes
+
+    assert _pua_bytes("\ue6c2") == b"\xa6\x5c"
+    assert _pua_bytes("\ue21a") == b"\xaf\xe5"
+    assert _pua_bytes("a") is None
+
+
+def test_backslash_swallowed_by_garbling_is_restored():
+    from pmem.hooks.gate import cli_args
+
+    command = 'pmem record --module a.B --alias 通配符\npmem record --module c.D --alias x'
+    raw = json.dumps({"conversation_id": "c1", "tool_name": "Shell", "tool_input": {"command": command}},
+                     ensure_ascii=False).encode("utf-8")
+    garbled = _win936_decode(raw)
+    assert "\ue6c2" in garbled
+    data = parse_payload(b"\xef\xbb\xbf" + garbled.encode("utf-8"))
+    assert tool_input(data)["command"] == command
+    assert cli_args(tool_input(data)["command"], "record") == [{"module": "a.B"}, {"module": "c.D"}]
+
+
+def test_merged_commands_keep_the_first_module():
+    from pmem.hooks.gate import cli_args
+
+    assert cli_args("pmem record --module a.B --alias 符npmem record --module c.D", "record") == [{"module": "a.B"}]

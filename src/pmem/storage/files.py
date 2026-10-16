@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pmem.core.entry import Entry
+from pmem.core.ids import is_ulid
 from pmem.vcs.base import VCS
 
 
@@ -33,7 +34,8 @@ class FilesStorage:
         return self.entries_dir / entry.module / f"{entry.id}.md"
 
     def find_path(self, entry_id: str) -> Path | None:
-        if not self.entries_dir.is_dir():
+        # id 会拼进匹配模式，只接受 ULID，免得 ../ 或通配符指到记忆目录以外
+        if not is_ulid(entry_id) or not self.entries_dir.is_dir():
             return None
         return next(self.entries_dir.glob(f"*/{entry_id}.md"), None)
 
@@ -57,6 +59,8 @@ class FilesStorage:
                 self.warnings.append(f"跳过无法解析的记忆文件 {path.relative_to(self.root)}：{exc}")
 
     def _check_draft(self, entry: Entry, draft_id: str) -> Path:
+        if not is_ulid(draft_id):
+            raise StorageError(f"draft_id {draft_id!r} 不是有效的记忆 id（26 位 ULID）；请用写入时返回的 draft_id")
         path = self.find_path(draft_id)
         if path is None:
             raise StorageError(f"draft_id {draft_id} 对应的记忆不存在；请不带 draft_id 新建")

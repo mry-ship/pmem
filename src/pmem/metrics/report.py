@@ -177,7 +177,8 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
     mine = [e for e in entries if e.author == user and ulid_ms(e.id) / 1000 >= since]
     record_kinds = Counter(e.kind for e in mine)
 
-    calls = [e for e in events if e["type"] == "search_call"]
+    # MCP 检索在返回结果后记为 mcp_search；终端检索在执行前记为 search_call
+    calls = [e for e in events if e["type"] in ("search_call", "mcp_search")]
     gates = [e for e in events if e["type"] == "gate"]
     gate_converted = sum(
         1 for g in gates

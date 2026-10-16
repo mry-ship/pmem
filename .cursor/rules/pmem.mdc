@@ -14,6 +14,9 @@ alwaysApply: true
 - 想一次看清模块全貌（各议题的现行结论）：`memory_graph(module=...)`。
 - 想知道一个议题怎么演变、和哪些模块相关：`memory_graph(module=..., entity=...)`；
   问“当时的结论”时给 `search_memory` 带 `as_of="YYYY-MM-DD"`。
+- 这些工具必须来自 pmem 服务。pmem 的 MCP 工具不可用（没启用，或只有别的记忆服务的同名工具）时，
+  改在终端运行 `pmem search --module <模块> --brief "<要点>"`，写入用 `pmem record`；
+  `pmem` 命令也找不到时，告诉用户先安装 pmem，否则记忆检查和闸门都不会生效。
 
 ## 用之前核对
 - `stale: true` 表示记忆写下（或上次核对）之后，关联代码又改过或已不存在，`check` 里列出了具体文件。

@@ -94,6 +94,7 @@ pmem wiki                              # 生成浏览用的模块 Wiki
 - Claude Code、Codex 的接入只做过模拟测试，还没在真实会话里跑过。
 - Cursor 不允许在提问时注入内容，所以纯问答（不读代码）的记忆审查发生在回合结束时：AI 先回答，再被要求查记忆并修正。Claude Code 可以在提问时直接附上摘要。
 - 收益报告只统计本机数据。
-- 终端里的写操作靠解析命令识别：重定向、`Set-Content`、`cp`/`mv`、`git checkout/restore/apply`、`python -c` 和所运行脚本里的字面路径都能认出；脚本里拼接出来的路径认不出。
+- 终端里的写操作靠解析命令识别：重定向、`Set-Content`、`cp`/`mv`、`git checkout/restore/apply`、`python -c`、套一层的 `powershell -Command`/`cmd /c`/`bash -c`、先 `cd` 再写相对路径，以及所运行脚本里的字面路径都能认出。脚本里拼接出来的路径、格式化工具和 `git stash`/`reset` 这类不认识的命令事前认不出：Git 下命令执行后比对未提交文件（Git、SVN 都支持），改到没查过的模块时立即提醒补查（只能事后提醒，拦不住）。仓库大到单次比对超过 1 秒时，这项比对暂停 24 小时。
+- 队友没装 pmem 时，闸门和审查都不生效（Hook 起不来，按设置放行，不会卡住）；新对话开始时的 Hook 经 `.memory/bin/pmem-hook` 调用，会提示 Agent 让用户先安装。
 - 按函数判断过期只支持 Git；SVN 和找不到函数时按文件判断。
 - Windows PowerShell 5 里把 pmem 输出再接给 `Select-String` 等命令会乱码（它按 GBK 解码），直接看输出或用 `--brief`。

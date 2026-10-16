@@ -39,7 +39,6 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 | 你说 | 效果 |
 |---|---|
 | 跳过记忆 | 这次对话不查也不写 |
-| 无需记录 | 回应结束提醒：这次没有新结论 |
 | 按 pmem-compact 技能合并记忆 | 同一议题的零碎记忆合并成一条 |
 | 按 pmem-normalize 技能整理同义词 | 登记“闪退 / 崩溃”这类不同叫法，换个说法也能搜到 |
 

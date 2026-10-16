@@ -520,16 +520,17 @@ class Gate:
                 f"请对每个模块调用 search_memory(module=\"<模块>\", query=\"<问题要点>\") 核对："
                 "与回答一致就简短说明“已核对记忆”；记忆里有排除项、风险或不同结论，请据此修正回答。"
             )
-        parts = []
         if pending:
-            parts.append(f"本轮修改了 {'、'.join(pending)}，但还没有写研发记忆")
-        if consulted_pending:
-            parts.append(f"本轮查了 {'、'.join(consulted_pending)} 的记忆，没有改代码也没有写记忆")
-        if parts:
             messages.append(
-                f"[pmem] {'；'.join(parts)}。如果得出了值得留给后人的结论"
-                "（根因、排除过的方向、做出的决定、潜在风险），请用 record_memory 各记一条；"
-                "只是机械改动或查阅、没有新结论的话，回复“无需记录”即可。"
+                f"[pmem] 本轮修改了 {'、'.join(pending)}，但还没有写研发记忆。请直接用 record_memory "
+                "为每个模块写一条：为什么这样改、影响范围、潜在风险（已有记忆说的就是这件事时，用 supersedes "
+                "更新它）。不要询问用户，写完用一句话说明记了什么。"
+            )
+        if consulted_pending:
+            messages.append(
+                f"[pmem] 本轮查了 {'、'.join(consulted_pending)} 的记忆，没有改代码也没有写记忆。"
+                "得出了新结论（根因、排除过的方向、决定、风险）就直接用 record_memory 记下；"
+                "没有新结论就简短说明“已核对，无新结论”。不要询问用户。"
             )
         return {"followup_message": "\n".join(messages)}
 

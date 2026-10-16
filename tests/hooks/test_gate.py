@@ -320,7 +320,8 @@ def test_consulted_only_conversation_is_reminded_once(make_project):
     root = make_project()
     first = _analysis_turn(root, "拼图奖励为什么会重复发放？")
     assert "查了 gameplay.Jigsaw 的记忆" in first["followup_message"]
-    assert "无需记录" in first["followup_message"]
+    assert "不要询问用户" in first["followup_message"]
+    assert "无需记录" not in first["followup_message"]
     assert _last_stop(root)["analyzed"] == ["gameplay.Jigsaw"]
     assert _analysis_turn(root, "再看看") == {}
 

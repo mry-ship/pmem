@@ -10,6 +10,7 @@ anchors:
 revision: git:4e6c22b
 author: 1002378395@qq.com
 note_date: '2026-10-14'
+verified: '2026-10-16'
 ---
 风险：在 Windows PowerShell 5 里用脚本改 modules.yaml 容易把文件写坏。Get-Content -Raw 不带 -Encoding 时按 ANSI（GBK）读取 UTF-8 文件，回写后中文变成乱码，引号或冒号被吞进乱码字符，YAML 解析失败；Set-Content -Encoding utf8 还会写入 BOM。
 

@@ -173,7 +173,7 @@ pmem doctor</code></pre>
   <h3>后续维护</h3>
   <table>
     <tr><th>什么时候</th><th>做什么</th></tr>
-    <tr><td>日常开发</td><td>什么都不用做；不想被打扰时写“跳过记忆”，没有新结论时回复“无需记录”</td></tr>
+    <tr><td>日常开发</td><td>什么都不用做；记忆由 AI 自动写；不想被打扰时写“跳过记忆”</td></tr>
     <tr><td>提交代码时</td><td>把 <code>.memory/</code> 新增的记忆一起提交，<code>pmem doctor</code> 会提示还有几条没提交</td></tr>
     <tr><td>新增业务模块</td><td>在 <code>.memory/modules.yaml</code> 里加模块和路径</td></tr>
     <tr><td>同一议题记忆变多</td><td>对 AI 说“按 pmem-compact 技能合并记忆”</td></tr>
@@ -386,7 +386,7 @@ git commit -m "接入 pmem"</code></pre>
     <div class="arrow">→</div>
     <div class="node"><b>3. 只在三个时机写</b>根因确认；方向被排除或方案确定；改完并验证通过。</div>
     <div class="arrow">→</div>
-    <div class="node"><b>4. 结束提醒</b>改了模块却没写记忆，对话结束时提醒一次；没有新结论回复“无需记录”。</div>
+    <div class="node"><b>4. 结束提醒</b>改了模块却没写记忆，回合结束时自动追问一次，AI 直接补写，不需要你回复。</div>
   </div>
 
   <h3>写记忆的约定</h3>
@@ -402,7 +402,6 @@ git commit -m "接入 pmem"</code></pre>
   <table>
     <tr><th>你对 Agent 说</th><th>效果</th></tr>
     <tr><td>跳过记忆</td><td>本次对话不查也不写，闸门放行</td></tr>
-    <tr><td>无需记录</td><td>回应结束提醒，表示没有新结论</td></tr>
     <tr><td>按 pmem-bootstrap 技能划分模块</td><td>首次生成 <code>modules.yaml</code></td></tr>
     <tr><td>按 pmem-compact 技能合并记忆</td><td>把同一议题的零碎记忆合并成一两条现状</td></tr>
     <tr><td>按 pmem-normalize 技能整理同义词</td><td>找出同一件事的不同叫法，登记同义词组</td></tr>

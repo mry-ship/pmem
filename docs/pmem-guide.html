@@ -536,6 +536,15 @@ embedding:
   <div class="callout ok">
     <strong>记忆变多不会让 token 线性增长。</strong>AI 不会直接读 <code>.md</code> 文件，只拿到检索返回的 Top-K：默认 5 条、上限 10 条，同一批次最多 2 条，被替代的不返回。单次调用的 token 只和返回条数有关，与库里总数无关。
   </div>
+  <table>
+    <tr><th>什么时候</th><th>额外 token（本仓库实测，GPT-4o 分词）</th><th>额外耗时</th></tr>
+    <tr><td>每个对话：加载规则</td><td>约 850</td><td>无</td></tr>
+    <tr><td>每个模块每个对话一次：检索（默认 5 条）</td><td>中位约 1500，最多约 2600</td><td>检索约 10 毫秒</td></tr>
+    <tr><td>读到某模块代码时附摘要（每模块每对话一次）</td><td>约 530</td><td>Hook 约 0.3 秒</td></tr>
+    <tr><td>没查就改被拦下</td><td>约 115</td><td>Hook 约 0.3 秒</td></tr>
+    <tr><td>其他工具调用</td><td>0</td><td>Hook 约 0.2 秒</td></tr>
+  </table>
+  <p>一个涉及 1～2 个模块的修 bug 对话，额外约 3000～5000 token。想再省：关掉 <code>gate.read_digest</code>（读代码摘要）和 <code>gate.question_review</code>（问答审查），或说“跳过记忆”。</p>
   <ul>
     <li><strong>内存</strong>：MCP 服务进程会把全部记忆解析后放进内存（正文、分词计数、向量），每条几 KB，1 万条大约几十 MB。</li>
     <li><strong>速度</strong>：最多每 10 秒增量刷新一次，只重新解析改过的文件；检索是逐条打分，几千到上万条都在毫秒级。</li>

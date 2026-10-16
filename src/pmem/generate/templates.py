@@ -221,7 +221,7 @@ HOOK_EVENTS = {
     "beforeMCPExecution": {"command": "pmem hook before-mcp"},
     "afterMCPExecution": {"command": "pmem hook after-mcp"},
     "afterFileEdit": {"command": "pmem hook edited"},
-    "postToolUse": {"command": "pmem hook post-tool", "matcher": "Read"},
+    "postToolUse": {"command": "pmem hook post-tool", "matcher": "Read|Grep|Glob|SemanticSearch|codebase_search"},
     "preCompact": {"command": "pmem hook compact"},
     "stop": {"command": "pmem hook stop", "loop_limit": 1},
 }
@@ -247,7 +247,7 @@ def _agent_hooks(agent: str, pre_matcher: str, post_matcher: str) -> dict:
 CLAUDE_HOOKS = _agent_hooks(
     "claude",
     "^(Write|Edit|MultiEdit|NotebookEdit|Bash|mcp__pmem__.*)$",
-    "^(Write|Edit|MultiEdit|NotebookEdit|Read|mcp__pmem__.*)$",
+    "^(Write|Edit|MultiEdit|NotebookEdit|Read|Grep|Glob|mcp__pmem__.*)$",
 )
 CODEX_HOOKS = _agent_hooks("codex", "^(Bash|apply_patch|mcp__pmem__.*)$", "^(apply_patch|mcp__pmem__.*)$")
 CODEX_MCP_TOML = '[mcp_servers.pmem]\ncommand = "pmem"\nargs = ["serve"]\n'

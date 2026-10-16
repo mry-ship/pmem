@@ -420,14 +420,15 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>off</code></td><td>不拦截，只靠规则</td></tr>
   </table>
   <ul>
-    <li>拦截范围：写文件类工具（Write / StrReplace / Edit / Delete 等）和终端里的写命令。</li>
+    <li>拦截范围：写文件类工具（Write / StrReplace / Edit / Delete 等）和终端里的写命令：重定向、<code>Set-Content</code>、<code>cp</code>/<code>mv</code>/<code>Copy-Item</code>、<code>git checkout/restore/apply</code>、<code>python -c</code> 及所运行脚本里写文件时的字面路径。同一条命令里带 <code>pmem search</code> 只放行查过的模块。</li>
     <li>拦截提示里直接列出该模块现行的排除项、风险和更正（最多 5 条），即使 AI 检索时关键词没对上，也能先看到这些坑。</li>
     <li>“查过”的判定：MCP 的 <code>search_memory</code>，或终端里运行 <code>pmem search --module &lt;模块&gt;</code>。MCP 不可用时用终端也行，不会把 Agent 卡死。</li>
     <li>结束提醒：改了模块却没写记忆，提醒一次；整个对话只查了记忆、没改也没写，也提醒一次（<code>gate.analysis_reminder</code> 可关）。中断结束的回合和说了“跳过记忆”的对话不提醒。</li>
     <li>记忆审查（不改代码也生效，每个模块每个对话一次）：
       <ul>
         <li>读代码时，附上该文件所属模块的现行结论摘要（排除项、风险优先，最多 6 条；关联代码之后改过的标“需核实”），<code>gate.read_digest</code> 可关。</li>
-        <li>回合结束时，本轮问题提到的模块有记忆、却既没查也没看过摘要，要求 AI 查过后核对回答，<code>gate.question_review</code> 可关。</li>
+        <li>在某个模块的文件或目录里 Grep、Glob、语义搜索时，同样附上摘要。</li>
+        <li>回合结束时，本轮问题提到的、或本轮看过代码的模块有记忆、却既没查也没看过摘要，要求 AI 查过后核对回答，<code>gate.question_review</code> 可关。</li>
         <li>Claude Code 在提问时就直接附上摘要；Cursor 不允许提问时注入内容，所以只能在结束时追问。</li>
       </ul>
     </li>
@@ -436,7 +437,7 @@ git commit -m "接入 pmem"</code></pre>
     <li>Hook 出任何异常都直接放行，错误写入用户缓存目录的 <code>hook-errors.log</code>，<code>pmem doctor</code> 只显示近 24 小时的错误次数和最近一次内容。</li>
     <li>“需核实”的判定：关联代码写成 <code>路径#函数名</code> 时（Git 项目），只看这个函数在核对日期之后有没有改；只写了文件、SVN 项目或找不到函数时按整个文件判断。所以写记忆时 anchors 尽量写到函数。</li>
   </ul>
-  <p class="muted">Cursor 接入的 Hook 事件：beforeSubmitPrompt、preToolUse、beforeMCPExecution、afterMCPExecution、afterFileEdit、postToolUse（只匹配 Read）、preCompact、stop。三个工具共用同一套闸门逻辑，统一调用 <code>pmem hook &lt;事件&gt; --agent &lt;工具&gt;</code>。</p>
+  <p class="muted">Cursor 接入的 Hook 事件：beforeSubmitPrompt、preToolUse、beforeMCPExecution、afterMCPExecution、afterFileEdit、postToolUse（匹配 Read、Grep、Glob、语义搜索）、preCompact、stop。三个工具共用同一套闸门逻辑，统一调用 <code>pmem hook &lt;事件&gt; --agent &lt;工具&gt;</code>。</p>
 </section>
 
 <!-- ============ MCP ============ -->

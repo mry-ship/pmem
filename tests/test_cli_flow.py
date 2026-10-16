@@ -113,6 +113,12 @@ def test_doctor_reports_coverage(tmp_path, capsys, monkeypatch):
     out = capsys.readouterr().out
     assert "模块覆盖率 100.0%" in out
     assert "feature.Ghost" in out
+    assert "Hooks 是旧版" not in out
+    hooks = tmp_path / ".cursor" / "hooks.json"
+    hooks.write_text(hooks.read_text(encoding="utf-8").replace("Read|Grep|Glob|SemanticSearch|codebase_search", "Read"),
+                     encoding="utf-8")
+    main(["doctor", "--root", str(tmp_path)])
+    assert "Hooks 是旧版" in capsys.readouterr().out
 
 
 def test_doctor_flags_uncommitted_and_scattered_entities(git_repo, capsys, monkeypatch):

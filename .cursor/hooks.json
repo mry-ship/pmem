@@ -40,7 +40,7 @@
       },
       {
         "command": "pmem hook post-tool",
-        "matcher": "Read"
+        "matcher": "Read|Grep|Glob|SemanticSearch|codebase_search"
       }
     ],
     "postToolUseFailure": [

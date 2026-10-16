@@ -183,10 +183,40 @@ def test_shell_write_is_gated(make_project):
         ("rm -f src/E.cs", ["src/E.cs"]),
         ("git status 2>&1", []),
         ("cmd > $null", []),
+        ("cp -r tmp/a.cs src/F.cs", ["src/F.cs"]),
+        ("Copy-Item -Path tmp/a.cs -Destination src/G.cs", ["src/G.cs"]),
+        ("mv src/H.cs src/I.cs", ["src/H.cs", "src/I.cs"]),
+        ("git checkout -- src/J.cs", ["src/J.cs"]),
+        ("git restore --staged src/K.cs", ["src/K.cs"]),
+        ("git checkout main", []),
+        ("python -c \"import x; open('src/L.cs', 'w').write('1')\"", ["src/L.cs"]),
+        ("python -c \"print(open('src/L.cs').read())\"", []),
+        ("[IO.File]::WriteAllText('src/M.cs', 'x')", ["src/M.cs"]),
+        ("uv run pytest tests/test_x.py", []),
+        ("uv run pmem search --module a.B", []),
     ],
 )
 def test_shell_write_targets(command, targets):
     assert shell_write_targets(command) == targets
+
+
+def test_shell_write_targets_reads_scripts_and_patches(tmp_path):
+    (tmp_path / "fix.py").write_text("from pathlib import Path\nPath('src/N.cs').write_text('x')\n", encoding="utf-8")
+    (tmp_path / "read.py").write_text("print(open('src/O.cs').read())\n", encoding="utf-8")
+    (tmp_path / "c.patch").write_text("--- a/src/P.cs\n+++ b/src/P.cs\n@@ -1 +1 @@\n-a\n+b\n", encoding="utf-8")
+    assert shell_write_targets("uv run python fix.py", str(tmp_path)) == ["src/N.cs"]
+    assert shell_write_targets("python read.py", str(tmp_path)) == []
+    assert shell_write_targets("git apply c.patch", str(tmp_path)) == ["src/P.cs"]
+
+
+def test_search_in_same_command_only_unlocks_that_module(make_project):
+    root = make_project("block")
+    mixed = {"conversation_id": "c1", "tool_name": "Shell",
+             "tool_input": {"command": "pmem search --module economy.Shop; Set-Content src/Jigsaw/Board.cs x",
+                            "cwd": ""}}
+    assert handle("pre-tool", mixed, root)["permission"] == "deny"
+    mixed["tool_input"]["command"] = "pmem search --module gameplay.Jigsaw; Set-Content src/Jigsaw/Board.cs x"
+    assert handle("pre-tool", mixed, root)["permission"] == "allow"
 
 
 def test_record_injection_adds_conversation_and_draft(make_project):
@@ -445,6 +475,37 @@ def test_reading_module_code_attaches_digest_once(make_project):
     assert handle("post-tool", read_payload(root, "src/Jigsaw/Other.cs"), root) == {}
     # 摘要不等于检索：改代码仍要先查
     assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
+
+
+def test_searching_inside_a_module_attaches_digest(make_project):
+    root = make_project("block")
+    whole = {"conversation_id": "c1", "tool_name": "Grep", "tool_input": {"pattern": "Reward"}}
+    assert handle("post-tool", whole, root) == {}
+    scoped = {"conversation_id": "c1", "tool_name": "Grep",
+              "tool_input": {"pattern": "Reward", "path": str(root / "src/Jigsaw")}}
+    context = handle("post-tool", scoped, root)["additional_context"]
+    assert "你正在搜索的 src/Jigsaw 属于 gameplay.Jigsaw" in context and "旧结论" in context
+    semantic = {"conversation_id": "c1", "tool_name": "SemanticSearch",
+                "tool_input": {"query": "奖励", "target_directories": [str(root / "src/Jigsaw/Board.cs")]}}
+    assert handle("post-tool", semantic, root) == {}
+
+
+def test_stop_reviews_modules_whose_code_was_viewed_this_turn(make_project, tmp_path):
+    root = make_project()
+    path = tmp_path / "t.jsonl"
+    lines = [
+        {"role": "user", "message": {"content": [{"type": "text", "text": "<user_query>之前的问题</user_query>"}]}},
+        {"role": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "Read", "input": {"path": str(root / "src/Shop/Shop.cs")}}]}},
+        {"role": "user", "message": {"content": [{"type": "text", "text": "<user_query>奖励为什么会发两次</user_query>"}]}},
+        {"role": "assistant", "message": {"content": [
+            {"type": "text", "text": "我搜一下"},
+            {"type": "tool_use", "name": "Grep", "input": {"pattern": "Claim", "path": str(root / "src/Jigsaw")}}]}},
+    ]
+    path.write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in lines), encoding="utf-8")
+    message = handle("stop", stop_payload(str(path)), root)["followup_message"]
+    assert "本轮看过 gameplay.Jigsaw 的代码" in message and "你的问题涉及" not in message
+    assert handle("stop", stop_payload(str(path)), root) == {}
 
 
 @pytest.mark.parametrize("rel", ["src/Shop/Shop.cs", "src/Jigsaw/README.md", "tools/x.py"])

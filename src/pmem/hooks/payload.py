@@ -12,7 +12,9 @@ _FIELDS = ("conversation_id", "generation_id", "hook_event_name", "tool_name", "
            "transcript_path")
 _TRANSCRIPT_TAIL = 512 * 1024
 _USER_QUERY = re.compile(r"<user_query>\s*(.*?)\s*</user_query>", re.DOTALL)
-_INPUT_FIELDS = ("file_path", "command", "cwd", "module", "path", "entity", "query")
+_INPUT_FIELDS = ("file_path", "command", "cwd", "module", "path", "entity", "query", "target_directory")
+_PATH_KEYS = ("file_path", "path", "target_file", "target_directory")
+_PATH_LIST_KEYS = ("target_directories", "paths")
 
 
 def _ungarble(text: str) -> str:
@@ -160,9 +162,17 @@ def _text_of(content) -> str:
     return ""
 
 
-def last_user_text(transcript_path: str | None) -> str | None:
-    """对话记录（JSONL，UTF-8，不受 Hook 转码影响）里最后一条用户消息的文字。
-    Cursor 的消息里还夹着附件和系统提示，只取 <user_query> 里的部分；读不到时返回 None。"""
+def tool_paths(args: dict) -> list[str]:
+    """工具参数里的文件或目录路径（Read、Grep、Glob、语义搜索各家字段名不同）。"""
+    paths = [str(args[k]) for k in _PATH_KEYS if isinstance(args.get(k), str) and args[k]]
+    for key in _PATH_LIST_KEYS:
+        if isinstance(args.get(key), list):
+            paths += [str(p) for p in args[key] if isinstance(p, str) and p]
+    return paths
+
+
+def _transcript_tail(transcript_path: str | None) -> list[tuple[str, list]] | None:
+    """对话记录（JSONL，UTF-8，不受 Hook 转码影响）末尾的消息，从新到旧，每条为（角色, 内容块）；读不到时返回 None。"""
     if not transcript_path:
         return None
     try:
@@ -172,6 +182,7 @@ def last_user_text(transcript_path: str | None) -> str | None:
             lines = fh.read().decode("utf-8", errors="replace").splitlines()
     except OSError:
         return None
+    records = []
     for line in reversed(lines):
         try:
             record = json.loads(line)
@@ -180,11 +191,33 @@ def last_user_text(transcript_path: str | None) -> str | None:
         if not isinstance(record, dict):
             continue
         message = record.get("message") if isinstance(record.get("message"), dict) else {}
-        if (record.get("role") or message.get("role") or record.get("type")) != "user":
+        role = record.get("role") or message.get("role") or record.get("type")
+        content = message.get("content", record.get("content"))
+        records.append((role, content if isinstance(content, list) else [{"type": "text", "text": content or ""}]))
+    return records
+
+
+def last_user_text(transcript_path: str | None) -> str | None:
+    """最后一条用户消息的文字。Cursor 的消息里还夹着附件和系统提示，只取 <user_query> 里的部分。"""
+    for role, content in _transcript_tail(transcript_path) or []:
+        if role != "user":
             continue
         # Claude Code 把工具结果也记成 user 消息，它们没有 text 块
-        text = _text_of(message.get("content", record.get("content")))
+        text = _text_of(content)
         if text.strip():
             query = _USER_QUERY.search(text)
             return query.group(1) if query else text
     return None
+
+
+def turn_tool_paths(transcript_path: str | None, tools: set[str]) -> list[str]:
+    """本轮（最后一条用户消息之后）Agent 用指定工具看过的路径。Hook 没覆盖到的工具也能从这里补上。"""
+    paths: list[str] = []
+    for role, content in _transcript_tail(transcript_path) or []:
+        if role == "user" and _text_of(content).strip():
+            break
+        for block in content:
+            if (isinstance(block, dict) and block.get("type") == "tool_use"
+                    and str(block.get("name") or "").lower() in tools and isinstance(block.get("input"), dict)):
+                paths += tool_paths(block["input"])
+    return list(dict.fromkeys(reversed(paths)))

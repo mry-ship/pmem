@@ -272,6 +272,7 @@ class MemoryIndex:
         today: date | None = None,
         as_of: str | None = None,
         verify: bool = True,
+        semantic: bool = True,
     ) -> SearchResult:
         """排序 = (相关度 + 加分) × 时效；相关度 = 0.6 × 语义 + 0.4 × 关键词（无语义时只用关键词）。"""
         pool = [i for i in self._visible_items(as_of) if module is None or _same(i.entry.module, module)]
@@ -287,7 +288,7 @@ class MemoryIndex:
 
         query = (query or "").strip()
         weights, result.expanded = self._query_weights(query)
-        relevance = self._relevance(pool, query, weights, result)
+        relevance = self._relevance(pool, query, weights, result) if semantic else self._bm25(pool, weights)
         day = date.fromisoformat(as_of) if as_of else (today or date.today())
         ranked = sorted(
             (

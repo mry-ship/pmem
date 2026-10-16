@@ -1,6 +1,7 @@
 import io
 import json
 import sys
+import time
 
 import yaml
 
@@ -130,7 +131,48 @@ def test_doctor_flags_uncommitted_and_scattered_entities(git_repo, capsys, monke
     main(["doctor", "--root", str(git_repo)])
     out = capsys.readouterr().out
     assert "本机有 3 条记忆未提交" in out
+    assert "现行记忆 3 条（记忆文件共 3 个" in out
     assert "1 组实体名字相近" in out and "feature.Login：AutoPop / AutoPopup" in out
+
+
+def test_record_takes_several_aliases_and_brief_output(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
+    main(["init", "--root", str(tmp_path), "--type", "generic"])
+    config = tmp_path / ".memory" / "config.yaml"
+    config.write_text(config.read_text(encoding="utf-8").replace("backend: auto", "backend: none"), encoding="utf-8")
+    capsys.readouterr()
+    code = main(["record", "--root", str(tmp_path), "--module", "feature.Login", "--entity", "Token",
+                 "--kind", "risk", "--content", "登录令牌过期后要静默刷新，否则会被踢回登录页",
+                 "--alias", "掉登录", "被踢", "--anchor", "src/Login.ts", "--brief"])
+    out = capsys.readouterr().out
+    assert code == 0 and out.startswith("已写入 feature.Login / Token：")
+    assert "只写了文件" in out
+    entry = next((tmp_path / ".memory" / "entries" / "feature.Login").glob("*.md")).read_text(encoding="utf-8")
+    assert "- 掉登录\n- 被踢" in entry
+    main(["search", "--root", str(tmp_path), "--module", "feature.Login", "令牌", "--brief"])
+    out = capsys.readouterr().out
+    assert out.startswith("feature.Login：1 条")
+    assert "- 风险｜Token｜" in out and "⚠ 需核实：src/Login.ts 已不存在" in out
+
+
+def test_brief_accepts_both_related_shapes():
+    from pmem.cli.brief import render_brief
+    search = render_brief("search", {"ok": True, "module": "a.B", "items": [], "related": ["c.D（共同路径）"]})
+    graph = render_brief("graph", {"ok": True, "module": "a.B", "topics": [],
+                                   "related": [{"module": "c.D", "via": "共同路径", "entities": []}]})
+    assert search.endswith("相关模块：c.D（共同路径）") and graph.endswith("相关模块：c.D（共同路径）")
+
+
+def test_doctor_shows_only_recent_hook_errors(tmp_path):
+    from pmem.cli.doctor_cmd import _recent_errors
+
+    log = tmp_path / "hook-errors.log"
+    log.write_text("2026-10-14 10:00:00 ERROR stop@cursor\nTraceback\nNameError: old\n"
+                   "2026-10-16 09:00:00 ERROR pre-tool@cursor\nTraceback\nValueError: new\n", encoding="utf-8")
+    now = time.mktime(time.strptime("2026-10-16 12:00:00", "%Y-%m-%d %H:%M:%S"))
+    recent = _recent_errors(log, now)
+    assert len(recent) == 1 and recent[0].endswith("ValueError: new")
+    assert _recent_errors(log, now + 2 * 86400) == []
 
 
 def test_hook_command_reads_bom_stdin_and_writes_ascii(tmp_path, capsys, monkeypatch):

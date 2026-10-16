@@ -16,6 +16,7 @@ aliases:
 - Codex
 - 多工具
 - 其他大模型
+verified: '2026-10-16'
 ---
 决定：兼容 Claude Code、Codex 等其他 Agent 工具时，不另写闸门，而是让三家共用同一套闸门逻辑。各工具的 Hook 都调用 `pmem hook <事件> --agent <cursor|claude|codex>`，由适配层先把输入转换成 Cursor 的格式，处理完再按目标工具的协议输出。pmem init --agents 负责生成各工具的配置：Claude Code 是 CLAUDE.md 段落、.claude/settings.json、.mcp.json；Codex 是 AGENTS.md 段落、.codex/hooks.json、.codex/config.toml。
 

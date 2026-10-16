@@ -113,6 +113,12 @@ def _standalone(text: str, start: int, marker: str) -> bool:
     return not any(word in before for word in _NEGATIONS)
 
 
+def readable(text: str, marker: str) -> str:
+    """原文或反解乱码后的文本里，能找到 marker 的那一份；都找不到时返回原文。"""
+    fixed = _ungarble(text)
+    return fixed if marker not in text and marker in fixed else text
+
+
 def asks_to_skip(text: str, marker: str) -> bool:
     """用户是在要求跳过（“这次跳过记忆”），而不是在谈论它（“避免跳过记忆审查”“不要跳过记忆”）。"""
     if not marker:

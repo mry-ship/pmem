@@ -471,10 +471,31 @@ def test_block_message_lists_pitfalls_of_the_module(make_project):
     add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A2", "risk", "断线重连会重复领取", "2026-09-02", entity="Reconnect")
     add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A3", "conclusion", "普通结论不进拦截提示", "2026-09-03", entity="Misc")
     message = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["user_message"]
-    assert "已知的排除项和风险" in message
+    assert "已知的排除项、风险和更正" in message
     assert "排除项｜Reward｜2026-09-01：不要在客户端去重" in message
     assert "风险｜Reconnect" in message
     assert "普通结论" not in message
+
+
+def test_block_message_includes_corrections_after_exclusions(make_project):
+    root = make_project("block", with_memory=False)
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A1", "correction", "更正：奖励不是客户端重复发的", "2026-09-05")
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A2", "exclusion", "不要在客户端去重", "2026-09-01", entity="Dedup")
+    message = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["user_message"]
+    assert message.index("排除项｜Dedup") < message.index("更正｜Reward")
+
+
+def test_skip_is_announced_once_with_its_trigger_and_can_be_resumed(make_project):
+    root = make_project("block")
+    handle("prompt", {"conversation_id": "c1", "prompt": "这次跳过记忆，直接改按钮颜色"}, root)
+    notice = handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root)["additional_context"]
+    assert "已按“跳过记忆”关闭记忆检查" in notice and "这次跳过记忆，直接改按钮颜色" in notice
+    assert "“恢复记忆”" in notice
+    assert handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root) == {}
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+    handle("prompt", {"conversation_id": "c1", "prompt": "恢复记忆"}, root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
+    assert "additional_context" in handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root)
 
 
 def test_block_message_has_no_pitfall_section_without_them(make_project):
@@ -569,6 +590,8 @@ def test_review_can_be_disabled_and_respects_skip(make_project, tmp_path):
     path = transcript(tmp_path, "<user_query>Jigsaw 奖励为什么重复</user_query>")
     handle("prompt", {"conversation_id": "skip", "prompt": "跳过记忆，看下 Jigsaw"}, root)
     assert handle("stop", stop_payload(path, conv="skip"), root) == {}
+    notice = handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs", conv="skip"), root)
+    assert "跳过记忆" in notice["additional_context"]
     assert handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs", conv="skip"), root) == {}
     config = root / ".memory" / "config.yaml"
     config.write_text(config.read_text(encoding="utf-8").replace(

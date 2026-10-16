@@ -38,6 +38,10 @@ SIMILAR_HINT = (
     "无关则忽略。"
 )
 ALIASES_HINT = "没填 aliases：把现象和关键术语的其他常用叫法（如 闪退/崩溃/crash）写进 aliases，换个说法也能搜到。"
+ANCHOR_HINT = (
+    "anchors 只写了文件：该文件以后任何改动都会让这条记忆标为“需核实”。能定位到函数时写成 路径#函数名"
+    "（如 src/Reward.cs#Claim），只有这个函数改了才需要核实。"
+)
 HINTS_FOOTER = "以上只是提示，已写入；如需修改，带上 draft_id 再写一次即可覆盖。"
 
 
@@ -269,6 +273,8 @@ class MemoryService:
         replaced = [old for s in supersedes if (old := self.index.find(s)) is not None]
         aliases = _clean_aliases(aliases)
         hints = self._write_hints(resolved.id, entity_id, content, aliases, merging=len(replaced) >= 2)
+        if anchors and not any("#" in a for a in anchors):
+            hints.append(ANCHOR_HINT)
         # 替代旧记忆（含合并零碎记忆）不增加条数，不受每日上限约束
         if not draft_id and not replaced:
             over_cap = self._daily_cap_error(resolved.id, entity_id, today)
@@ -392,11 +398,12 @@ class MemoryService:
         """同一议题下与新记忆最相近的有效记忆，交给写入的 Agent 判断是重复、推翻还是无关。
 
         只看同一实体：跨议题时相关度分不清真假（见 Ranking 排除项），每次都附两条无关记忆只会成为噪音。
+        同一议题下条数很少，关键词就够；不加载语义模型，命令行写入因此快约 1 秒。
         """
         skip = {entry.id, *entry.supersedes}
         result = self._index_search(
             module=entry.module, entity=entry.entity, query=" ".join([entry.content, *entry.aliases]),
-            limit=MAX_SIMILAR + len(skip), max_per_batch=MAX_LIMIT, verify=False,
+            limit=MAX_SIMILAR + len(skip), max_per_batch=MAX_LIMIT, verify=False, semantic=False,
         )
         rows = [
             {"id": i["id"], "entity": i["entity"], "kind": i["kind"], "date": i["date"], "preview": preview(i["content"])}

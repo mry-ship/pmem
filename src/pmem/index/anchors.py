@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import re
 import time
 from datetime import date, timedelta
 from pathlib import Path
@@ -14,6 +15,67 @@ from pmem.vcs.base import VCS
 CHANGE_CACHE_SECONDS = 60.0
 SAME_WORK_DAYS = 7
 STALE_LABEL = "需核实"
+_DEF_KEYWORDS = r"(?:def|class|function|func|fn|struct|interface|enum|record)"
+_NOT_DEF_PREFIX = re.compile(r"^\s*(?:return|if|else|while|for|foreach|switch|case|await|new|throw|yield)\b")
+
+
+def _definition_line(lines: list[str], name: str) -> int | None:
+    """符号的定义行：先找带定义关键字的行，再找“名字(参数)”后面紧跟方法体的行（C#/Java/TS 方法）。"""
+    word = re.escape(name)
+    keyword = re.compile(rf"\b{_DEF_KEYWORDS}\s+{word}\b")
+    for i, line in enumerate(lines):
+        if keyword.search(line):
+            return i
+    call = re.compile(rf"\b{word}\s*(?:<[^>]*>)?\s*\(")
+    for i, line in enumerate(lines):
+        if not call.search(line) or _NOT_DEF_PREFIX.match(line) or line.rstrip().endswith(";"):
+            continue
+        tail = line[call.search(line).end():] + "".join(lines[i + 1:i + 3])
+        if "{" in tail or "=>" in tail:
+            return i
+    return None
+
+
+def _member(symbol: str) -> str:
+    """“类名.成员”“类名::成员”取成员名。"""
+    return re.split(r"\.|::", symbol.strip())[-1]
+
+
+def symbol_block(text: str, symbol: str) -> str | None:
+    """文件里某个符号（函数、类、方法）的完整代码块，找不到返回 None。“类名.成员”按成员找。"""
+    name = _member(symbol)
+    if not name:
+        return None
+    lines = [line.rstrip() for line in text.splitlines()]
+    start = _definition_line(lines, name)
+    if start is None:
+        return None
+    head = lines[start]
+    indent = len(head) - len(head.lstrip())
+    if re.match(r"\s*(?:async\s+)?(?:def|class)\b", head):
+        # 签名可能跨多行：括号配平且以冒号结尾的那一行之后才是函数体
+        end, balance = start, 0
+        while end < len(lines):
+            balance += lines[end].count("(") - lines[end].count(")")
+            if balance <= 0 and lines[end].endswith(":"):
+                break
+            end += 1
+        end += 1
+        while end < len(lines) and (not lines[end].strip() or len(lines[end]) - len(lines[end].lstrip()) > indent):
+            end += 1
+        return "\n".join(lines[start:end]).rstrip()
+    depth, opened = 0, False
+    for end in range(start, len(lines)):
+        for char in lines[end]:
+            if char == "{":
+                depth, opened = depth + 1, True
+            elif char == "}":
+                depth -= 1
+        if opened and depth <= 0:
+            return "\n".join(lines[start:end + 1])
+        if not opened and lines[end].rstrip().endswith(";"):
+            break
+    return None
 
 
 class AnchorChecker:
@@ -21,6 +83,7 @@ class AnchorChecker:
         self.root = root
         self.vcs = vcs
         self._changes: dict[tuple, tuple[float, dict[str, str]]] = {}
+        self._old_texts: dict[tuple[str, str], str | None] = {}
 
     def _changed_after(self, files: list[str], since: str) -> dict[str, str]:
         key = (tuple(files), since)
@@ -72,11 +135,25 @@ class AnchorChecker:
             baselines[entry.id] = base
         return baselines
 
+    def _symbol_changed(self, rel: str, symbol: str, baseline: str, current: str) -> bool | None:
+        """符号所在代码块与基准日时相比是否改过；取不到旧版本或代码块时返回 None（只能按文件判断）。"""
+        now = symbol_block(current, symbol)
+        if now is None:
+            return None
+        key = (rel, baseline)
+        if key not in self._old_texts:
+            self._old_texts[key] = self.vcs.file_at(rel, baseline)
+        old = self._old_texts[key]
+        return None if old is None else symbol_block(old, symbol) != now
+
     def check(self, entries: list[Entry], files: dict[str, Path]) -> dict[str, list[str]]:
-        """id → 问题列表（文件已删除、符号找不到、某天改过）；files 是记忆 id → 记忆文件路径。"""
+        """id → 问题列表（文件已删除、符号找不到、某天改过）；files 是记忆 id → 记忆文件路径。
+
+        锚点带符号（文件#函数）时只看这个函数：文件改过但该函数与基准日时一致，不算过期。
+        """
         texts: dict[str, str | None] = {}
         problems: dict[str, list[str]] = {}
-        alive: dict[str, list[Entry]] = {}
+        alive: dict[str, list[tuple[Entry, str]]] = {}
         for entry in entries:
             for anchor in entry.anchors:
                 rel, _, symbol = anchor.partition("#")
@@ -85,16 +162,28 @@ class AnchorChecker:
                     path = self.root / rel
                     texts[rel] = path.read_text(encoding="utf-8", errors="ignore") if path.is_file() else None
                 if texts[rel] is None:
-                    problems.setdefault(entry.id, []).append(f"{rel} 已不存在")
-                elif symbol and symbol not in texts[rel]:
-                    problems.setdefault(entry.id, []).append(f"{rel} 中找不到 {symbol}")
+                    _add(problems, entry.id, f"{rel} 已不存在")
+                elif symbol and _member(symbol) not in texts[rel]:
+                    _add(problems, entry.id, f"{rel} 中找不到 {symbol}")
                 else:
-                    alive.setdefault(rel, []).append(entry)
+                    alive.setdefault(rel, []).append((entry, symbol))
         if alive:
-            baselines = self._baselines([e for group in alive.values() for e in group], files)
+            baselines = self._baselines([e for group in alive.values() for e, _ in group], files)
             since = min(baselines.values())
             for rel, day in self._changed_after(sorted(alive), since).items():
-                for entry in alive.get(rel, []):
-                    if day > baselines[entry.id]:
-                        problems.setdefault(entry.id, []).append(f"{rel} 于 {day} 改过")
+                for entry, symbol in alive.get(rel, []):
+                    base = baselines[entry.id]
+                    if day <= base:
+                        continue
+                    changed = self._symbol_changed(rel, symbol, base, texts[rel] or "") if symbol else None
+                    if changed is None:
+                        _add(problems, entry.id, f"{rel} 于 {day} 改过")
+                    elif changed:
+                        _add(problems, entry.id, f"{rel} 中 {symbol} 在 {base} 之后改过")
         return problems
+
+
+def _add(problems: dict[str, list[str]], entry_id: str, problem: str) -> None:
+    found = problems.setdefault(entry_id, [])
+    if problem not in found:
+        found.append(problem)

@@ -169,8 +169,12 @@ def test_analysis_conversations_are_reported(project):
         log_event(cache, "prompt", conv=conv, analysis=True)
         log_event(cache, "search_call", conv=conv, module="gameplay.Jigsaw", via="mcp")
         log_event(cache, "stop", conv=conv, status="completed", analyzed=left)
-    habits = build_report(project, days=7, heat=False)["habits"]
+    report = build_report(project, days=7, heat=False)
+    habits = report["habits"]
     assert (habits["analysis_conversations"], habits["analysis_left"], habits["analysis_left_modules"]) == (2, 1, 1)
+    # 默认已开启结束提醒，不再建议“打开 gate.analysis_reminder”
+    assert habits["analysis_reminder"] is True
+    assert "打开 gate.analysis_reminder" not in render(report)
 
 
 def test_cli_search_is_linked_to_conversation(project, monkeypatch):

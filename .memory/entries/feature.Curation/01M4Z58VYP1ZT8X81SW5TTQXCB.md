@@ -12,6 +12,7 @@ anchors:
 revision: git:f3e8e07
 author: 1002378395@qq.com
 note_date: '2026-10-15'
+verified: '2026-10-16'
 ---
 决定：零碎记忆的合并由 Agent 按 pmem-compact 技能完成。pmem 只负责三件事：找出可合并的议题（同模块、同实体且不分大小写，有效记忆不少于 5 条）、按时间输出全部正文、通过 supersedes 隐藏旧记忆。不做自动摘要：哪些结论已被推翻，只有读懂正文才能判断。
 

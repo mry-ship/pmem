@@ -10,6 +10,7 @@ anchors:
 revision: git:74edc08
 author: 1002378395@qq.com
 note_date: '2026-10-14'
+verified: '2026-10-16'
 ---
 闸门在两种情况下的实测行为：
 

@@ -44,6 +44,10 @@ class VCS:
     def add(self, path: Path) -> None:
         return None
 
+    def file_at(self, rel: str, day: str) -> str | None:
+        """day（YYYY-MM-DD）当天结束时已提交的文件内容；不支持或取不到时返回 None。"""
+        return None
+
     def changed_after(self, paths: list[str], since: str) -> dict[str, str]:
         """since（YYYY-MM-DD）之后有改动的文件 → 最近改动日期；含未提交的修改（记为今天）。
 

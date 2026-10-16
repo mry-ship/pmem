@@ -401,7 +401,8 @@ git commit -m "接入 pmem"</code></pre>
   <h3>常用说法</h3>
   <table>
     <tr><th>你对 Agent 说</th><th>效果</th></tr>
-    <tr><td>跳过记忆</td><td>本次对话不查也不写，闸门放行</td></tr>
+    <tr><td>跳过记忆</td><td>本次对话不查也不写，闸门放行；AI 第一次读代码时会说明记忆已关闭</td></tr>
+    <tr><td>恢复记忆</td><td>撤销本对话的“跳过记忆”</td></tr>
     <tr><td>按 pmem-bootstrap 技能划分模块</td><td>首次生成 <code>modules.yaml</code></td></tr>
     <tr><td>按 pmem-compact 技能合并记忆</td><td>把同一议题的零碎记忆合并成一两条现状</td></tr>
     <tr><td>按 pmem-normalize 技能整理同义词</td><td>找出同一件事的不同叫法，登记同义词组</td></tr>
@@ -420,7 +421,7 @@ git commit -m "接入 pmem"</code></pre>
   </table>
   <ul>
     <li>拦截范围：写文件类工具（Write / StrReplace / Edit / Delete 等）和终端里的写命令。</li>
-    <li>拦截提示里直接列出该模块现行的排除项和风险（最多 5 条），即使 AI 检索时关键词没对上，也能先看到这些坑。</li>
+    <li>拦截提示里直接列出该模块现行的排除项、风险和更正（最多 5 条），即使 AI 检索时关键词没对上，也能先看到这些坑。</li>
     <li>“查过”的判定：MCP 的 <code>search_memory</code>，或终端里运行 <code>pmem search --module &lt;模块&gt;</code>。MCP 不可用时用终端也行，不会把 Agent 卡死。</li>
     <li>结束提醒：改了模块却没写记忆，提醒一次；整个对话只查了记忆、没改也没写，也提醒一次（<code>gate.analysis_reminder</code> 可关）。中断结束的回合和说了“跳过记忆”的对话不提醒。</li>
     <li>记忆审查（不改代码也生效，每个模块每个对话一次）：
@@ -430,9 +431,10 @@ git commit -m "接入 pmem"</code></pre>
         <li>Claude Code 在提问时就直接附上摘要；Cursor 不允许提问时注入内容，所以只能在结束时追问。</li>
       </ul>
     </li>
-    <li>“跳过记忆”只在作为独立短语出现时生效；“如何避免跳过记忆”这类说法不算。</li>
+    <li>“跳过记忆”只在作为独立短语出现时生效；“如何避免跳过记忆”这类说法不算。生效后 AI 第一次读代码会收到说明（含触发它的原话），误触发时说“恢复记忆”即可。</li>
     <li>上下文压缩后状态清零；会话状态 7 天过期。</li>
-    <li>Hook 出任何异常都直接放行，错误写入用户缓存目录的 <code>hook-errors.log</code>，<code>pmem doctor</code> 会显示最近的错误。</li>
+    <li>Hook 出任何异常都直接放行，错误写入用户缓存目录的 <code>hook-errors.log</code>，<code>pmem doctor</code> 只显示近 24 小时的错误次数和最近一次内容。</li>
+    <li>“需核实”的判定：关联代码写成 <code>路径#函数名</code> 时（Git 项目），只看这个函数在核对日期之后有没有改；只写了文件、SVN 项目或找不到函数时按整个文件判断。所以写记忆时 anchors 尽量写到函数。</li>
   </ul>
   <p class="muted">Cursor 接入的 Hook 事件：beforeSubmitPrompt、preToolUse、beforeMCPExecution、afterMCPExecution、afterFileEdit、postToolUse（只匹配 Read）、preCompact、stop。三个工具共用同一套闸门逻辑，统一调用 <code>pmem hook &lt;事件&gt; --agent &lt;工具&gt;</code>。</p>
 </section>
@@ -460,8 +462,8 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem init</code></td><td>在项目中接入（生成 <code>.memory/</code> 和各工具配置）</td></tr>
     <tr><td><code>pmem doctor</code></td><td>自检：配置、模块覆盖率、路径重叠、各工具接入、语义模型、可合并议题、最近 Hook 错误</td></tr>
     <tr><td><code>pmem scan</code></td><td>输出目录概览和提交热度，供 Agent 划分模块</td></tr>
-    <tr><td><code>pmem search</code></td><td>检索：<code>--path</code> / <code>--module</code> / <code>--entity</code> / <code>--as-of</code>，加关键词</td></tr>
-    <tr><td><code>pmem record</code></td><td>写入一条记忆，规则与 MCP 相同；长正文用 <code>--content-file</code></td></tr>
+    <tr><td><code>pmem search</code></td><td>检索：<code>--path</code> / <code>--module</code> / <code>--entity</code> / <code>--as-of</code>，加关键词；<code>--brief</code> 每条一行（<code>graph</code>、<code>record</code> 同样支持）</td></tr>
+    <tr><td><code>pmem record</code></td><td>写入一条记忆，规则与 MCP 相同；长正文用 <code>--content-file</code>；<code>--alias</code>、<code>--anchor</code>、<code>--supersedes</code> 可跟多个值</td></tr>
     <tr><td><code>pmem confirm &lt;id&gt;...</code></td><td>核对后确认仍然成立</td></tr>
     <tr><td><code>pmem graph --module X</code></td><td>模块全貌，或某议题的时间线</td></tr>
     <tr><td><code>pmem wiki [--out 目录]</code></td><td>生成每模块一页的 Markdown Wiki（默认 <code>.memory/wiki/</code>）：议题、现行结论、历史、相关模块、代码链接，过期的标“需核实”；只覆盖它自己生成的页面。写入或确认记忆后会自动运行（<code>wiki.auto</code>）</td></tr>
@@ -478,7 +480,7 @@ git commit -m "接入 pmem"</code></pre>
   <pre><code>pmem search --path Assets/Game/Jigsaw/JigsawReward.cs
 pmem search --module Puzzle "重复发放"                       <span class="c"># 别名、同义词自动扩展</span>
 pmem search --module Puzzle "重复发放" --as-of 2026-06-01    <span class="c"># 按当时的视角查</span>
-pmem record --module gameplay.Jigsaw --entity Reward --kind exclusion --content-file note.txt --alias 重复领取
+pmem record --module gameplay.Jigsaw --entity Reward --kind exclusion --content-file note.txt --alias 重复领取 多领 --brief
 pmem graph --module gameplay.Jigsaw --entity Reward</code></pre>
 </section>
 
@@ -619,6 +621,8 @@ pmem reindex</code></pre>
   <h2>常见问题</h2>
   <h3>Windows 上 Hook 收到的中文是乱码？</h3>
   <p>这是 Cursor 在非 UTF-8 代码页下的转码问题，pmem 已自动兼容。开启 Windows 设置里的“使用 Unicode UTF-8 提供全球语言支持”可以从根本上避免。</p>
+  <h3>终端里 pmem 的输出是乱码？</h3>
+  <p>pmem 本身输出 UTF-8，直接看不会乱。Windows PowerShell 5 把输出再接给 <code>Select-String</code>、<code>Select-Object</code> 等命令时会按 GBK 解码，于是乱码。不要接管道，改用 <code>--brief</code> 看精简输出；确实要接时先运行 <code>[Console]::OutputEncoding = [Text.Encoding]::UTF8</code>。</p>
   <h3>第一次查询很慢？</h3>
   <p>首次使用会下载语义模型。提前运行一次 <code>pmem doctor</code> 即可预下载。</p>
   <h3>modules.yaml 写错了？</h3>

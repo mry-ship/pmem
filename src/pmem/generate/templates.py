@@ -41,7 +41,8 @@ gate:
   mode: {gate}             # block 未查该模块的记忆不许改（尝试过检索即放行）/ warn 只提醒一次 / off 只靠规则
   watch: []               # 为空 = 所有已登记模块的路径都受守护
   ignore: ["**/*.md", "docs/**", ".memory/**", ".cursor/**"]
-  skip_markers: ["跳过记忆", "skip-memory"]
+  skip_markers: ["跳过记忆", "skip-memory"]       # 用户这样说时，本对话不查也不写（须是独立短语）
+  resume_markers: ["恢复记忆", "resume-memory"]   # 误判或改主意时，说这个重新打开
   analysis_reminder: true   # 对话只查了记忆、没改代码也没写记忆时，结束时提醒一次
   read_digest: true         # Agent 读某模块的代码时，自动附上该模块的记忆摘要（每个对话每个模块一次）
   question_review: true     # 提问涉及某模块、回答前却没看过它的记忆时，回合结束让 Agent 补查并核对回答
@@ -98,6 +99,7 @@ RULE_BODY = """\
 - `kind`：conclusion 结论 / exclusion 排除项 / correction 更正 / risk 风险 / decision 决定。
 - 正文自包含：现象、原因、证据、影响范围；不写“改了哪个方法”这类版本库已有的信息。
 - `aliases` 填现象和关键术语的其他常用叫法（如 `["闪退", "崩溃", "crash"]`），以后换个说法也能搜到。
+- `anchors` 尽量写到函数：`路径#函数名`。只写文件时，该文件以后任何改动都会让这条记忆标为“需核实”。
 - 写入返回的 `similar` 是同模块最相近的已有记忆：新结论与其中某条重复或推翻了它，就带 `draft_id` 重写、
   `supersedes` 填那条的 id；无关则忽略。
 - 同一任务对同一模块只留一条：再次写入时带上次返回的 `draft_id` 覆盖。

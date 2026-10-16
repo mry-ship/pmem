@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import shutil
 import sys
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -18,6 +20,25 @@ from pmem.vcs.detect import detect_vcs
 
 OK, WARN, BAD = "✔", "!", "✘"
 MAX_LISTED_PAIRS = 10
+RECENT_ERROR_SECONDS = 24 * 3600
+_STAMP = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) ")
+
+
+def _recent_errors(path: Path, now: float | None = None) -> list[str]:
+    """hook-errors.log 里近 24 小时的错误，每条是“时间 + 堆栈”一整段。旧错误修好后不再反复显示。"""
+    cutoff = (now or time.time()) - RECENT_ERROR_SECONDS
+    records: list[list[str]] = []
+    for text in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if _STAMP.match(text) or not records:
+            records.append([text])
+        else:
+            records[-1].append(text)
+    recent = []
+    for record in records:
+        match = _STAMP.match(record[0])
+        if match and time.mktime(time.strptime(match.group(1), "%Y-%m-%d %H:%M:%S")) >= cutoff:
+            recent.append("\n".join(record))
+    return recent
 
 
 def coverage_report(root: Path, registry: ModuleRegistry) -> dict:
@@ -91,14 +112,15 @@ def run_doctor(root: Path) -> int:
 
     storage = FilesStorage(root, vcs)
     entries = list(storage.iter_all())
-    line(OK if not storage.warnings else WARN, f"记忆 {len(entries)} 条")
+    hidden = {s for _, e in entries if e.status in VISIBLE_STATUSES for s in e.supersedes}
+    visible = [e for _, e in entries if e.status in VISIBLE_STATUSES and e.id not in hidden]
+    line(OK if not storage.warnings else WARN,
+         f"现行记忆 {len(visible)} 条（记忆文件共 {len(entries)} 个，其余已被替代或停用）")
     for warning in storage.warnings[:5]:
         print(f"      {warning}")
     pending = vcs.uncommitted_count(config.entries_dir)
     if pending:
         line(WARN, f"本机有 {pending} 条记忆未提交，队友看不到；请连同 .memory/ 一起提交")
-    hidden = {s for _, e in entries if e.status in VISIBLE_STATUSES for s in e.supersedes}
-    visible = [e for _, e in entries if e.status in VISIBLE_STATUSES and e.id not in hidden]
     big = [n for n in Counter((e.module, e.entity.lower()) for e in visible).values() if n >= COMPACT_MIN_GROUP]
     if big:
         line(WARN, f"{len(big)} 个议题各积累了 {COMPACT_MIN_GROUP} 条以上记忆（共 {sum(big)} 条），检索时会互相挤占；"
@@ -153,10 +175,10 @@ def run_doctor(root: Path) -> int:
             line(WARN, f"语义模型不可用，将只用关键词检索：{exc}")
 
     errors = config.cache_dir / "hook-errors.log"
-    if errors.exists() and errors.stat().st_size:
-        tail = errors.read_text(encoding="utf-8", errors="replace").strip().splitlines()[-3:]
-        line(WARN, f"最近的 Hook 错误（{errors}）：")
-        for text in tail:
+    recent_errors = _recent_errors(errors) if errors.exists() else []
+    if recent_errors:
+        line(WARN, f"近 24 小时 Hook 出错 {len(recent_errors)} 次（{errors}），最近一次：")
+        for text in recent_errors[-1].splitlines()[-3:]:
             print(f"      {text}")
     log = config.cache_dir / "hooks.log"
     if log.exists():

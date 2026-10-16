@@ -7,6 +7,7 @@ from pmem import __version__
 
 HOOK_EVENTS = ("prompt", "pre-tool", "before-mcp", "after-mcp", "edited", "post-tool", "compact", "stop")
 AGENTS = ("cursor", "claude", "codex")
+BRIEF_HELP = "输出精简文本（每条一行）而不是 JSON，免得再用管道筛选"
 
 
 def build_parser():
@@ -45,6 +46,7 @@ def build_parser():
     p.add_argument("--entity", default="")
     p.add_argument("--limit", type=int, default=5)
     p.add_argument("--as-of", default="", help="只看这一天（YYYY-MM-DD）有效的记忆")
+    p.add_argument("--brief", action="store_true", help=BRIEF_HELP)
     p.add_argument("--root", default=".")
 
     p = sub.add_parser("confirm", help="确认记忆仍然成立（核对过关联代码后），核对日期记为今天")
@@ -54,6 +56,7 @@ def build_parser():
     p = sub.add_parser("graph", help="模块的记忆图谱：议题、时间线与相关模块")
     p.add_argument("--module", required=True)
     p.add_argument("--entity", default="")
+    p.add_argument("--brief", action="store_true", help=BRIEF_HELP)
     p.add_argument("--root", default=".")
 
     p = sub.add_parser("terms", help="记忆里的高频词，供 Agent 整理同义叫法（pmem-normalize 技能）")
@@ -74,10 +77,13 @@ def build_parser():
     body = p.add_mutually_exclusive_group(required=True)
     body.add_argument("--content", help="正文；传 - 表示从标准输入读取")
     body.add_argument("--content-file", help="从 UTF-8 文件读取正文（正文含引号或较长时推荐）")
-    p.add_argument("--supersedes", action="append", default=[])
-    p.add_argument("--anchor", action="append", default=[])
-    p.add_argument("--alias", action="append", default=[], help="常用的其他叫法，可重复，如 --alias 闪退 --alias 崩溃")
+    # extend + nargs：一个参数后可以跟多个值（--alias 闪退 崩溃），也可以重复写
+    p.add_argument("--supersedes", action="extend", nargs="+", default=[])
+    p.add_argument("--anchor", action="extend", nargs="+", default=[], help="关联代码，写成 路径#函数名")
+    p.add_argument("--alias", action="extend", nargs="+", default=[],
+                   help="常用的其他叫法，如 --alias 闪退 崩溃；含空格的叫法要加引号")
     p.add_argument("--draft-id", default="", help="上次写入返回的 draft_id：同一任务再次写入时覆盖那一条")
+    p.add_argument("--brief", action="store_true", help=BRIEF_HELP)
     p.add_argument("--root", default=".")
 
     p = sub.add_parser("list", help="列出模块与记忆数量")
@@ -293,7 +299,12 @@ def _run_service(args) -> int:
     service = MemoryService(_project_root(args.root))
     try:
         result = SERVICE_COMMANDS[args.command](service, args)
-        _print_json(result)
+        if getattr(args, "brief", False):
+            from pmem.cli.brief import render_brief
+
+            print(render_brief(args.command, result))
+        else:
+            _print_json(result)
     finally:
         service.close()
     return 0 if result.get("ok") else 1

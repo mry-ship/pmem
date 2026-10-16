@@ -22,6 +22,7 @@ DEFAULTS: dict = {
         "watch": [],
         "ignore": ["**/*.md", "docs/**", ".memory/**", ".cursor/**"],
         "skip_markers": ["跳过记忆", "skip-memory"],
+        "resume_markers": ["恢复记忆", "resume-memory"],
         "stop_reminder": True,
         "analysis_reminder": True,
         "read_digest": True,

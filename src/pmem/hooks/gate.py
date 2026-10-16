@@ -10,7 +10,7 @@ from wcmatch import glob as wglob
 from pmem.core.config import Config
 from pmem.core.entry import Entry
 from pmem.core.registry import ModuleRegistry, RegistryError
-from pmem.hooks.payload import asks_to_skip, fuzzy_contains, last_user_text, tool_input
+from pmem.hooks.payload import asks_to_skip, fuzzy_contains, last_user_text, readable, tool_input
 from pmem.hooks.state import SessionState
 from pmem.index.anchors import STALE_LABEL, AnchorChecker
 from pmem.index.graph import KIND_LABELS, current_entries, digest, preview
@@ -30,7 +30,7 @@ PMEM_TOOLS = ("record_memory", "search_memory", "memory_graph")
 MAX_AUTO_ANCHORS = 5
 MAX_REVIEW_MODULES = 3
 DIGEST_PREVIEW = 100
-PITFALL_KINDS = ("exclusion", "risk")
+PITFALL_KINDS = ("exclusion", "risk", "correction")
 MAX_GUARD_PITFALLS = 5
 _PATH_TOKEN = re.compile(r"[\w.\-]*[/\\][\w./\\\-]+")
 
@@ -129,6 +129,16 @@ def tool_response(payload: dict) -> dict | None:
         return None
 
     return walk({k: v for k, v in payload.items() if k != "tool_input"}, 0)
+
+
+def _around(text: str, marker: str, width: int = 12) -> str:
+    """提问里触发标记的那一小段，方便看出是不是误判。"""
+    flat = " ".join(text.split())
+    at = flat.find(marker)
+    if at < 0:
+        return flat[: width * 2 + len(marker)]
+    start, end = max(0, at - width), at + len(marker) + width
+    return ("…" if start else "") + flat[start:end] + ("…" if end < len(flat) else "")
 
 
 def draft_key(module: str, entity: str | None) -> str:
@@ -245,19 +255,24 @@ class Gate:
     def on_prompt(self) -> dict:
         text = str(self.payload.get("prompt") or "")
         markers = self.config.get("gate.skip_markers") or []
-        skip = any(asks_to_skip(text, str(m)) for m in markers)
+        skip_marker = next((str(m) for m in markers if asks_to_skip(text, str(m))), None)
+        skip = skip_marker is not None
+        resume = any(asks_to_skip(text, str(m)) for m in self.config.get("gate.resume_markers") or [])
         analysis = any(
             fuzzy_contains(text.lower() if m.isascii() else text, m.lower() if m.isascii() else m)
             for m in (str(m) for m in self.config.get("gate.analysis_markers") or [])
         )
         asked = self.modules_in_text(text) if self.state is not None else []
         if self.state is not None:
-            self.state.data["skip"] = self.state.data["skip"] or skip
+            if resume:
+                self.state.data.update(skip=False, skip_reason="", skip_noticed=False)
+            elif skip and not self.state.data["skip"]:
+                self.state.data.update(skip=True, skip_reason=_around(readable(text, skip_marker), skip_marker))
             self.state.data["analysis"] = self.state.data["analysis"] or analysis
             self.state.data["asked"] = asked
             self.save()
-        self.log("prompt", mode=self.payload.get("composer_mode"), skip=skip or None, analysis=analysis or None,
-                 asked=asked or None)
+        self.log("prompt", mode=self.payload.get("composer_mode"), skip=skip or None, resume=resume or None,
+                 analysis=analysis or None, asked=asked or None)
         result: dict = {"continue": True}
         # 只有能在提问时注入上下文的工具（Claude Code）才当场附上摘要；Cursor 靠读代码时的摘要和回合结束的核对
         if self.payload.get("prompt_context") and self._reviews_on("gate.question_review"):
@@ -288,9 +303,26 @@ class Gate:
         )
         return "\n".join([intro_line, *self.memory_lines(picked)])
 
+    def _skip_notice(self, module: str | None) -> dict:
+        """本对话因“跳过记忆”关闭了检查时，第一次碰到有记忆的模块就告诉 Agent，误判也能被发现。"""
+        if not module or self.state.data["skip_noticed"] or not self.memory_count(module):
+            return {}
+        self.state.data["skip_noticed"] = True
+        self.save()
+        self.log("skip_notice", module=module)
+        resume = "、".join(f"“{m}”" for m in self.config.get("gate.resume_markers") or []) or "（未配置）"
+        return {"additional_context": (
+            f"[pmem] 本对话已按“跳过记忆”关闭记忆检查（来自提问：“{self.state.data['skip_reason']}”），"
+            f"{module} 的记忆不会提示，改代码也不拦截。如果这不是用户的本意，请告诉用户：说 {resume} 可以重新打开。"
+        )}
+
     def _read_digest(self, args: dict) -> dict:
         rel = self.relative(str(args.get("file_path") or args.get("path") or ""))
-        if rel is None or not self._watched(rel) or not self._reviews_on("gate.read_digest"):
+        if rel is None or not self._watched(rel):
+            return {}
+        if self.state is not None and self.state.data["skip"]:
+            return self._skip_notice(self.module_of(rel))
+        if not self._reviews_on("gate.read_digest"):
             return {}
         module = self.module_of(rel)
         message = self._offer_digest(module, f"你正在看的 {rel} 属于 {module}") if module else None
@@ -335,12 +367,13 @@ class Gate:
                 f"查过之后才能修改该模块。MCP 工具不可用时，在终端运行 pmem search --module {module} 也算；"
                 "检索报错同样视为查过。确实不需要记忆时，请用户回复“跳过记忆”。"
             )
-        # 检索按关键词排序，可能漏掉与这次修改相关的坑；排除项和风险直接列出来
-        pitfalls = [e for e in current_entries(self.module_entries(module)) if e.kind in PITFALL_KINDS]
+        # 检索按关键词排序，可能漏掉与这次修改相关的坑；排除项、风险、更正直接列出来，按这个顺序
+        pitfalls = sorted((e for e in current_entries(self.module_entries(module)) if e.kind in PITFALL_KINDS),
+                          key=lambda e: PITFALL_KINDS.index(e.kind))
         if pitfalls:
             shown = pitfalls[:MAX_GUARD_PITFALLS]
             more = f"（另有 {len(pitfalls) - len(shown)} 条，检索时可见）" if len(pitfalls) > len(shown) else ""
-            message += "\n该模块已知的排除项和风险，改之前先对照" + more + "：\n" + "\n".join(self.memory_lines(shown))
+            message += "\n该模块已知的排除项、风险和更正，改之前先对照" + more + "：\n" + "\n".join(self.memory_lines(shown))
         self.log("gate", module=module, file=rel, mode=mode, pitfalls=len(pitfalls) or None)
         return {"permission": "deny", "user_message": message, "agent_message": message}
 

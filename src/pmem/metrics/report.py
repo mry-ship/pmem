@@ -162,6 +162,7 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
         registry = service.registry
         user = service.user
         uncommitted = service.vcs.uncommitted_count(service.config.entries_dir)
+        analysis_reminder = bool(service.config.get("gate.analysis_reminder")) and service.config.get("gate.mode") != "off"
     finally:
         service.close()
     contents = {e.id: e.content for e in entries}
@@ -245,6 +246,7 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
             "analysis_conversations": len(analysis_convs & consulted_convs),
             "analysis_left": len(left),
             "analysis_left_modules": len({m for mods in left.values() for m in mods}),
+            "analysis_reminder": analysis_reminder,
             "conversations": len(convs),
         },
         "compare": _compare(convs),
@@ -317,7 +319,8 @@ def render(report: dict) -> str:
         lines.append(
             f"  排查类对话 {h['analysis_conversations']} 个，其中 {h['analysis_left']} 个结束时仍有查过记忆、"
             f"却没改代码也没写记忆的模块（共 {h['analysis_left_modules']} 个）"
-            + ("；如果常有结论被漏记，可在 .memory/config.yaml 打开 gate.analysis_reminder" if h["analysis_left"] else "")
+            + ("；如果常有结论被漏记，可在 .memory/config.yaml 打开 gate.analysis_reminder"
+               if h["analysis_left"] and not h.get("analysis_reminder") else "")
         )
     lines += _render_usage(report["usage"], a["memories"], s["total"])
     cmp_ = report["compare"]

@@ -26,6 +26,14 @@ class GitVCS(VCS):
         out = self._git("status", "--porcelain", "--untracked-files=all", "--", str(path))
         return bool(out)
 
+    def file_at(self, rel: str, day: str) -> str | None:
+        rev = self._git("rev-list", "-1", f"--before={day} 23:59:59", "HEAD", "--", rel)
+        if not rev:
+            return None
+        # ./ 让路径相对项目根解析（项目可能是仓库的子目录）
+        proc = run_tool(["git", "show", f"{rev}:./{rel}"], self.root)
+        return proc.stdout.decode("utf-8", errors="replace") if proc.returncode == 0 else None
+
     def changed_after(self, paths: list[str], since: str) -> dict[str, str]:
         if not paths:
             return {}

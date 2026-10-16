@@ -1,7 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="676" viewBox="0 0 960 676" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="776" viewBox="0 0 960 776" font-family="Segoe UI, PingFang SC, Microsoft YaHei, sans-serif">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#57606a"/>
+    </marker>
+    <marker id="arrow-gate" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#d97706"/>
     </marker>
     <style>
       .actor { fill: #eef2ff; stroke: #6366f1; stroke-width: 1.5; }
@@ -11,14 +14,14 @@
       .life-gate { stroke: #f5b971; stroke-width: 1.5; }
       .msg { stroke: #57606a; stroke-width: 1.5; fill: none; }
       .reply { stroke: #57606a; stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; }
-      .label { font-size: 13px; fill: #1f2328; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5px; stroke-linejoin: round; }
-      .note { fill: #fff8db; stroke: #e3b341; stroke-width: 1.2; }
-      .note-text { font-size: 13px; fill: #6b4e00; text-anchor: middle; }
-      .step { font-size: 12px; font-weight: 700; fill: #ffffff; text-anchor: middle; }
-    </style>
+      .msg-gate { stroke: #d97706; stroke-width: 1.5; fill: none; }
+      .reply-gate { stroke: #d97706; stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; }
+      .label { font-size: 14px; fill: #1f2328; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; }
+      .label-gate { font-size: 14px; fill: #9a4d00; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 3px; stroke-linejoin: round; }
+      .step { font-size: 12px; font-weight: 700; fill: #ffffff; text-anchor: middle; }    </style>
   </defs>
 
-  <rect x="0" y="0" width="960" height="676" rx="12" fill="#ffffff"/>
+  <rect x="0" y="0" width="960" height="776" rx="12" fill="#ffffff"/>
 
   <rect class="actor" x="20" y="20" width="100" height="44" rx="8"/>
   <text class="actor-text" x="70" y="47">你</text>
@@ -31,59 +34,72 @@
   <rect class="actor" x="800" y="20" width="140" height="44" rx="8"/>
   <text class="actor-text" x="870" y="47">仓库 .memory/</text>
 
-  <line class="life" x1="70" y1="64" x2="70" y2="612"/>
-  <line class="life" x1="250" y1="64" x2="250" y2="612"/>
-  <line class="life-gate" x1="450" y1="64" x2="450" y2="612"/>
-  <line class="life" x1="650" y1="64" x2="650" y2="612"/>
-  <line class="life" x1="870" y1="64" x2="870" y2="612"/>
+  <line class="life" x1="70" y1="64" x2="70" y2="712"/>
+  <line class="life" x1="250" y1="64" x2="250" y2="712"/>
+  <line class="life-gate" x1="450" y1="64" x2="450" y2="712"/>
+  <line class="life" x1="650" y1="64" x2="650" y2="712"/>
+  <line class="life" x1="870" y1="64" x2="870" y2="712"/>
 
   <text class="label" x="160" y="104">修一下拼图奖励重复发放</text>
   <line class="msg" x1="70" y1="112" x2="248" y2="112" marker-end="url(#arrow)"/>
 
-  <circle cx="262" cy="150" r="9" fill="#6366f1"/>
-  <text class="step" x="262" y="154">1</text>
-  <text class="label" x="450" y="152">改代码前先查 search_memory（按要改的文件）</text>
-  <line class="msg" x1="250" y1="160" x2="648" y2="160" marker-end="url(#arrow)"/>
+  <!-- 读代码时附摘要 -->
+  <text class="label-gate" x="350" y="150">读 JigsawReward.cs</text>
+  <line class="msg-gate" x1="250" y1="158" x2="448" y2="158" marker-end="url(#arrow-gate)"/>
+  <text class="label-gate" x="350" y="190">附上该模块的记忆摘要</text>
+  <line class="reply-gate" x1="450" y1="198" x2="252" y2="198" marker-end="url(#arrow-gate)"/>
 
-  <text class="label" x="760" y="198">定位到 gameplay.Jigsaw，读取记忆</text>
-  <line class="msg" x1="650" y1="206" x2="868" y2="206" marker-end="url(#arrow)"/>
+  <!-- 1 改前查 -->
+  <circle cx="262" cy="238" r="9" fill="#6366f1"/>
+  <text class="step" x="262" y="242">1</text>
+  <text class="label" x="460" y="240">改代码前先查 search_memory（按要改的文件）</text>
+  <line class="msg" x1="250" y1="248" x2="648" y2="248" marker-end="url(#arrow)"/>
 
-  <text class="label" x="450" y="244">返回：排除项、根因，并标出已过期的记忆</text>
-  <line class="reply" x1="650" y1="252" x2="252" y2="252" marker-end="url(#arrow)"/>
+  <text class="label" x="760" y="282">读 gameplay.Jigsaw 的记忆</text>
+  <line class="msg" x1="650" y1="290" x2="868" y2="290" marker-end="url(#arrow)"/>
 
-  <rect class="note" x="150" y="272" width="400" height="34" rx="6"/>
-  <text class="note-text" x="350" y="294">兜底：AI 忘了查就去改，闸门拦下修改，直到查过该模块</text>
+  <text class="label" x="450" y="324">返回：排除项、根因，并标出需核实的记忆</text>
+  <line class="reply" x1="650" y1="332" x2="252" y2="332" marker-end="url(#arrow)"/>
 
-  <path class="msg" d="M250,332 H292 V354 H252" marker-end="url(#arrow)"/>
-  <text class="label" x="302" y="348" style="text-anchor:start">按正确方向修改并验证</text>
+  <!-- 改前闸门 -->
+  <text class="label-gate" x="350" y="370">修改 JigsawReward.cs</text>
+  <line class="msg-gate" x1="250" y1="378" x2="448" y2="378" marker-end="url(#arrow-gate)"/>
+  <text class="label-gate" x="350" y="410">查过：放行（没查过就拒绝）</text>
+  <line class="reply-gate" x1="450" y1="418" x2="252" y2="418" marker-end="url(#arrow-gate)"/>
 
-  <circle cx="262" cy="384" r="9" fill="#6366f1"/>
-  <text class="step" x="262" y="388">2</text>
-  <text class="label" x="450" y="386">得出结论后写入 record_memory</text>
-  <line class="msg" x1="250" y1="394" x2="648" y2="394" marker-end="url(#arrow)"/>
+  <path class="msg" d="M250,446 H292 V468 H252" marker-end="url(#arrow)"/>
+  <text class="label" x="302" y="462" style="text-anchor:start">按正确方向修改并验证</text>
 
-  <text class="label" x="760" y="432">按模块写成一个 .md 文件</text>
-  <line class="msg" x1="650" y1="440" x2="868" y2="440" marker-end="url(#arrow)"/>
+  <!-- 2 写记忆 -->
+  <circle cx="262" cy="498" r="9" fill="#6366f1"/>
+  <text class="step" x="262" y="502">2</text>
+  <text class="label" x="450" y="500">得出结论后写入 record_memory</text>
+  <line class="msg" x1="250" y1="508" x2="648" y2="508" marker-end="url(#arrow)"/>
 
-  <rect class="note" x="150" y="460" width="400" height="34" rx="6"/>
-  <text class="note-text" x="350" y="482">兜底：回合结束时改了模块却没写记忆，闸门提醒一次</text>
+  <text class="label" x="760" y="542">按模块写成一个 .md 文件</text>
+  <line class="msg" x1="650" y1="550" x2="868" y2="550" marker-end="url(#arrow)"/>
 
-  <text class="label" x="160" y="526">完成，并说明依据了哪条记忆</text>
-  <line class="reply" x1="250" y1="534" x2="72" y2="534" marker-end="url(#arrow)"/>
+  <!-- 结束提醒 -->
+  <text class="label-gate" x="350" y="584">结束时没写记忆就提醒</text>
+  <line class="reply-gate" x1="450" y1="592" x2="252" y2="592" marker-end="url(#arrow-gate)"/>
 
-  <circle cx="82" cy="572" r="9" fill="#6366f1"/>
-  <text class="step" x="82" y="576">3</text>
-  <text class="label" x="470" y="574">git commit / push，队友拉代码后就能查到</text>
-  <line class="msg" x1="70" y1="582" x2="868" y2="582" marker-end="url(#arrow)"/>
+  <text class="label" x="160" y="626">完成，并说明依据的记忆</text>
+  <line class="reply" x1="250" y1="634" x2="72" y2="634" marker-end="url(#arrow)"/>
 
-  <rect class="actor" x="20" y="612" width="100" height="44" rx="8"/>
-  <text class="actor-text" x="70" y="639">你</text>
-  <rect class="actor" x="190" y="612" width="120" height="44" rx="8"/>
-  <text class="actor-text" x="250" y="639">AI Agent</text>
-  <rect class="gate" x="390" y="612" width="120" height="44" rx="8"/>
-  <text class="actor-text" x="450" y="639">闸门 Hooks</text>
-  <rect class="actor" x="590" y="612" width="120" height="44" rx="8"/>
-  <text class="actor-text" x="650" y="639">pmem 服务</text>
-  <rect class="actor" x="800" y="612" width="140" height="44" rx="8"/>
-  <text class="actor-text" x="870" y="639">仓库 .memory/</text>
+  <!-- 3 提交共享 -->
+  <circle cx="82" cy="672" r="9" fill="#6366f1"/>
+  <text class="step" x="82" y="676">3</text>
+  <text class="label" x="470" y="674">git commit / push，队友拉代码后就能查到</text>
+  <line class="msg" x1="70" y1="682" x2="868" y2="682" marker-end="url(#arrow)"/>
+
+  <rect class="actor" x="20" y="712" width="100" height="44" rx="8"/>
+  <text class="actor-text" x="70" y="739">你</text>
+  <rect class="actor" x="190" y="712" width="120" height="44" rx="8"/>
+  <text class="actor-text" x="250" y="739">AI Agent</text>
+  <rect class="gate" x="390" y="712" width="120" height="44" rx="8"/>
+  <text class="actor-text" x="450" y="739">闸门 Hooks</text>
+  <rect class="actor" x="590" y="712" width="120" height="44" rx="8"/>
+  <text class="actor-text" x="650" y="739">pmem 服务</text>
+  <rect class="actor" x="800" y="712" width="140" height="44" rx="8"/>
+  <text class="actor-text" x="870" y="739">仓库 .memory/</text>
 </svg>

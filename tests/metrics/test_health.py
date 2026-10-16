@@ -80,6 +80,15 @@ def test_health_is_quiet_when_nothing_to_do(tmp_path, monkeypatch):
     assert "没有需要处理的问题" in render(build_health(root))
 
 
+def test_dependency_and_build_dirs_are_not_code(tmp_path):
+    from pmem.scan.lite import iter_code_files
+
+    for rel in ("vendor/x/a.go", "Pods/A/a.m", "pkg.egg-info/a.py", "TestResults/a.cs", "src/a.go"):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text("x", encoding="utf-8")
+    assert list(iter_code_files(tmp_path)) == ["src/a.go"]
+
+
 def test_memories_under_a_dotted_alias_are_strays_not_unregistered(project):
     path = project / ".memory" / "modules.yaml"
     path.write_text(MODULES.replace("gameplay.Jigsaw: { paths: [src/Jigsaw/**] }",

@@ -70,7 +70,8 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 | 换个说法搜不到 | 对 AI 说“按 pmem-normalize 技能整理同义词”（如“闪退 / 崩溃”） |
 | 新增了业务模块 | 在 `.memory/modules.yaml` 里加模块和它的路径 |
 | 模块改名、合并 | `pmem migrate rename <旧> <新>` / `pmem migrate merge <被并入> <保留>`，记忆随之搬家（默认预览，加 `--apply` 执行）；队友之后写到旧名下的，`pmem migrate tidy --apply` |
-| 去掉过时的记忆 | `pmem archive <id>`：不再出现在检索里，文件保留可追溯；`--restore` 撤销 |
+| 业务下线、模块不再维护 | `pmem migrate deprecate <模块> --apply`：旧记忆照常可查，拒绝新写入；`--undo` 撤销 |
+| 去掉过时的记忆 | `pmem archive <id>`：不再出现在检索里，文件保留可追溯；`--restore` 恢复到归档前的状态 |
 | 体检 | `pmem doctor`：提示没提交的记忆、可以合并的议题 |
 | 定期收口（模块负责人） | `pmem health`：未登记和疑似重复的模块、没有归属模块的代码目录、反复查不到的问题、可能过时的记忆、被拒绝的写入、待确认的种子 |
 | 看收益 | `pmem report`：命中率、避坑次数、跨人复用 |

@@ -29,7 +29,7 @@ def seed_plan(service: MemoryService, top: int) -> dict:
     rows = [
         {"module": mid, "heat": module_heat[mid], "memories": current[mid], "seeds": seeds[mid],
          "paths": module.paths}
-        for mid, module in registry.modules.items() if not module.merged_into
+        for mid, module in registry.modules.items() if not module.merged_into and not module.deprecated
     ]
     rows.sort(key=lambda r: (r["memories"] >= ENOUGH_MEMORIES, -r["heat"], r["module"]))
     return {"ok": True, "vcs": vcs, "modules": rows[:top]}

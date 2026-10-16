@@ -45,7 +45,8 @@ ANCHOR_HINT = (
 )
 HINTS_FOOTER = "以上只是提示，已写入；如需修改，带上 draft_id 再写一次即可覆盖。"
 WRITABLE_STATUSES = ("active", "seed", "draft")
-# 动作 → (允许的原状态, 新状态)；记忆文件写入后只有这些状态变更由负责人通过命令行发起
+# 动作 → (允许的原状态, 新状态)；记忆文件写入后只有这些状态变更由负责人通过命令行发起。
+# restore 回到归档前的状态，没记录时才用 active
 STATUS_ACTIONS = {
     "archive": (("active", "seed", "draft"), "archived"),
     "restore": (("archived",), "active"),
@@ -279,6 +280,10 @@ class MemoryService:
     def _record(self, module, entity, kind, content, supersedes, anchors, draft_id, source_conversation, aliases,
                 status) -> dict:
         resolved = self.registry.resolve_module(module)
+        target = self.registry.modules.get(resolved.id)
+        if target is not None and target.deprecated:
+            return _fail(f"模块 {resolved.id} 已废弃（只读），不再接受新记忆；仍在维护的话先运行 "
+                         f"pmem migrate deprecate {resolved.id} --undo --apply")
         if status and status not in WRITABLE_STATUSES:
             return _fail(f"status 只能是 {' / '.join(WRITABLE_STATUSES)}，当前为 {status!r}")
         content = (content or "").strip()
@@ -289,6 +294,9 @@ class MemoryService:
         if not entity_id:
             return _fail("entity 不能为空，用于区分模块内的议题，如 Reward、Config")
 
+        # 替代自己的草稿说明要新建一条（草稿已提交时只能这样）；闸门可能按同议题自动注入了这个 draft_id
+        if draft_id and draft_id in (supersedes or []):
+            draft_id = None
         # 覆盖草稿时没传（None）的列表沿用原值，传空列表才清空；否则替代关系丢失，旧记忆会悄悄恢复现行
         old = self.index.find(draft_id) if draft_id else None
         if old is not None:
@@ -468,8 +476,10 @@ class MemoryService:
     # ---- archive / seed ----
 
     def change_status(self, ids: list[str], action: str) -> dict:
-        """归档、恢复、种子转正或退回。只改 YAML 头的 status，正文与替代关系不变。"""
+        """归档、恢复、种子转正或退回。只改 YAML 头的状态，正文与替代关系不变。
+        归档时记下日期和原状态：按日期回看时那天之后才归档的仍算有效，恢复时回到原状态。"""
         allowed, target = STATUS_ACTIONS[action]
+        today = date.today().isoformat()
         changed, missing, skipped = [], [], []
         for entry_id in dict.fromkeys(i for i in ids or [] if i):
             path = self.storage.find_path(entry_id)
@@ -480,7 +490,12 @@ class MemoryService:
             if entry.status not in allowed:
                 skipped.append({"id": entry_id, "status": entry.status})
                 continue
-            entry.status = target
+            if target == "archived":
+                entry.archived_on, entry.archived_from = today, entry.status
+                entry.status = target
+            else:
+                entry.status = (entry.archived_from or target) if action == "restore" else target
+                entry.archived_on = entry.archived_from = None
             path.write_text(entry.to_markdown(), encoding="utf-8", newline="\n")
             changed.append(entry_id)
         self._log("status", action=action, ids=changed)
@@ -590,6 +605,8 @@ class MemoryService:
                    "registered": module is not None}
             if module is not None and module.aliases:
                 row["aliases"] = module.aliases
+            if module is not None and module.deprecated:
+                row["deprecated"] = True
             rows.append(row)
         return {"ok": True, "categories": registry.categories, "modules": rows, "registered_empty": empty}
 

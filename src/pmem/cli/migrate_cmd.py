@@ -1,4 +1,4 @@
-"""pmem migrate：模块改名、合并，并把记忆文件搬到新模块下（默认只预览，--apply 才写入）。"""
+"""pmem migrate：模块改名、合并、废弃，并把记忆文件搬到新模块下（默认只预览，--apply 才写入）。"""
 from __future__ import annotations
 
 import copy
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pmem.core.config import Config
-from pmem.core.registry import ModuleRegistry, RegistryError
+from pmem.core.registry import DEPRECATED, ModuleRegistry, RegistryError
 from pmem.storage.files import FilesStorage
 from pmem.vcs.detect import detect_vcs
 
@@ -166,6 +166,24 @@ def plan_merge(data: dict, registry: ModuleRegistry, source: str, target: str) -
     return out, notes
 
 
+def plan_deprecate(data: dict, registry: ModuleRegistry, module: str, undo: bool) -> tuple[dict, list[str]]:
+    mid = _module_key(data, registry, module)
+    deprecated = registry.modules[mid].deprecated
+    if deprecated != undo:
+        raise MigrateError(f"{mid} {'没有' if undo else '已经'}废弃")
+    out = copy.deepcopy(data)
+    body = dict(out["modules"][mid] or {})
+    if undo:
+        body.pop("status", None)
+        notes = [f"{mid} 恢复为正常模块，重新接受新记忆"]
+    else:
+        body["status"] = DEPRECATED
+        notes = [(f"{mid} 标为废弃：旧记忆照常可查，拒绝新写入，改完代码不再提醒写记忆；"
+                  "路径仍归它，改这些代码前照样要先查记忆")]
+    out["modules"][mid] = body
+    return out, notes
+
+
 def stray_moves(storage: FilesStorage, registry: ModuleRegistry) -> list[Move]:
     """记忆文件里的模块名已改名或并入别的模块时，需要搬到的位置。"""
     moves = []
@@ -196,7 +214,8 @@ def apply_moves(storage: FilesStorage, moves: list[Move]) -> None:
             folder.rmdir()
 
 
-def run_migrate(root: Path, action: str, first: str | None, second: str | None, apply: bool) -> int:
+def run_migrate(root: Path, action: str, first: str | None, second: str | None, apply: bool,
+                undo: bool = False) -> int:
     config = Config.load(root)
     path = config.modules_path
     if not path.exists():
@@ -213,6 +232,8 @@ def run_migrate(root: Path, action: str, first: str | None, second: str | None, 
             new_data, notes = plan_rename(data, registry, first or "", second or "")
         elif action == "merge":
             new_data, notes = plan_merge(data, registry, first or "", second or "")
+        elif action == "deprecate":
+            new_data, notes = plan_deprecate(data, registry, first or "", undo)
         else:
             new_data, notes = data, []
         new_registry = ModuleRegistry(new_data)

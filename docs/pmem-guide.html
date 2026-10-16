@@ -182,6 +182,7 @@ pmem doctor</code></pre>
     <tr><td>刚接入、记忆库还空</td><td>对 AI 说“按 pmem-seed 技能提炼种子记忆”，负责人用 <code>pmem seed</code> 过目后转正</td></tr>
     <tr><td>模块改名、合并</td><td><code>pmem migrate rename</code> / <code>merge</code>，记忆随之搬家（默认预览，<code>--apply</code> 执行）</td></tr>
     <tr><td>某条记忆已过时、又没有替代结论</td><td><code>pmem archive &lt;id&gt;</code>，<code>--restore</code> 撤销</td></tr>
+    <tr><td>业务下线、模块不再维护</td><td><code>pmem migrate deprecate &lt;模块&gt; --apply</code>，<code>--undo</code> 撤销</td></tr>
     <tr><td>定期收口（模块负责人）</td><td><code>pmem health</code></td></tr>
     <tr><td>想看效果</td><td><code>pmem report</code></td></tr>
     <tr><td>想通读全部结论</td><td>打开 <code>.memory/wiki/index.md</code>（写入记忆后自动更新，过期的标“需核实”）</td></tr>
@@ -280,7 +281,7 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
     </div>
     <div class="card">
       <h4>状态 status</h4>
-      <p><code>active</code> 正式；<code>seed</code> 种子，从提交说明和文档提炼、待负责人确认，能检索到并标“种子，待确认”；<code>draft</code> 草稿（<code>write.default_status: draft</code> 时）；<code>archived</code> 已归档，不再出现在检索里，它替代过的旧记忆也保持隐藏。</p>
+      <p><code>active</code> 正式；<code>seed</code> 种子，从提交说明和文档提炼、待负责人确认，能检索到并标“种子，待确认”；<code>draft</code> 草稿（<code>write.default_status: draft</code> 时）；<code>archived</code> 已归档，不再出现在检索里，它替代过的旧记忆也保持隐藏。归档时记下日期和原状态：带 <code>as_of</code> 回看时，那天之后才归档的仍然可见；恢复时回到原状态（退回的种子恢复后仍是种子）。</p>
     </div>
   </div>
 
@@ -484,8 +485,8 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem record</code></td><td>写入一条记忆，规则与 MCP 相同；长正文用 <code>--content-file</code>；<code>--alias</code>、<code>--anchor</code>、<code>--supersedes</code> 可跟多个值；<code>--seed</code> 写成种子记忆</td></tr>
     <tr><td><code>pmem confirm &lt;id&gt;...</code></td><td>核对后确认仍然成立</td></tr>
     <tr><td><code>pmem seed</code></td><td>列出待确认的种子记忆；<code>--plan</code> 看候选模块；<code>--accept</code>（给 id、<code>--module</code> 或 <code>--all</code>）转正；<code>--reject &lt;id&gt;</code> 退回（归档）</td></tr>
-    <tr><td><code>pmem archive &lt;id&gt;...</code></td><td>归档：不再出现在检索里，文件保留；<code>--restore</code> 恢复为正式记忆</td></tr>
-    <tr><td><code>pmem migrate rename|merge|tidy</code></td><td>模块改名、合并，把记忆文件搬到新模块名下；<code>tidy</code> 只搬还在旧名下的记忆。默认预览，<code>--apply</code> 执行；<code>--root</code>、<code>--apply</code> 写在子命令之后</td></tr>
+    <tr><td><code>pmem archive &lt;id&gt;...</code></td><td>归档：不再出现在检索里，文件保留；<code>--restore</code> 恢复到归档前的状态</td></tr>
+    <tr><td><code>pmem migrate rename|merge|deprecate|tidy</code></td><td>模块改名、合并，把记忆文件搬到新模块名下；<code>deprecate</code> 把模块标为只读（<code>--undo</code> 撤销）；<code>tidy</code> 只搬还在旧名下的记忆。默认预览，<code>--apply</code> 执行；<code>--root</code>、<code>--apply</code> 写在子命令之后</td></tr>
     <tr><td><code>pmem health [--days 60]</code></td><td>健康报告：未登记和疑似重复的模块、还在旧模块名下的记忆、无归属的代码目录、检索落空热点、可能过时的记忆、没人检索的模块、被拒绝的写入、待确认的种子</td></tr>
     <tr><td><code>pmem graph --module X</code></td><td>模块全貌，或某议题的时间线</td></tr>
     <tr><td><code>pmem wiki [--out 目录]</code></td><td>生成每模块一页的 Markdown Wiki（默认 <code>.memory/wiki/</code>）：议题、现行结论、历史、相关模块、代码链接，过期的标“需核实”；只覆盖它自己生成的页面。写入或确认记忆后会自动运行（<code>wiki.auto</code>）</td></tr>
@@ -628,7 +629,7 @@ embedding:
     </div>
     <div class="card">
       <h4>模块改名与合并（pmem migrate）</h4>
-      <p><code>rename A B</code>：旧名登记为别名，读写自动转到新名。<code>merge A B</code>：A 的路径、别名、议题并入 B，A 标为 <code>merged_into</code>；A 是写入时自动新建的未登记模块或冷候选时，登记为 B 的别名。两者都会把记忆文件搬到新模块下（索引按文件里的模块名过滤，不搬就查不到）。队友迁移前写到旧名下的记忆，拉取后运行 <code>pmem migrate tidy --apply</code>。重写 <code>modules.yaml</code> 只保留文件开头的注释，预览时会提示丢失几行。</p>
+      <p><code>rename A B</code>：旧名登记为别名，读写自动转到新名。<code>merge A B</code>：A 的路径、别名、议题并入 B，A 标为 <code>merged_into</code>；A 是写入时自动新建的未登记模块或冷候选时，登记为 B 的别名。两者都会把记忆文件搬到新模块下（索引按文件里的模块名过滤，不搬就查不到）。队友迁移前写到旧名下的记忆，拉取后运行 <code>pmem migrate tidy --apply</code>。重写 <code>modules.yaml</code> 只保留文件开头的注释，预览时会提示丢失几行。<code>deprecate A</code>：业务下线时用，A 标为 <code>status: deprecated</code>，旧记忆照常可查，新写入被拒绝，改完 A 的代码也不再提醒写记忆；A 的路径仍归它，改代码前照样要先查。</p>
     </div>
     <div class="card">
       <h4>健康报告（pmem health）</h4>

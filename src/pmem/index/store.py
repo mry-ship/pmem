@@ -184,13 +184,13 @@ class MemoryIndex:
         hidden = self.superseded(as_of)
         return [
             i for i in self._items.values()
-            if i.entry.status in VISIBLE_STATUSES
+            if i.entry.status_on(as_of) in VISIBLE_STATUSES
             and i.entry.id not in hidden
             and (as_of is None or i.entry.note_date <= as_of)
         ]
 
     def visible(self, as_of: str | None = None) -> list[Entry]:
-        """检索得到的记忆：状态有效、没被替代；给出 as_of 时只看那天及之前写下的。"""
+        """检索得到的记忆：状态有效、没被替代；给出 as_of 时只看那天及之前写下的，那天之后才归档的仍算有效。"""
         return [i.entry for i in self._visible_items(as_of)]
 
     def find(self, entry_id: str) -> Entry | None:

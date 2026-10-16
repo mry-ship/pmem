@@ -99,7 +99,7 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
 
     searches = [e for e in events if e["type"] == "search" and e.get("ok")]
     searched = {e.get("module") for e in events if e["type"] in SEARCH_EVENTS}
-    idle = sorted(m for m in registered if counts[m] and m not in searched) \
+    idle = sorted(m for m in registered if counts[m] and m not in searched and not registry.modules[m].deprecated) \
         if len(searches) >= MIN_SEARCHES_FOR_IDLE else None
 
     rejected = [e for e in events if e["type"] == "record_rejected"]

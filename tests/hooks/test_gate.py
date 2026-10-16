@@ -813,6 +813,16 @@ def test_review_combines_with_write_reminder(make_project, tmp_path):
     assert "你的问题涉及 gameplay.Jigsaw" in message and "本轮修改了 economy.Shop" in message
 
 
+def test_no_write_reminder_for_deprecated_modules(make_project):
+    root = make_project()
+    modules = root / ".memory" / "modules.yaml"
+    modules.write_text(modules.read_text(encoding="utf-8").replace(
+        "economy.Shop: { paths: [src/Shop/**] }", "economy.Shop: { paths: [src/Shop/**], status: deprecated }"),
+        encoding="utf-8")
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    assert "本轮修改了" not in handle("stop", stop_payload(None), root).get("followup_message", "")
+
+
 def test_review_can_be_disabled_and_respects_skip(make_project, tmp_path):
     root = make_project()
     path = transcript(tmp_path, "<user_query>Jigsaw 奖励为什么重复</user_query>")

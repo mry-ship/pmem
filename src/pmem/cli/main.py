@@ -114,16 +114,19 @@ def build_parser():
     p.add_argument("--json", action="store_true")
     p.add_argument("--root", default=".")
 
-    p = sub.add_parser("migrate", help="模块改名、合并，并把记忆搬到新模块下（默认只预览）")
+    p = sub.add_parser("migrate", help="模块改名、合并、废弃，并把记忆搬到新模块下（默认只预览）")
     msub = p.add_subparsers(dest="action", required=True)
     for name, help_text, args in (
         ("rename", "改名：旧名成为别名", ("old", "new")),
         ("merge", "合并：source 并入 target（source 可以是未登记模块）", ("source", "target")),
+        ("deprecate", "废弃：旧记忆照常可查，拒绝新写入", ("module",)),
         ("tidy", "把还在旧模块名下的记忆搬到新名下", ()),
     ):
         mp = msub.add_parser(name, help=help_text)
         for arg in args:
             mp.add_argument(arg)
+        if name == "deprecate":
+            mp.add_argument("--undo", action="store_true", help="撤销废弃")
         mp.add_argument("--apply", action="store_true", help="执行；不加只预览")
         mp.add_argument("--root", default=".")
 
@@ -316,9 +319,10 @@ def _seed(args) -> int:
 def _migrate(args) -> int:
     from pmem.cli.migrate_cmd import run_migrate
 
-    first = getattr(args, "old", None) or getattr(args, "source", None)
+    first = getattr(args, "old", None) or getattr(args, "source", None) or getattr(args, "module", None)
     second = getattr(args, "new", None) or getattr(args, "target", None)
-    return run_migrate(_project_root(args.root), args.action, first, second, args.apply)
+    return run_migrate(_project_root(args.root), args.action, first, second, args.apply,
+                       undo=getattr(args, "undo", False))
 
 
 def _health(args) -> int:

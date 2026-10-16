@@ -18,7 +18,14 @@ SKIP_DIRS = {
     ".git", ".svn", ".hg", "node_modules", "Library", "Temp", "Logs", "obj", "bin", "build", "dist", "out",
     ".venv", "venv", "__pycache__", ".idea", ".vs", ".vscode", ".cursor", ".memory", "target", ".gradle",
     "UserSettings", ".next", ".nuxt", "coverage", ".pytest_cache", ".ruff_cache",
+    # Go / PHP 依赖、iOS 依赖与构建产物、.NET 测试结果、Python 安装目录
+    "vendor", "Pods", "Carthage", "DerivedData", "TestResults", "site-packages",
 }
+SKIP_SUFFIXES = (".egg-info",)
+
+
+def skip_dir(name: str) -> bool:
+    return name in SKIP_DIRS or name.startswith(".") or name.endswith(SKIP_SUFFIXES)
 THIRD_PARTY_NAMES = re.compile(
     r"^(plugins?|third[-_ ]?party|3rd[-_ ]?party|vendors?|externals?|deps|sdks?|.*sdk|googlemobileads|firebase|"
     r"facebook.*|appsflyer|maxsdk|ironsource|applovin|spine.*|dotween|demigiant|textmesh ?pro|sirenix|odin.*|"
@@ -31,7 +38,7 @@ BULK_COMMIT = 100
 
 def iter_code_files(root: Path):
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")]
+        dirnames[:] = [d for d in dirnames if not skip_dir(d)]
         for name in filenames:
             if os.path.splitext(name)[1].lower() in CODE_EXTS:
                 yield Path(dirpath, name).relative_to(root).as_posix()

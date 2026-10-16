@@ -25,11 +25,19 @@ class Entry:
     source_conversation: str | None = None
     aliases: list[str] = field(default_factory=list)
     verified: str | None = None
+    archived_on: str | None = None
+    archived_from: str | None = None
 
     @property
     def checked_date(self) -> str:
         """最近一次确认成立的日期：核对过取核对日期，否则取写入日期。"""
         return max(self.note_date, self.verified or "")
+
+    def status_on(self, day: str | None) -> str:
+        """某天的状态：那天之后才归档的，按归档前的状态算；没记归档日期的旧文件一律按已归档。"""
+        if day and self.status == "archived" and self.archived_on and self.archived_on > day:
+            return self.archived_from or "active"
+        return self.status
 
     def __post_init__(self) -> None:
         if self.kind not in KINDS:
@@ -54,6 +62,8 @@ class Entry:
             meta["aliases"] = list(self.aliases)
         if self.verified:
             meta["verified"] = self.verified
+        if self.archived_on:
+            meta["archived"] = {"on": self.archived_on, "from": self.archived_from or "active"}
         if self.source_conversation:
             meta["source"] = {"conversation": self.source_conversation}
         import yaml
@@ -70,6 +80,7 @@ class Entry:
 
         meta = yaml.safe_load(match.group(1)) or {}
         source = meta.get("source") or {}
+        archived = meta.get("archived") or {}
         return cls(
             id=str(meta["id"]),
             module=str(meta["module"]),
@@ -85,4 +96,6 @@ class Entry:
             source_conversation=source.get("conversation"),
             aliases=[str(x) for x in meta.get("aliases") or []],
             verified=str(meta["verified"]) if meta.get("verified") else None,
+            archived_on=str(archived["on"]) if archived.get("on") else None,
+            archived_from=str(archived["from"]) if archived.get("from") else None,
         )

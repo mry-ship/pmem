@@ -95,6 +95,27 @@ def test_rename_updates_parent_and_merged_pointers(project):
     assert data["economy.Mall"]["status"] == "merged_into:economy.Market"
 
 
+def test_deprecate_makes_module_read_only_and_undo_restores(project, capsys):
+    rid = record(project, "economy.Shop")
+    assert main(["migrate", "deprecate", "Shop", "--root", str(project)]) == 0
+    assert "预览" in capsys.readouterr().out
+    assert main(["migrate", "deprecate", "economy.Shop", "--root", str(project), "--apply"]) == 0
+    assert modules_yaml(project)[1]["modules"]["economy.Shop"]["status"] == "deprecated"
+    assert [i["id"] for i in search(project, "economy.Shop")["items"]] == [rid]
+    service = MemoryService(project)
+    try:
+        rejected = service.record("economy.Shop", "Reward", "conclusion", TEXT + "再写一条。")
+        listed = {r["module"]: r for r in service.list_modules()["modules"]}
+    finally:
+        service.close()
+    assert rejected["ok"] is False and "已废弃" in rejected["error"]
+    assert listed["economy.Shop"]["deprecated"] is True
+    assert main(["migrate", "deprecate", "economy.Shop", "--root", str(project)]) == 1
+    assert main(["migrate", "deprecate", "economy.Shop", "--undo", "--root", str(project), "--apply"]) == 0
+    assert "status" not in modules_yaml(project)[1]["modules"]["economy.Shop"]
+    record(project, "economy.Shop", TEXT + "恢复后。")
+
+
 def test_tidy_refuses_to_overwrite_a_file_with_the_same_id(project, capsys):
     rid = record(project, "gameplay.Jigsaw")
     folder = project / ".memory" / "entries"

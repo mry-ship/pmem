@@ -52,6 +52,40 @@ def test_archive_hides_memory_and_restore_brings_it_back(svc):
     assert _ids(svc, module="gameplay.Jigsaw", query="奖励") == [rid]
 
 
+def test_superseding_own_draft_creates_a_new_memory(svc):
+    rid = svc.record("gameplay.Jigsaw", "Reward", "conclusion", TEXT)["id"]
+    again = svc.record("gameplay.Jigsaw", "Reward", "conclusion", TEXT + "更新。", draft_id=rid, supersedes=[rid])
+    assert again["ok"] and not again["overwritten"] and again["id"] != rid
+    assert _ids(svc, module="gameplay.Jigsaw", query="奖励") == [again["id"]]
+
+
+def test_restore_returns_rejected_seed_to_seed(svc):
+    rid = svc.record("gameplay.Jigsaw", "Reward", "conclusion", TEXT, status="seed")["id"]
+    svc.change_status([rid], "reject")
+    entry = svc.storage.get(rid)
+    assert (entry.status, entry.archived_from) == ("archived", "seed") and entry.archived_on
+    svc.change_status([rid], "restore")
+    entry = svc.storage.get(rid)
+    assert (entry.status, entry.archived_on, entry.archived_from) == ("seed", None, None)
+
+
+def test_as_of_still_sees_memories_archived_later(svc):
+    rid = svc.record("gameplay.Jigsaw", "Reward", "conclusion", TEXT)["id"]
+    svc.change_status([rid], "archive")
+    path = svc.storage.find_path(rid)
+    entry = svc.storage.read(path)
+    day = entry.note_date
+    entry.archived_on = "2999-01-01"
+    path.write_text(entry.to_markdown(), encoding="utf-8", newline="\n")
+    svc.index.refresh(force=True)
+    assert _ids(svc, module="gameplay.Jigsaw", query="奖励") == []
+    assert _ids(svc, module="gameplay.Jigsaw", query="奖励", as_of=day) == [rid]
+    entry.archived_on = None
+    path.write_text(entry.to_markdown(), encoding="utf-8", newline="\n")
+    svc.index.refresh(force=True)
+    assert _ids(svc, module="gameplay.Jigsaw", query="奖励", as_of=day) == []
+
+
 def test_archiving_a_merged_memory_keeps_replaced_ones_hidden(svc):
     old = svc.record("gameplay.Jigsaw", "Reward", "conclusion", TEXT)["id"]
     merged = svc.record("gameplay.Jigsaw", "Reward", "conclusion", TEXT + "合并后。", supersedes=[old])["id"]

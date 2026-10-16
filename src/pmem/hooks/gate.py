@@ -664,7 +664,13 @@ class Gate:
         if not self._reminders_on("gate.stop_reminder", True):
             return []
         written = self._written()
-        return [m for m in self.state.data["edited"] if m not in written and not self.state.has("nudged", m)]
+        return [m for m in self.state.data["edited"]
+                if m not in written and not self.state.has("nudged", m) and not self._deprecated(m)]
+
+    def _deprecated(self, module_id: str) -> bool:
+        """废弃模块只读，写记忆会被拒绝，所以不提醒写。"""
+        module = self.registry.modules.get(module_id)
+        return module is not None and module.deprecated
 
     def _analyzed(self) -> list[str]:
         """排查类对话里查过记忆、但既没改代码也没写记忆的模块。"""
@@ -679,7 +685,7 @@ class Gate:
             return []
         if self._written() or self.state.data["edited"]:
             return []
-        return [m for m in self.state.data["consulted"] if not self.state.has("nudged", m)]
+        return [m for m in self.state.data["consulted"] if not self.state.has("nudged", m) and not self._deprecated(m)]
 
     def on_stop(self) -> dict:
         if self.state is None:

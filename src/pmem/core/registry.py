@@ -15,6 +15,7 @@ _NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 _GLOB_FLAGS = wglob.GLOBSTAR | wglob.BRACE | wglob.DOTGLOB | wglob.FORCEUNIX | wglob.IGNORECASE
 _WILDCARD = re.compile(r"\*\*|\*|\?|\[[^\]]*\]|\{[^}]*\}")
 _MERGED_PREFIX = "merged_into:"
+DEPRECATED = "deprecated"
 MIN_ASCII_NAME = 4
 
 
@@ -41,6 +42,10 @@ class Module:
     @property
     def name(self) -> str:
         return self.id.split(".", 1)[1]
+
+    @property
+    def deprecated(self) -> bool:
+        return self.status.strip() == DEPRECATED
 
     @property
     def merged_into(self) -> str | None:

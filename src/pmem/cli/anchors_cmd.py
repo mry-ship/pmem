@@ -11,15 +11,14 @@ from pathlib import Path
 
 from pmem.core.config import Config
 from pmem.core.registry import ModuleRegistry, RegistryError
-from pmem.scan.lite import THIRD_PARTY_NAMES
+from pmem.scan.lite import THIRD_PARTY_NAMES, skip_dir
 from pmem.storage.files import FilesStorage
 from pmem.vcs.detect import detect_vcs
 
 SOURCE_EXT = ("cs", "lua", "py", "ts", "tsx", "js", "jsx", "go", "java", "kt", "swift", "m", "mm", "cpp", "cc",
               "c", "h", "hpp", "rs", "shader")
 DATA_EXT = ("json", "yaml", "yml", "prefab", "asset", "xml", "csv")
-SKIP_DIRS = {".git", ".svn", ".memory", ".cursor", ".claude", ".codex", "node_modules", "Library", "Temp", "Logs",
-             "obj", "bin", "build", ".venv", "venv", "__pycache__", ".idea", ".vs", "Packages"}
+UNITY_PACKAGES = "Packages"
 MAX_ANCHORS = 5
 _EXT = "|".join(SOURCE_EXT + DATA_EXT)
 _PATH = re.compile(rf"(?<![A-Za-z0-9_./\\-])([A-Za-z0-9_][A-Za-z0-9_./\\-]*\.(?:{_EXT}))(?![A-Za-z0-9_])")
@@ -34,7 +33,7 @@ class FileIndex:
         self.by_stem: dict[str, list[str]] = defaultdict(list)
         for folder, dirs, files in os.walk(root):
             # 第三方代码里的同名类（Menu、Initialize 之类）会被误认成记忆说的那个；com.xxx 是内嵌的 UPM 包
-            dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.startswith((".", "com."))
+            dirs[:] = [d for d in dirs if not skip_dir(d) and d != UNITY_PACKAGES and not d.startswith("com.")
                        and not THIRD_PARTY_NAMES.match(d)]
             base = Path(folder).relative_to(root).as_posix()
             for name in files:

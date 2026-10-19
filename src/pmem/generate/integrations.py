@@ -1,0 +1,188 @@
+"""各家 Agent 的接入文件：规则、技能、Hook、MCP 配置。合并时只替换 pmem 自己的条目，其他工具的配置原样保留。"""
+from __future__ import annotations
+
+import json
+import re
+import shutil
+import subprocess
+from pathlib import Path
+
+from pmem.generate.templates import (
+    BLOCK_BEGIN,
+    BLOCK_END,
+    BOOTSTRAP_SKILL,
+    CLAUDE_HOOKS,
+    CODEX_HOOKS,
+    CODEX_MCP_TOML,
+    COMPACT_SKILL,
+    CONSOLIDATE_SKILL,
+    CURSOR_HOOKS,
+    GENERATED,
+    HOOK_WRAPPER,
+    HOOK_WRAPPER_CMD,
+    HOOK_WRAPPER_SH,
+    MCP_SERVER,
+    NORMALIZE_SKILL,
+    PLAIN_MCP_SERVER,
+    RULE,
+    RULE_BLOCK,
+    SEED_SKILL,
+)
+
+SUPPORTED_AGENTS = ("cursor", "claude", "codex")
+
+
+def pick_agents(root: Path, raw: str) -> list[str]:
+    raw = (raw or "auto").strip().lower()
+    if raw == "all":
+        return list(SUPPORTED_AGENTS)
+    if raw == "auto":
+        agents = ["cursor"]
+        if (root / ".claude").is_dir() or (root / "CLAUDE.md").exists():
+            agents.append("claude")
+        if (root / ".codex").is_dir() or (root / "AGENTS.md").exists():
+            agents.append("codex")
+        return agents
+    agents = [a.strip() for a in raw.split(",") if a.strip()]
+    unknown = [a for a in agents if a not in SUPPORTED_AGENTS]
+    if unknown:
+        raise SystemExit(f"不支持的 Agent：{'、'.join(unknown)}；可选 {', '.join(SUPPORTED_AGENTS)}、all、auto")
+    return agents
+
+
+def write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def _read_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig") or "{}")
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"{path} 不是合法 JSON，请先修复：{exc}") from exc
+    return data if isinstance(data, dict) else {}
+
+
+def _write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+
+def _is_pmem(command) -> bool:
+    return str(command or "").startswith(("pmem hook", HOOK_WRAPPER))
+
+
+def write_hook_wrappers(root: Path) -> None:
+    """.memory/bin/pmem-hook（macOS/Linux）与 pmem-hook.cmd（Windows，PowerShell 会优先选它）。"""
+    folder = root / ".memory" / "bin"
+    write_text(folder / "pmem-hook", HOOK_WRAPPER_SH)
+    (folder / "pmem-hook.cmd").write_text(HOOK_WRAPPER_CMD, encoding="ascii", newline="\r\n")
+    # 批处理用 LF 换行时 goto 标签可能失效，不能让 Git 按平台改换行
+    write_text(folder / ".gitattributes", "*.cmd text eol=crlf\npmem-hook text eol=lf\n")
+    script = folder / "pmem-hook"
+    script.chmod(script.stat().st_mode | 0o755)
+    # Windows 上建的文件没有可执行位，提交后 macOS/Linux 的队友无法运行；Git 下直接在暂存区里标上（不是 Git 仓库时无效果）
+    if shutil.which("git"):
+        subprocess.run(["git", "add", "--chmod=+x", "--", str(script)], cwd=root, capture_output=True, check=False)
+
+
+def merge_hooks(path: Path) -> None:
+    data = _read_json(path)
+    data.setdefault("version", 1)
+    hooks = data.setdefault("hooks", {})
+    for event in list(hooks):
+        if event not in CURSOR_HOOKS:
+            kept = [h for h in hooks[event] if not _is_pmem(h.get("command"))]
+            if kept:
+                hooks[event] = kept
+            else:
+                del hooks[event]
+    for event, entry in CURSOR_HOOKS.items():
+        kept = [h for h in hooks.get(event, []) if not _is_pmem(h.get("command"))]
+        hooks[event] = [*kept, dict(entry)]
+    _write_json(path, data)
+
+
+def merge_group_hooks(path: Path, wanted: dict) -> None:
+    """Claude Code / Codex 的三层结构（事件 → 匹配组 → 处理器）：去掉旧的 pmem 处理器后追加新的。"""
+    data = _read_json(path)
+    hooks = data.setdefault("hooks", {})
+    for event, groups in wanted.items():
+        kept = []
+        for group in hooks.get(event, []):
+            handlers = [h for h in group.get("hooks", []) if not _is_pmem(h.get("command"))]
+            if handlers:
+                kept.append({**group, "hooks": handlers})
+        hooks[event] = [*kept, *json.loads(json.dumps(groups))]
+    _write_json(path, data)
+
+
+def merge_mcp(path: Path, server: dict = MCP_SERVER) -> None:
+    data = _read_json(path)
+    data.setdefault("mcpServers", {})["pmem"] = dict(server)
+    _write_json(path, data)
+
+
+def merge_codex_mcp(path: Path) -> bool:
+    """在 .codex/config.toml 里登记 pmem；已有 [mcp_servers.pmem] 时不改。返回是否写入。"""
+    text = path.read_text(encoding="utf-8-sig") if path.exists() else ""
+    if re.search(r'^\s*\[\s*mcp_servers\s*\.\s*"?pmem"?\s*\]', text, re.MULTILINE):
+        return False
+    separator = "" if not text or text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
+    write_text(path, text + separator + CODEX_MCP_TOML)
+    return True
+
+
+def upsert_block(path: Path, block: str) -> None:
+    """在 CLAUDE.md / AGENTS.md 里写入或替换 pmem 段落，段落之外的内容保持不变。"""
+    text = path.read_text(encoding="utf-8-sig") if path.exists() else ""
+    start, end = text.find(BLOCK_BEGIN), text.find(BLOCK_END)
+    if start >= 0 and end > start:
+        tail = text[end + len(BLOCK_END):].lstrip("\n")
+        text = text[:start] + block + ("\n" + tail if tail else "")
+    else:
+        text = (text.rstrip("\n") + "\n\n" if text.strip() else "") + block
+    write_text(path, text)
+
+
+def _write_skills(folder: Path) -> None:
+    for name, body in (("pmem-bootstrap", BOOTSTRAP_SKILL), ("pmem-compact", COMPACT_SKILL),
+                       ("pmem-consolidate", CONSOLIDATE_SKILL), ("pmem-normalize", NORMALIZE_SKILL),
+                       ("pmem-seed", SEED_SKILL)):
+        write_text(folder / name / "SKILL.md", body.format(generated=GENERATED))
+
+
+def setup_cursor(root: Path) -> str:
+    cursor = root / ".cursor"
+    write_text(cursor / "rules" / "pmem.mdc", RULE.format(generated=GENERATED))
+    _write_skills(cursor / "skills")
+    merge_hooks(cursor / "hooks.json")
+    merge_mcp(cursor / "mcp.json")
+    write_hook_wrappers(root)
+    return ("Cursor：.cursor/rules/pmem.mdc、.cursor/skills/pmem-*、合并 .cursor/hooks.json 与 .cursor/mcp.json、"
+            ".memory/bin/pmem-hook*（没装 pmem 时提醒）")
+
+
+def setup_claude(root: Path) -> str:
+    upsert_block(root / "CLAUDE.md", RULE_BLOCK)
+    _write_skills(root / ".claude" / "skills")
+    merge_group_hooks(root / ".claude" / "settings.json", CLAUDE_HOOKS)
+    merge_mcp(root / ".mcp.json", PLAIN_MCP_SERVER)
+    return "Claude Code：CLAUDE.md 中的 pmem 段落、.claude/skills/pmem-*、合并 .claude/settings.json 与 .mcp.json"
+
+
+def setup_codex(root: Path) -> str:
+    upsert_block(root / "AGENTS.md", RULE_BLOCK)
+    merge_group_hooks(root / ".codex" / "hooks.json", CODEX_HOOKS)
+    merge_codex_mcp(root / ".codex" / "config.toml")
+    return "Codex：AGENTS.md 中的 pmem 段落、合并 .codex/hooks.json 与 .codex/config.toml"
+
+
+SETUP = {"cursor": setup_cursor, "claude": setup_claude, "codex": setup_codex}
+NEXT_STEPS = {
+    "cursor": "Cursor：在设置 → MCP 中启用 pmem（首次需要点一次）。",
+    "claude": "Claude Code：首次打开项目时批准 .mcp.json 里的 pmem 服务；/hooks 可查看已接入的 Hook。",
+    "codex": "Codex：信任本项目后，在 /hooks 里审阅并信任 pmem 的 Hook（项目 .codex/ 未被信任时不加载）。",
+}

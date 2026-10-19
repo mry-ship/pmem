@@ -52,6 +52,17 @@ ERROR_NOTICE_WINDOW = 24 * 3600
 # Cursor 把结束提醒显示成一条用户消息，用户容易误以为要自己动手；以 [pmem] 开头，下一轮靠它认出不是用户提问
 FOLLOWUP_HEADER = "[pmem] 以下是 pmem 自动发给 AI 的提醒，由 AI 处理，你无需操作。"
 _PATH_TOKEN = re.compile(r"[\w.\-]*[/\\][\w./\\\-]+")
+STALE_FOOTER = (f"标“{STALE_LABEL}”的记忆写下后关联代码又改过，依赖前先对照代码："
+                "仍成立就 confirm_memory，不成立就写 correction 替代。")
+_STALE_SLOT = "\x00stale:{}\x00"
+_STALE_SLOT_RE = re.compile(r"\x00stale:(\w+)\x00")
+_FOOTER_SLOT = "\x00footer:{}\x00"
+_FOOTER_SLOT_RE = re.compile(r"\n?\x00footer:([\w,]*)\x00")
+
+
+def _stale_mark(problems: list[str]) -> str:
+    return f"（⚠ {STALE_LABEL}：{'；'.join(problems)}）" if problems else ""
+
 
 def tool_response(payload: dict) -> dict | None:
     """pmem 工具的返回 JSON。各家包装不同（Cursor 的 result_json 是多层转义的字符串，
@@ -152,6 +163,9 @@ class Gate:
         self.registry = ModuleRegistry.load(modules_path) if modules_path.exists() else ModuleRegistry({})
         self._files: dict[str, Path] = {}
         self._entries: dict[str, list[Entry]] = {}
+        # 持有会话锁时只留占位符，释放后由 fill_stale 统一核对，免得并发的 Hook 排队等版本库查询
+        self.defer_stale = False
+        self._deferred: dict[str, Entry] = {}
 
     # 路径与模块
 
@@ -229,17 +243,44 @@ class Gate:
 
     def memory_lines(self, entries: list[Entry]) -> list[str]:
         """摘要行：类型｜议题｜日期：预览；关联代码之后改过的标“需核实”。"""
+        if self.defer_stale:
+            self._deferred.update((e.id, e) for e in entries)
+            marks = {e.id: _STALE_SLOT.format(e.id) for e in entries}
+            return self._lines(entries, marks, _FOOTER_SLOT.format(",".join(marks)))
         problems = self.stale_problems(entries)
+        marks = {i: _stale_mark(p) for i, p in problems.items()}
+        return self._lines(entries, marks, STALE_FOOTER if problems else "")
+
+    @staticmethod
+    def _lines(entries: list[Entry], marks: dict[str, str], footer: str) -> list[str]:
         lines = []
         for e in entries:
-            mark = f"（⚠ {STALE_LABEL}：{'；'.join(problems[e.id])}）" if e.id in problems else ""
             seed = "（种子，待确认）" if e.status == "seed" else ""
-            lines.append(f"- {KIND_LABELS.get(e.kind, e.kind)}{seed}｜{e.entity}｜{e.note_date}{mark}："
+            lines.append(f"- {KIND_LABELS.get(e.kind, e.kind)}{seed}｜{e.entity}｜{e.note_date}{marks.get(e.id, '')}："
                          f"{preview(e.content, DIGEST_PREVIEW)}")
-        if problems:
-            lines.append(f"标“{STALE_LABEL}”的记忆写下后关联代码又改过，依赖前先对照代码："
-                         "仍成立就 confirm_memory，不成立就写 correction 替代。")
+        if footer:
+            lines.append(footer)
         return lines
+
+    def fill_stale(self, result):
+        """把锁内留下的占位符换成核对结果；没有需核实的记忆时占位符连同所在的提示行一起去掉。"""
+        if not self._deferred:
+            return result
+        problems = self.stale_problems(list(self._deferred.values()))
+        self._deferred = {}
+
+        def fill(value):
+            if isinstance(value, dict):
+                return {k: fill(v) for k, v in value.items()}
+            if isinstance(value, list):
+                return [fill(v) for v in value]
+            if not isinstance(value, str) or "\x00" not in value:
+                return value
+            text = _FOOTER_SLOT_RE.sub(
+                lambda m: "\n" + STALE_FOOTER if any(i in problems for i in m.group(1).split(",")) else "", value)
+            return _STALE_SLOT_RE.sub(lambda m: _stale_mark(problems.get(m.group(1), [])), text)
+
+        return fill(result)
 
     def _watched(self, rel: str) -> bool:
         ignore = self.config.get("gate.ignore") or []
@@ -907,5 +948,8 @@ def handle(event: str, payload: dict, root: Path) -> dict:
     gate = Gate(Path(root), payload)
     if gate.state is None:
         return handler(gate)
+    gate.defer_stale = True
     with gate.state.locked():
-        return handler(gate)
+        result = handler(gate)
+    gate.defer_stale = False
+    return gate.fill_stale(result)

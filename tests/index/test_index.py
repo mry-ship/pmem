@@ -61,6 +61,20 @@ def test_relevant_entry_ranks_first(storage, tmp_path):
     assert result.degraded is None
 
 
+def test_vector_db_is_opened_only_when_vectors_are_used(storage, tmp_path):
+    add(storage, "奖励重复发放的根因是领取按钮没有防连点")
+    db = tmp_path / "cache" / "vectors.db"
+    keyword = make_index(storage, tmp_path, embedder=None)
+    assert keyword.search(module="gameplay.Jigsaw", query="奖励", today=TODAY).items
+    keyword.close()
+    assert not db.exists()
+
+    semantic = make_index(storage, tmp_path)
+    assert semantic.search(module="gameplay.Jigsaw", query="奖励", today=TODAY).items
+    semantic.close()
+    assert db.exists()
+
+
 def test_other_modules_are_not_returned(storage, tmp_path):
     add(storage, "商店奖励重复发放", module="economy.Shop")
     result = make_index(storage, tmp_path).search(module="gameplay.Jigsaw", query="奖励重复", today=TODAY)

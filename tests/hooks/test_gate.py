@@ -777,6 +777,29 @@ def test_digest_marks_memories_whose_code_is_gone(make_project):
     assert "confirm_memory" in context
 
 
+def test_stale_check_runs_after_session_lock_is_released(make_project, monkeypatch):
+    from pmem.hooks import state as state_mod
+    from pmem.hooks.gate import Gate
+
+    root = make_project(with_memory=False)
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A2", "decision", "奖励统一由服务端发放", "2026-09-02", entity="Server")
+    real = Gate.stale_problems
+    free: list[bool] = []
+
+    def probe(self, entries):
+        with open(self.state.path.with_suffix(".lock"), "a+b") as fh:
+            held = state_mod._try_lock(fh)
+            free.append(held)
+            if held:
+                state_mod._unlock(fh)
+        return real(self, entries)
+
+    monkeypatch.setattr(Gate, "stale_problems", probe)
+    context = handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root)["additional_context"]
+    assert free == [True]
+    assert "服务端发放" in context and "\x00" not in context and "confirm_memory" not in context
+
+
 def test_block_message_lists_pitfalls_of_the_module(make_project):
     root = make_project("block", with_memory=False)
     add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A1", "exclusion", "不要在客户端去重", "2026-09-01")

@@ -7,6 +7,7 @@ from pmem.catalog.migrate import (
     MigrateError,
     apply_moves,
     merge_moves,
+    pending_moves,
     plan_deprecate,
     plan_merge,
     plan_move,
@@ -88,7 +89,31 @@ def run_migrate(root: Path, action: str, first: str | None, second: str | None, 
     try:
         apply_moves(storage, moves)
     except OSError as exc:
-        print(f"搬动记忆文件中途失败：{exc}\nmodules.yaml 已更新；排除问题后运行 pmem migrate tidy --apply 搬完剩下的")
+        print(f"搬动记忆文件中途失败：{exc}")
+        if new_data is not data:
+            print("modules.yaml 已更新，不要重新运行这次迁移")
+        _print_recovery(storage, new_registry, moves)
         return 1
     print("已完成。运行 pmem doctor 检查路径重叠与覆盖率，然后提交 .memory/")
     return 0
+
+
+def _print_recovery(storage: FilesStorage, registry: ModuleRegistry, moves: list) -> None:
+    """tidy 只认得模块名已改名或并入的记忆；split、move 和未登记模块的合并要按 id 补搬。"""
+    left = pending_moves(storage, moves)
+    if not left:
+        print("记忆文件其实都已搬完，运行 pmem doctor 检查后提交 .memory/")
+        return
+    try:
+        by_tidy = {m.entry_id for m in stray_moves(storage, registry)}
+    except MigrateError:
+        by_tidy = set()
+    manual: dict[str, list[str]] = {}
+    for move in left:
+        if move.entry_id not in by_tidy:
+            manual.setdefault(move.target, []).append(move.entry_id)
+    print(f"还有 {len(left)} 个记忆文件没搬完。排除问题后依次运行：")
+    if any(m.entry_id in by_tidy for m in left):
+        print("  pmem migrate tidy --apply")
+    for target, ids in manual.items():
+        print(f"  pmem migrate move {' '.join(ids)} --to {target} --apply")

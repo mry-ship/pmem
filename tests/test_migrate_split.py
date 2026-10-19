@@ -88,6 +88,27 @@ def test_assign_overrides_and_exact_path_leaves_source(project):
     assert module_of(project, both) == "gameplay.MergeCore"
 
 
+def test_split_failure_prints_runnable_recovery(project, capsys, monkeypatch):
+    from pmem.cli import migrate_cmd
+
+    real = migrate_cmd.apply_moves
+
+    def half(storage, moves):
+        real(storage, moves[:1])
+        raise OSError("磁盘满")
+
+    monkeypatch.setattr(migrate_cmd, "apply_moves", half)
+    ids = [record(project, "Event", None, str(i)) for i in range(3)]
+    assert split(project, "--by", "entity", "--to", "activity.MergeEvent=Event", "--apply") == 1
+    out = capsys.readouterr().out
+    assert "不要重新运行这次迁移" in out and "还有 2 个记忆文件没搬完" in out and "tidy" not in out
+    command = next(line.strip() for line in out.splitlines() if line.strip().startswith("pmem migrate move"))
+
+    monkeypatch.setattr(migrate_cmd, "apply_moves", real)
+    assert main(command.split()[1:] + ["--root", str(project)]) == 0
+    assert {module_of(project, i) for i in ids} == {"activity.MergeEvent"}
+
+
 def test_split_by_entity(project):
     event = record(project, "Event", None)
     board = record(project, "Board", None)

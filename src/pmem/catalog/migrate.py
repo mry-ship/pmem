@@ -5,6 +5,8 @@ import copy
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 from pmem.core.registry import DEPRECATED, MERGED_PREFIX, ModuleRegistry, RegistryError, is_module_id
 from pmem.storage.files import FilesStorage
 
@@ -414,6 +416,22 @@ def plan_move(registry: ModuleRegistry, storage: FilesStorage, ids: list[str], t
             raise MigrateError(f"记忆 {entry_id} 已经在 {resolved.id} 下")
         moves.append(Move(path, entry.id, entry.module, resolved.id))
     return moves
+
+
+def pending_moves(storage: FilesStorage, moves: list[Move]) -> list[Move]:
+    """搬动中途失败后还没完成的部分：记忆文件里的模块名还不是目标名（文件已移走但没改写也算）。"""
+    left = []
+    for move in moves:
+        path = storage.find_path(move.entry_id)
+        if path is None:
+            continue
+        try:
+            module = storage.read(path).module
+        except (OSError, ValueError, yaml.YAMLError):
+            module = move.source
+        if module != move.target:
+            left.append(Move(path, move.entry_id, module, move.target))
+    return left
 
 
 def apply_moves(storage: FilesStorage, moves: list[Move]) -> None:

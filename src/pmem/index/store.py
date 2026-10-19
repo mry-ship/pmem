@@ -60,27 +60,33 @@ class SearchResult:
 
 
 class VectorCache:
-    """按 (嵌入器, 内容哈希) 缓存向量；内容不变就不重算。"""
+    """按 (嵌入器, 内容哈希) 缓存向量；内容不变就不重算。
+    数据库在第一次读写向量时才打开：只用关键词检索的进程（Hook、命令行）不必建 vectors.db、也不占它的写锁。"""
 
     def __init__(self, path: Path | None):
         self._memory: dict[tuple[str, str], np.ndarray] = {}
+        self._path = path
         self._db: sqlite3.Connection | None = None
-        if path is not None:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            self._db = sqlite3.connect(str(path), timeout=10, check_same_thread=False)
+
+    def _conn(self) -> sqlite3.Connection | None:
+        if self._db is None and self._path is not None:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            self._db = sqlite3.connect(str(self._path), timeout=10, check_same_thread=False)
             self._db.execute("PRAGMA journal_mode=WAL")
             self._db.execute(
                 "CREATE TABLE IF NOT EXISTS vectors (model TEXT, hash TEXT, data BLOB, PRIMARY KEY (model, hash))"
             )
+        return self._db
 
     def get_many(self, model: str, digests: list[str]) -> dict[str, np.ndarray]:
         found = {d: self._memory[(model, d)] for d in digests if (model, d) in self._memory}
         missing = [d for d in digests if d not in found]
-        if self._db is not None and missing:
+        db = self._conn() if missing else None
+        if db is not None:
             for start in range(0, len(missing), 500):
                 chunk = missing[start : start + 500]
                 marks = ",".join("?" * len(chunk))
-                rows = self._db.execute(
+                rows = db.execute(
                     f"SELECT hash, data FROM vectors WHERE model = ? AND hash IN ({marks})", (model, *chunk)
                 )
                 for digest, blob in rows:
@@ -97,12 +103,13 @@ class VectorCache:
     def put_many(self, model: str, items: dict[str, np.ndarray]) -> None:
         for digest, vec in items.items():
             self._memory[(model, digest)] = vec
-        if self._db is not None and items:
-            self._db.executemany(
+        db = self._conn() if items else None
+        if db is not None:
+            db.executemany(
                 "INSERT OR REPLACE INTO vectors (model, hash, data) VALUES (?, ?, ?)",
                 [(model, d, v.astype(np.float32).tobytes()) for d, v in items.items()],
             )
-            self._db.commit()
+            db.commit()
 
 
 class MemoryIndex:

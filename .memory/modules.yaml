@@ -53,7 +53,7 @@ modules:
     components: [Files, Git, Svn]
   feature.Onboarding:
     description: 接入：init 生成的规则、技能、Hooks、MCP 配置模板，scan 目录与热度扫描，doctor 自检
-    paths: [src/pmem/cli/init_cmd.py, src/pmem/cli/doctor_cmd.py, src/pmem/generate/templates.py, src/pmem/scan/**, tests/test_cli_flow.py]
+    paths: [src/pmem/cli/init_cmd.py, src/pmem/cli/doctor_cmd.py, src/pmem/generate/templates.py, src/pmem/generate/integrations.py, src/pmem/scan/**, tests/test_cli_flow.py]
     aliases: [Init, Doctor, Scan]
     entities: [Skills, Hooks, Rule, Doctor, Scan]
   feature.Wiki:

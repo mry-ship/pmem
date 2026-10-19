@@ -407,6 +407,7 @@ def test_stop_reminds_once_for_edited_modules_without_record(make_project):
     handle("edited", edit, root)
     first = handle("stop", {"conversation_id": "c1", "status": "completed"}, root)
     assert "economy.Shop" in first["followup_message"]
+    assert first["followup_message"].startswith("[pmem] 以下是 pmem 自动发给 AI 的提醒") and "你无需操作" in first["followup_message"]
     assert handle("stop", {"conversation_id": "c1", "status": "completed"}, root) == {}
 
 

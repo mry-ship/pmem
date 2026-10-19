@@ -104,16 +104,23 @@ def plan_rename(data: dict, registry: ModuleRegistry, old: str, new: str) -> tup
     return out, [f"{old_id} 改名为 {new_id}，旧名登记为别名，读写自动转到新名"]
 
 
-def _plan_merge_unregistered(data: dict, registry: ModuleRegistry, source: str, dst_id: str) -> tuple[dict, list[str]]:
-    """写入时自动新建（未登记）或冷候选模块并入正式模块：登记为目标的别名，之后的写入也自动转过去。"""
+def _plan_merge_unregistered(data: dict, registry: ModuleRegistry, source: str, dst_id: str,
+                             keep_alias: bool) -> tuple[dict, list[str]]:
+    """写入时自动新建（未登记）或冷候选模块并入正式模块。
+    冷候选的名字登记为目标的别名；未登记的多半是笔误，只有 keep_alias 时才登记，否则只搬记忆。"""
     resolved = registry.resolve_module(source)
     src_id = resolved.id
     out = copy.deepcopy(data)
+    candidates = out.get("candidates") or {}
+    is_candidate = resolved.candidate and src_id in candidates
+    if not is_candidate and not keep_alias:
+        ask = (f"{src_id} 是以后还会这样写的叫法吗？是就加 --alias 把它登记为 {dst_id} 的别名，"
+               "之后写到这个名字会自动转过去；只是笔误就不用加")
+        return out, [f"{src_id}（未登记）的记忆搬到 {dst_id}，不登记为别名。", ask]
     dst = dict(out["modules"][dst_id] or {})
     _merge_list(dst, "aliases", [src_id])
     notes = [f"{src_id}（未登记）并入 {dst_id}：登记为 {dst_id} 的别名"]
-    candidates = out.get("candidates") or {}
-    if resolved.candidate and src_id in candidates:
+    if is_candidate:
         body = candidates.pop(src_id) or {}
         _merge_list(dst, "paths", body.get("paths") or [])
         notes = [f"冷候选 {src_id} 并入 {dst_id}：路径并入目标模块，名字登记为别名"]
@@ -121,19 +128,33 @@ def _plan_merge_unregistered(data: dict, registry: ModuleRegistry, source: str, 
     return out, notes
 
 
-def plan_merge(data: dict, registry: ModuleRegistry, source: str, target: str) -> tuple[dict, list[str]]:
-    out, notes = _plan_merge(data, registry, source, target)
+def plan_merge(data: dict, registry: ModuleRegistry, source: str, target: str,
+               keep_alias: bool = False) -> tuple[dict, list[str]]:
+    out, notes = _plan_merge(data, registry, source, target, keep_alias)
     dst_id = _module_key(data, registry, target)
     if registry.modules[dst_id].deprecated:
         notes.append(f"注意：{dst_id} 已废弃，并入后这些记忆同样只读")
     return out, notes
 
 
-def _plan_merge(data: dict, registry: ModuleRegistry, source: str, target: str) -> tuple[dict, list[str]]:
+def merge_moves(registry: ModuleRegistry, storage: FilesStorage, source: str, target: str) -> list[Move]:
+    """未登记模块并入时不一定登记别名，stray_moves 认不出它的记忆，按模块名直接列出要搬的文件。"""
+    resolved = registry.resolve_module(source)
+    if resolved.known:
+        return []
+    dst_id = registry.resolve_module(target).id
+    return [Move(path, entry.id, entry.module, dst_id)
+            for path, entry in storage.iter_all() if entry.module.lower() == resolved.id.lower()]
+
+
+def _plan_merge(data: dict, registry: ModuleRegistry, source: str, target: str,
+                keep_alias: bool) -> tuple[dict, list[str]]:
     dst_id = _module_key(data, registry, target)
     if not registry.resolve_module(source).known:
-        return _plan_merge_unregistered(data, registry, source, dst_id)
+        return _plan_merge_unregistered(data, registry, source, dst_id, keep_alias)
     src_id = _module_key(data, registry, source)
+    if keep_alias:
+        raise MigrateError(f"--alias 只用于未登记的模块；{src_id} 已登记，并入后旧名会自动转到 {dst_id}")
     if src_id == dst_id:
         raise MigrateError("不能把模块合并到它自己")
 

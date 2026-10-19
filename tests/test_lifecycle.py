@@ -86,10 +86,15 @@ def test_restore_returns_rejected_seed_to_seed(svc):
     entry = svc.storage.get(rid)
     assert (entry.status, entry.archived_from) == ("archived", "seed") and entry.archived_on
     assert entry.archived_by == svc.user
-    svc.change_status([rid], "restore")
+    assert svc.change_status([rid], "restore")["status"] == "seed"
     entry = svc.storage.get(rid)
     assert (entry.status, entry.archived_on, entry.archived_from) == ("seed", None, None)
     assert entry.archived_by is None
+
+    other = svc.record("gameplay.Jigsaw", "Flow", "decision", TEXT + "流程。")["id"]
+    svc.change_status([rid, other], "archive")
+    mixed = svc.change_status([rid, other], "restore")
+    assert mixed["status"] == "mixed" and mixed["statuses"] == {rid: "seed", other: "active"}
 
 
 def test_as_of_still_sees_memories_archived_later(svc):
@@ -179,6 +184,13 @@ def test_seed_cli_flow(project, capsys):
     assert main(["seed", "--plan", "--root", str(project)]) == 0
     assert "gameplay.Jigsaw" in capsys.readouterr().out
     assert main(["seed", "--accept", "--root", str(project)]) == 2
+    capsys.readouterr()
+    for args, hint in ((["--plan", "--module", "Jigsaw"], "--plan"), (["--top", "3"], "--top"),
+                       (["--all"], "--all"), (["--accept", "--all", "--module", "Jigsaw"], "--all"),
+                       (["--accept", "01ARZ3NDEKTSV4RRFFQ69G5FAV", "--module", "Jigsaw"], "--module"),
+                       (["01ARZ3NDEKTSV4RRFFQ69G5FAV"], "--accept")):
+        assert main(["seed", *args, "--root", str(project)]) == 2
+        assert hint in capsys.readouterr().out
     assert main(["seed", "--accept", "--module", "Jigsaw", "--root", str(project)]) == 0
     assert "已转为正式记忆 1 条" in capsys.readouterr().out
     service = MemoryService(project)

@@ -49,6 +49,8 @@ SLOW_SNAPSHOT_MARK = "snapshot-slow"
 ERROR_LOG = "hook-errors.log"
 ERROR_SEEN = "hook-errors.seen"
 ERROR_NOTICE_WINDOW = 24 * 3600
+# Cursor 把结束提醒显示成一条用户消息，用户容易误以为要自己动手；以 [pmem] 开头，下一轮靠它认出不是用户提问
+FOLLOWUP_HEADER = "[pmem] 以下是 pmem 自动发给 AI 的提醒，由 AI 处理，你无需操作。"
 _PATH_TOKEN = re.compile(r"[\w.\-]*[/\\][\w./\\\-]+")
 
 def tool_response(payload: dict) -> dict | None:
@@ -852,7 +854,7 @@ class Gate:
             **usage,
         )
         if not review and not pending and not consulted_pending:
-            return {"followup_message": notice} if notice else {}
+            return {"followup_message": f"{FOLLOWUP_HEADER}\n{notice}"} if notice else {}
         for module in review:
             self.state.add("review_nudged", module)
         for module in pending + consulted_pending:
@@ -881,7 +883,7 @@ class Gate:
             )
         if notice:
             messages.append(notice)
-        return {"followup_message": "\n".join(messages)}
+        return {"followup_message": "\n".join([FOLLOWUP_HEADER, *messages])}
 
 
 HANDLERS = {

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from pmem.core.config import Config
 from pmem.core.registry import ModuleRegistry, RegistryError
-from pmem.scan.lite import THIRD_PARTY_NAMES, skip_dir
+from pmem.scan.lite import THIRD_PARTY_NAMES, kept_dirs
 from pmem.storage.files import FilesStorage
 from pmem.vcs.detect import detect_vcs
 
@@ -33,7 +33,7 @@ class FileIndex:
         self.by_stem: dict[str, list[str]] = defaultdict(list)
         for folder, dirs, files in os.walk(root):
             # 第三方代码里的同名类（Menu、Initialize 之类）会被误认成记忆说的那个；com.xxx 是内嵌的 UPM 包
-            dirs[:] = [d for d in dirs if not skip_dir(d) and d != UNITY_PACKAGES and not d.startswith("com.")
+            dirs[:] = [d for d in kept_dirs(dirs) if d != UNITY_PACKAGES and not d.startswith("com.")
                        and not THIRD_PARTY_NAMES.match(d)]
             base = Path(folder).relative_to(root).as_posix()
             for name in files:

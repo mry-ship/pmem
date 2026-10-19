@@ -10,7 +10,11 @@ from pmem.vcs.base import VCS
 
 
 class StorageError(ValueError):
-    pass
+    """code 供统计归类（如 pmem health 的被拒写入），提示文字可以随意改。"""
+
+    def __init__(self, message: str, code: str = "storage"):
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass
@@ -60,19 +64,23 @@ class FilesStorage:
 
     def _check_draft(self, entry: Entry, draft_id: str) -> Path:
         if not is_ulid(draft_id):
-            raise StorageError(f"draft_id {draft_id!r} 不是有效的记忆 id（26 位 ULID）；请用写入时返回的 draft_id")
+            raise StorageError(f"draft_id {draft_id!r} 不是有效的记忆 id（26 位 ULID）；请用写入时返回的 draft_id",
+                               "draft_forbidden")
         path = self.find_path(draft_id)
         if path is None:
-            raise StorageError(f"draft_id {draft_id} 对应的记忆不存在；请不带 draft_id 新建")
+            raise StorageError(f"draft_id {draft_id} 对应的记忆不存在；请不带 draft_id 新建", "draft_forbidden")
         old = self.read(path)
         if old.author != entry.author:
             raise StorageError(
-                f"记忆 {draft_id} 的作者是 {old.author}，不能覆盖；请新建一条并在 supersedes 中写 {draft_id}"
+                f"记忆 {draft_id} 的作者是 {old.author}，不能覆盖；请新建一条并在 supersedes 中写 {draft_id}",
+                "draft_forbidden",
             )
         if old.module != entry.module:
-            raise StorageError(f"记忆 {draft_id} 属于 {old.module}，不能改到 {entry.module}；请新建一条")
+            raise StorageError(f"记忆 {draft_id} 属于 {old.module}，不能改到 {entry.module}；请新建一条",
+                               "draft_forbidden")
         if self.vcs.is_committed(path):
-            raise StorageError(f"记忆 {draft_id} 已提交到版本库，不能覆盖；请新建一条并在 supersedes 中写 {draft_id}")
+            raise StorageError(f"记忆 {draft_id} 已提交到版本库，不能覆盖；请新建一条并在 supersedes 中写 {draft_id}",
+                               "draft_forbidden")
         return path
 
     def write(self, entry: Entry, draft_id: str | None = None) -> WriteResult:

@@ -74,7 +74,7 @@ class RecordOps(ServiceBase):
                                 source_conversation, aliases, status)
         if not response.get("ok"):
             self._log("record_rejected", conv=source_conversation, module=module, entity=entity or None,
-                      error=str(response.get("error") or "")[:200])
+                      code=response.get("code"), error=str(response.get("error") or "")[:200])
         return response
 
     @returns_errors
@@ -85,16 +85,16 @@ class RecordOps(ServiceBase):
         target = self.registry.modules.get(resolved.id)
         if target is not None and target.deprecated:
             return fail(f"模块 {resolved.id} 已废弃（只读），不再接受新记忆；仍在维护的话先运行 "
-                        f"pmem migrate deprecate {resolved.id} --undo --apply")
+                        f"pmem migrate deprecate {resolved.id} --undo --apply", "module_deprecated")
         if status and status not in WRITABLE_STATUSES:
-            return fail(f"status 只能是 {' / '.join(WRITABLE_STATUSES)}，当前为 {status!r}")
+            return fail(f"status 只能是 {' / '.join(WRITABLE_STATUSES)}，当前为 {status!r}", "status_invalid")
         content = (content or "").strip()
         problem = self._invalid_content(kind, content)
         if problem:
-            return fail(problem)
+            return fail(problem[1], problem[0])
         entity_id = self.registry.resolve_entity(resolved.id, entity or "")
         if not entity_id:
-            return fail("entity 不能为空，用于区分模块内的议题，如 Reward、Config")
+            return fail("entity 不能为空，用于区分模块内的议题，如 Reward、Config", "entity_missing")
 
         # 替代自己的草稿说明要新建一条（草稿已提交时只能这样）；闸门可能按同议题自动注入了这个 draft_id
         if draft_id and draft_id in (supersedes or []):
@@ -103,7 +103,7 @@ class RecordOps(ServiceBase):
         old = self.index.find(draft_id) if draft_id else None
         if old is not None and old.status == "archived":
             return fail(f"记忆 {draft_id} 已归档，不能覆盖；要接着用就先 pmem archive {draft_id} --restore，"
-                        f"要写新结论就新建一条并在 supersedes 中写 {draft_id}")
+                        f"要写新结论就新建一条并在 supersedes 中写 {draft_id}", "draft_forbidden")
         if old is not None:
             supersedes = old.supersedes if supersedes is None else supersedes
             anchors = old.anchors if anchors is None else anchors
@@ -196,15 +196,16 @@ class RecordOps(ServiceBase):
             warnings.append(f"anchors 中的 {rel} 在项目里不存在，请检查路径")
         return f"{actual or rel}{sep}{symbol}"
 
-    def _invalid_content(self, kind: str, content: str) -> str | None:
+    def _invalid_content(self, kind: str, content: str) -> tuple[str, str] | None:
+        """不合格时返回 (错误码, 提示)。"""
         if kind not in KINDS:
-            return f"kind 必须是 {' / '.join(KINDS)} 之一"
+            return "kind_invalid", f"kind 必须是 {' / '.join(KINDS)} 之一"
         low, high = int(self.config.get("write.content_min")), int(self.config.get("write.content_max"))
         if not low <= len(content) <= high:
-            return f"正文长度需在 {low}–{high} 字之间，当前 {len(content)} 字"
+            return "content_length", f"正文长度需在 {low}–{high} 字之间，当前 {len(content)} 字"
         hits = find_secrets(content, self.config.get("write.secret_patterns") or [])
         if hits:
-            return "正文疑似包含敏感信息，已拒绝写入：" + "；".join(hits)
+            return "secret", "正文疑似包含敏感信息，已拒绝写入：" + "；".join(hits)
         return None
 
     def _write_hints(self, module_id: str, entity_id: str, content: str, aliases: list[str], merging: bool) -> list[str]:
@@ -236,6 +237,7 @@ class RecordOps(ServiceBase):
         return fail(
             f"{module_id}/{entity_id} 今天已有 {len(same_day)} 条记忆，达到上限 {cap}；"
             "请把新结论合并进已有的一条（带 draft_id 覆盖自己未提交的那条），或用 supersedes 替代旧结论",
+            "daily_cap",
             existing_ids=same_day,
         )
 

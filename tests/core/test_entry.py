@@ -27,6 +27,16 @@ def test_markdown_round_trip_keeps_all_fields():
     assert parsed == entry
 
 
+def test_unknown_front_matter_fields_survive_rewrite():
+    text = make_entry().to_markdown().replace(
+        "note_date:", "reviewed: {by: lisi, at: '2026-11-01'}\npriority: 2\nnote_date:", 1)
+    entry = Entry.from_markdown(text)
+    entry.status, entry.verified = "archived", "2026-10-20"
+    again = Entry.from_markdown(entry.to_markdown())
+    assert again.extra == {"reviewed": {"by": "lisi", "at": "2026-11-01"}, "priority": 2}
+    assert again.status == "archived" and again.verified == "2026-10-20"
+
+
 def test_markdown_starts_with_front_matter_and_ends_with_content():
     text = make_entry().to_markdown()
     assert text.startswith("---\n")

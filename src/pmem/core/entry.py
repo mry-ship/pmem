@@ -12,6 +12,8 @@ VISIBLE_STATUSES = ("active", "seed", "draft")
 REPLACING_STATUSES = (*VISIBLE_STATUSES, "archived")
 
 _FRONT_MATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
+KNOWN_KEYS = frozenset({"id", "module", "entity", "kind", "status", "supersedes", "anchors", "revision", "author",
+                        "note_date", "aliases", "verified", "archived", "source"})
 
 
 @dataclass
@@ -33,6 +35,8 @@ class Entry:
     archived_on: str | None = None
     archived_from: str | None = None
     archived_by: str | None = None
+    # 本版本不认识的 YAML 头字段（较新版本写的）：重写文件时原样带上，团队混用版本时不丢
+    extra: dict = field(default_factory=dict)
 
     @property
     def checked_date(self) -> str:
@@ -74,6 +78,7 @@ class Entry:
                 meta["archived"]["by"] = self.archived_by
         if self.source_conversation:
             meta["source"] = {"conversation": self.source_conversation}
+        meta.update({k: v for k, v in self.extra.items() if k not in KNOWN_KEYS})
         import yaml
 
         head = yaml.safe_dump(meta, allow_unicode=True, sort_keys=False).rstrip()
@@ -108,4 +113,5 @@ class Entry:
             archived_on=str(archived["on"]) if archived.get("on") else None,
             archived_from=restored if restored in STATUSES and restored != "archived" else None,
             archived_by=str(archived["by"]) if archived.get("by") else None,
+            extra={k: v for k, v in meta.items() if k not in KNOWN_KEYS},
         )

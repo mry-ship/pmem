@@ -96,7 +96,7 @@ def test_cli_search_in_bash_unlocks_module(root):
     assert run("claude", "pre-tool", claude_edit(root, "src/Jigsaw/Board.cs", "s3"), root) == {}
 
 
-def test_stop_reminder_after_edit_uses_each_agents_continue_shape(root):
+def test_stop_reminder_after_edit_blocks_so_every_agent_version_continues(root):
     for agent, session in (("claude", "s4"), ("codex", "s5")):
         run(agent, "pre-tool", {"session_id": session, "tool_name": "mcp__pmem__search_memory",
                                 "tool_input": {"module": "gameplay.Jigsaw"}}, root)
@@ -106,10 +106,8 @@ def test_stop_reminder_after_edit_uses_each_agents_continue_shape(root):
                     "tool_input": {"command": "*** Begin Patch\n*** Update File: src/Jigsaw/Board.cs\n*** End Patch"}}
         assert run(agent, "post-tool", edit, root) == {}
         stop = run(agent, "stop", {"session_id": session, "stop_hook_active": False}, root)
-        if agent == "claude":
-            assert "gameplay.Jigsaw" in stop["hookSpecificOutput"]["additionalContext"]
-        else:
-            assert stop["decision"] == "block" and "gameplay.Jigsaw" in stop["reason"]
+        assert stop["decision"] == "block" and "gameplay.Jigsaw" in stop["reason"]
+        assert "hookSpecificOutput" not in stop
         assert run(agent, "stop", {"session_id": session, "stop_hook_active": True}, root) == {}
 
 

@@ -16,17 +16,27 @@ CODE_EXTS = {
     ".scala", ".gd", ".shader", ".hlsl", ".sql", ".proto",
 }
 SKIP_DIRS = {
-    ".git", ".svn", ".hg", "node_modules", "Library", "Temp", "Logs", "obj", "bin", "build", "dist", "out",
+    ".git", ".svn", ".hg", "node_modules", "obj", "bin", "build", "dist", "out",
     ".venv", "venv", "__pycache__", ".idea", ".vs", ".vscode", ".cursor", ".memory", "target", ".gradle",
-    "UserSettings", ".next", ".nuxt", "coverage", ".pytest_cache", ".ruff_cache",
+    ".next", ".nuxt", "coverage", ".pytest_cache", ".ruff_cache",
     # Go / PHP 依赖、iOS 依赖与构建产物、.NET 测试结果、Python 安装目录
     "vendor", "Pods", "Carthage", "DerivedData", "TestResults", "site-packages",
 }
 SKIP_SUFFIXES = (".egg-info",)
+# Unity 编辑器在工程根目录生成的目录：同级同时有 Assets 和 ProjectSettings 才算，
+# 业务代码里的同名目录（如 Scripts/Logs 日志模块）照常扫描
+UNITY_GENERATED = {"Library", "Temp", "Logs", "UserSettings"}
+UNITY_MARKERS = {"Assets", "ProjectSettings"}
 
 
 def skip_dir(name: str) -> bool:
     return name in SKIP_DIRS or name.startswith(".") or name.endswith(SKIP_SUFFIXES)
+
+
+def kept_dirs(names: list[str]) -> list[str]:
+    """os.walk 同一层的子目录里，去掉依赖、构建产物和 Unity 工程根下的生成目录。"""
+    unity_root = UNITY_MARKERS.issubset(names)
+    return [d for d in names if not skip_dir(d) and not (unity_root and d in UNITY_GENERATED)]
 THIRD_PARTY_NAMES = re.compile(
     r"^(plugins?|third[-_ ]?party|3rd[-_ ]?party|vendors?|externals?|deps|sdks?|.*sdk|googlemobileads|firebase|"
     r"facebook.*|appsflyer|maxsdk|ironsource|applovin|spine.*|dotween|demigiant|textmesh ?pro|sirenix|odin.*|"
@@ -39,7 +49,7 @@ BULK_COMMIT = 100
 
 def iter_code_files(root: Path):
     for dirpath, dirnames, filenames in os.walk(root):
-        dirnames[:] = [d for d in dirnames if not skip_dir(d)]
+        dirnames[:] = kept_dirs(dirnames)
         for name in filenames:
             if os.path.splitext(name)[1].lower() in CODE_EXTS:
                 yield Path(dirpath, name).relative_to(root).as_posix()

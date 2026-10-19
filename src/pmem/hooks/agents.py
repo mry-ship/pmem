@@ -90,10 +90,9 @@ def render(agent: str, event: str, result: dict) -> dict:
             }}
         return {}
     if event == "stop" and result.get("followup_message"):
-        message = result["followup_message"]
-        if agent == "claude":
-            return {"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": message}}
-        return {"decision": "block", "reason": message}
+        # Claude Code 2.1.163 起 Stop 才认 hookSpecificOutput.additionalContext，更早的版本直接忽略；
+        # decision=block 各版本都认（界面上标为 hook 反馈），与 Codex 同一写法
+        return {"decision": "block", "reason": result["followup_message"]}
     if event in ("prompt", "post-tool") and result.get("additional_context") and agent == "claude":
         return {"hookSpecificOutput": {"hookEventName": _EVENT_NAMES[event],
                                        "additionalContext": result["additional_context"]}}

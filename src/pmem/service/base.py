@@ -23,8 +23,9 @@ VERIFY_HINT = (
 )
 
 
-def fail(message: str, **extra) -> dict:
-    return {"ok": False, "error": message, **extra}
+def fail(message: str, code: str | None = None, **extra) -> dict:
+    """code 是稳定的错误类别（统计按它归类），message 是给人看的提示。"""
+    return {"ok": False, "error": message, **({"code": code} if code else {}), **extra}
 
 
 def returns_errors(method):
@@ -35,7 +36,7 @@ def returns_errors(method):
         try:
             return method(self, *args, **kwargs)
         except (RegistryError, StorageError) as exc:
-            return fail(str(exc))
+            return fail(str(exc), exc.code)
 
     return wrapper
 

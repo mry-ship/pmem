@@ -32,6 +32,26 @@ def test_events_roundtrip_and_since_filter(tmp_path):
     assert list(read_events(tmp_path, since=time.time() + 10)) == []
 
 
+def _log_many(cache_dir: str, worker: int, count: int) -> None:
+    for n in range(count):
+        log_event(Path(cache_dir), "search", worker=worker, n=n, query="检索" * 3000)
+
+
+def test_concurrent_processes_never_corrupt_lines(tmp_path, monkeypatch):
+    import multiprocessing
+
+    monkeypatch.delenv("PMEM_NO_EVENTS", raising=False)
+    ctx = multiprocessing.get_context("spawn")
+    workers = [ctx.Process(target=_log_many, args=(str(tmp_path), w, 40)) for w in range(4)]
+    for p in workers:
+        p.start()
+    for p in workers:
+        p.join(60)
+    lines = (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 160
+    assert {(r["worker"], r["n"]) for r in map(json.loads, lines)} == {(w, n) for w in range(4) for n in range(40)}
+
+
 def test_events_can_be_disabled(tmp_path, monkeypatch):
     monkeypatch.setenv("PMEM_NO_EVENTS", "1")
     log_event(tmp_path, "search")

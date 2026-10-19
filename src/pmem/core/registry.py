@@ -20,7 +20,11 @@ MIN_ASCII_NAME = 4
 
 
 class RegistryError(ValueError):
-    pass
+    """code 供统计归类（如 pmem health 的被拒写入），提示文字可以随意改。"""
+
+    def __init__(self, message: str, code: str = "modules_yaml"):
+        super().__init__(message)
+        self.code = code
 
 
 def is_module_id(text: str) -> bool:
@@ -212,7 +216,7 @@ class ModuleRegistry:
     def resolve_module(self, raw: str) -> ResolvedModule:
         text = (raw or "").strip()
         if not text:
-            raise RegistryError("模块名不能为空，格式为 category.Name")
+            raise RegistryError("模块名不能为空，格式为 category.Name", "module_invalid")
         key = text.lower()
         if key in self._full_index:
             mid = self._full_index[key]
@@ -221,18 +225,20 @@ class ModuleRegistry:
         if "." not in text:
             ids = self._bare_index.get(key)
             if not ids:
-                raise RegistryError(f"未知模块 {text!r}，请使用 category.Name 格式，或先用 list_modules 查看")
+                raise RegistryError(f"未知模块 {text!r}，请使用 category.Name 格式，或先用 list_modules 查看",
+                                    "module_invalid")
             if len(ids) > 1:
-                raise RegistryError(f"模块名 {text!r} 有歧义：{', '.join(sorted(ids))}，请写全 category.Name")
+                raise RegistryError(f"模块名 {text!r} 有歧义：{', '.join(sorted(ids))}，请写全 category.Name",
+                                    "module_invalid")
             mid = next(iter(ids))
             return self._resolved(mid, mid if self.modules[mid].merged_into else None)
 
         category, name = text.split(".", 1)
         category = category.lower()
         if category not in self.categories:
-            raise RegistryError(f"未知大类 {category!r}，只允许：{' / '.join(self.categories)}")
+            raise RegistryError(f"未知大类 {category!r}，只允许：{' / '.join(self.categories)}", "category_unknown")
         if not _NAME_RE.match(name):
-            raise RegistryError(f"模块名 {name!r} 不合法，只能包含字母、数字、下划线且以字母开头")
+            raise RegistryError(f"模块名 {name!r} 不合法，只能包含字母、数字、下划线且以字母开头", "module_invalid")
         cand = self._candidate_index.get(f"{category}.{name}".lower())
         if cand:
             return ResolvedModule(cand, category, cand.split(".", 1)[1], known=False, candidate=True)

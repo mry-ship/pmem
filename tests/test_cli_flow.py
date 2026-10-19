@@ -44,6 +44,16 @@ def test_init_creates_project_files_and_merges_existing_cursor_config(tmp_path, 
     assert len(again["sessionStart"]) == 1
 
 
+def test_rerun_init_says_which_options_were_not_applied(tmp_path, capsys):
+    main(["init", "--root", str(tmp_path), "--type", "generic"])
+    assert "没有生效" not in capsys.readouterr().out
+    main(["init", "--root", str(tmp_path), "--gate", "warn", "--type", "game"])
+    out = capsys.readouterr().out
+    assert "--gate warn" in out and "--type game" in out
+    config = yaml.safe_load((tmp_path / ".memory" / "config.yaml").read_text(encoding="utf-8"))
+    assert config["gate"]["mode"] == "block" and config["project"]["type"] == "generic"
+
+
 def _run_wrapper(root, event: str, path: str) -> dict:
     """在 PATH 只含 path 的环境里运行生成的 Hook 包装脚本（Windows 用 .cmd，其他用 sh）。"""
     script = root / ".memory" / "bin" / ("pmem-hook.cmd" if sys.platform == "win32" else "pmem-hook")

@@ -49,6 +49,7 @@ class StatusOps(ServiceBase):
         allowed, target = STATUS_ACTIONS[action]
         today = date.today().isoformat()
         changed, missing, skipped = [], [], []
+        statuses: dict[str, str] = {}
         for entry_id in dict.fromkeys(i for i in ids or [] if i):
             path = self.storage.find_path(entry_id)
             if path is None:
@@ -66,9 +67,14 @@ class StatusOps(ServiceBase):
                 entry.archived_on = entry.archived_from = entry.archived_by = None
             path.write_text(entry.to_markdown(), encoding="utf-8", newline="\n")
             changed.append(entry_id)
+            statuses[entry_id] = entry.status
         self._log("status", action=action, ids=changed)
-        response: dict = {"ok": bool(changed) or not (missing or skipped), "action": action, "status": target,
-                          "changed": changed}
+        # restore 回到各自归档前的状态，不一定是 target；状态不一致时 status 为 mixed，逐条见 statuses
+        distinct = set(statuses.values()) or {target}
+        response: dict = {"ok": bool(changed) or not (missing or skipped), "action": action,
+                          "status": next(iter(distinct)) if len(distinct) == 1 else "mixed", "changed": changed}
+        if len(distinct) > 1:
+            response["statuses"] = statuses
         if missing:
             response["missing"] = missing
         if skipped:

@@ -19,8 +19,10 @@ def build_parser():
 
     p = sub.add_parser("init", help="在项目中接入 pmem（生成 .memory/ 与各 Agent 的配置）")
     p.add_argument("--root", default=".")
-    p.add_argument("--type", choices=("game", "app", "backend", "generic"), default=None, help="项目类型，决定默认大类")
-    p.add_argument("--gate", choices=("off", "warn", "block"), default="block", help="闸门力度")
+    p.add_argument("--type", choices=("game", "app", "backend", "generic"), default=None,
+                   help="项目类型，决定默认大类；只在首次生成 config.yaml / modules.yaml 时生效")
+    p.add_argument("--gate", choices=("off", "warn", "block"), default=None,
+                   help="闸门力度，默认 block；只在首次生成 config.yaml 时生效")
     p.add_argument("--agents", default="auto",
                    help="要接入的 Agent，逗号分隔：cursor,claude,codex 或 all；"
                         "auto = Cursor 加上项目里已有配置的（.claude/、CLAUDE.md、.codex/、AGENTS.md）")
@@ -113,7 +115,7 @@ def build_parser():
     p.add_argument("ids", nargs="*")
     p.add_argument("--module", default="")
     p.add_argument("--plan", action="store_true", help="按改动热度列出值得先补种子记忆的模块")
-    p.add_argument("--top", type=int, default=10)
+    p.add_argument("--top", type=int, default=None, help="配合 --plan：列出前几个模块，默认 10")
     action = p.add_mutually_exclusive_group()
     action.add_argument("--accept", action="store_true", help="确认：转为正式记忆")
     action.add_argument("--reject", action="store_true", help="退回：标为归档")
@@ -139,6 +141,9 @@ def build_parser():
             mp.add_argument("--to", required=True, metavar="模块", help="搬到哪个模块")
         if name == "deprecate":
             mp.add_argument("--undo", action="store_true", help="撤销废弃")
+        if name == "merge":
+            mp.add_argument("--alias", action="store_true",
+                            help="source 是未登记模块时，把它登记为 target 的别名（以后还会这样写时用；笔误不用加）")
         if name == "split":
             mp.add_argument("--to", action="append", default=[], required=True, metavar="模块=路径或议题[,...]",
                             help="分出去的部分，可写多次，如 --to activity.MergeEvent=Assets/Merge/Event/**")
@@ -353,7 +358,7 @@ def _migrate(args) -> int:
     return run_migrate(_project_root(args.root), args.action, first, second, args.apply,
                        undo=getattr(args, "undo", False), targets=targets,
                        by=getattr(args, "by", "path"), assigns=getattr(args, "assign", None),
-                       ids=getattr(args, "ids", None))
+                       ids=getattr(args, "ids", None), keep_alias=getattr(args, "alias", False))
 
 
 def _health(args) -> int:

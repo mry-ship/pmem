@@ -6,6 +6,7 @@ from pathlib import Path
 from pmem.catalog.migrate import (
     MigrateError,
     apply_moves,
+    merge_moves,
     plan_deprecate,
     plan_merge,
     plan_move,
@@ -24,7 +25,7 @@ MAX_LISTED = 10
 
 def run_migrate(root: Path, action: str, first: str | None, second: str | None, apply: bool,
                 undo: bool = False, targets: list[str] | None = None, by: str = "path",
-                assigns: list[str] | None = None, ids: list[str] | None = None) -> int:
+                assigns: list[str] | None = None, ids: list[str] | None = None, keep_alias: bool = False) -> int:
     config = Config.load(root)
     if not config.modules_path.exists():
         print("还没有 .memory/modules.yaml，先按 pmem-bootstrap 技能划分模块")
@@ -40,13 +41,15 @@ def run_migrate(root: Path, action: str, first: str | None, second: str | None, 
         if action == "rename":
             new_data, notes = plan_rename(data, registry, first or "", second or "")
         elif action == "merge":
-            new_data, notes = plan_merge(data, registry, first or "", second or "")
+            new_data, notes = plan_merge(data, registry, first or "", second or "", keep_alias)
         elif action == "deprecate":
             new_data, notes = plan_deprecate(data, registry, first or "", undo)
         elif action == "split":
             split = plan_split(data, registry, storage, first or "", targets or [], by, assigns)
             new_data, notes = split.data, split.notes
         moves = plan_move(registry, storage, ids or [], second or "") if action == "move" else []
+        if action == "merge":
+            moves = merge_moves(registry, storage, first or "", second or "")
         new_registry = ModuleRegistry(new_data)
         moves = (split.moves if split else []) + moves
         planned = {m.entry_id for m in moves}

@@ -32,6 +32,7 @@ class SearchOps(ServiceBase):
             conv=source_conversation,
             ok=response.get("ok"),
             module=response.get("module"),
+            path=(path or None) and self._relative(path),
             entity=entity or None,
             query=(query or None) and query[:200],
             ids=[i["id"] for i in items],

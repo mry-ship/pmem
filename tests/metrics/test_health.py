@@ -37,6 +37,31 @@ def test_reject_reasons_are_classified():
     assert reject_reason("莫名其妙") == "其他"
     assert reject_reason("模块 economy.Shop 已废弃（只读），不再接受新记忆") == "模块已废弃（只读）"
     assert reject_reason("记忆 X 已提交到版本库，不能覆盖；请新建一条") == "草稿覆盖不被允许"
+    assert reject_reason("措辞随便改了", "module_deprecated") == "模块已废弃（只读）"
+    assert reject_reason("正文长度需在 20–1200 字之间", "unknown_code") == "其他"
+
+
+def test_every_record_rejection_carries_a_known_code(project):
+    from pmem.metrics.health import REJECT_CODES
+
+    service = MemoryService(project)
+    try:
+        cases = [
+            service.record("gameplay.Jigsaw", "Reward", "conclusion", "太短"),
+            service.record("gameplay.Jigsaw", "Reward", "guess", TEXT),
+            service.record("gameplay.Jigsaw", "", "conclusion", TEXT),
+            service.record("nope.Jigsaw", "Reward", "conclusion", TEXT),
+            service.record("Unknown", "Reward", "conclusion", TEXT),
+            service.record("gameplay.Jigsaw", "Reward", "conclusion", TEXT, status="archived"),
+            service.record("gameplay.Jigsaw", "Reward", "conclusion", TEXT, draft_id="01ARZ3NDEKTSV4RRFFQ69G5FAV"),
+        ]
+    finally:
+        service.close()
+    assert [c["code"] for c in cases] == ["content_length", "kind_invalid", "entity_missing", "category_unknown",
+                                          "module_invalid", "status_invalid", "draft_forbidden"]
+    assert all(c["code"] in REJECT_CODES for c in cases)
+    h = build_health(project)
+    assert ("草稿覆盖不被允许", 1) in h["rejected"]["by_reason"] and ("其他", 1) not in h["rejected"]["by_reason"]
 
 
 def test_health_lists_problems_for_owners(project, capsys):
@@ -70,6 +95,16 @@ def test_health_lists_problems_for_owners(project, capsys):
         assert title in text
     assert main(["health", "--root", str(project)]) == 0
     assert "pmem 健康报告" in capsys.readouterr().out
+
+
+def test_health_names_unregistered_paths_that_missed(project):
+    service = MemoryService(project)
+    try:
+        service.search(path=str(project / "tools" / "build.py"))
+        service.search(path="tools/build.py")
+    finally:
+        service.close()
+    assert ("（全局）", "路径 tools/build.py（未登记到模块）", 2) in build_health(project)["misses"]
 
 
 def test_health_counts_watchdog_restarts_but_not_reloads(project):
@@ -139,6 +174,17 @@ def test_dependency_and_build_dirs_are_not_code(tmp_path):
         (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / rel).write_text("x", encoding="utf-8")
     assert list(iter_code_files(tmp_path)) == ["src/a.go"]
+
+
+def test_unity_generated_dirs_are_skipped_only_at_the_unity_project_root(tmp_path):
+    from pmem.scan.lite import iter_code_files
+
+    for rel in ("client/Assets/Scripts/Logs/Logger.cs", "client/ProjectSettings/x.cs",
+                "client/Library/PackageCache/a.cs", "client/Temp/b.cs", "src/Library/Book.ts"):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text("x", encoding="utf-8")
+    assert sorted(iter_code_files(tmp_path)) == [
+        "client/Assets/Scripts/Logs/Logger.cs", "client/ProjectSettings/x.cs", "src/Library/Book.ts"]
 
 
 def test_memories_under_a_dotted_alias_are_strays_not_unregistered(project):

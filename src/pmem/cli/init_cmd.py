@@ -202,12 +202,19 @@ NEXT_STEPS = {
 }
 
 
-def run_init(root: Path, project_type: str | None, gate: str, agents: str = "auto") -> int:
+def run_init(root: Path, project_type: str | None, gate: str | None = None, agents: str = "auto") -> int:
     root = root.resolve()
     memory = root / ".memory"
-    project_type = project_type or guess_type(root)
     config_path = memory / "config.yaml"
     modules_path = memory / "modules.yaml"
+    # 重复运行不覆盖已有配置；显式给了 --gate / --type 却没生效时要说出来，否则用户以为改成了
+    ignored = []
+    if gate and config_path.exists():
+        ignored.append(f"--gate {gate}：config.yaml 已存在，请直接改其中的 gate.mode")
+    if project_type and config_path.exists() and modules_path.exists():
+        ignored.append(f"--type {project_type}：config.yaml 和 modules.yaml 已存在，请直接改 project.type 与 categories")
+    gate = gate or "block"
+    project_type = project_type or guess_type(root)
     chosen = pick_agents(root, agents)
     done: list[str] = []
 
@@ -234,6 +241,10 @@ def run_init(root: Path, project_type: str | None, gate: str, agents: str = "aut
     print("pmem 接入完成：")
     for line in done:
         print(f"  - {line}")
+    if ignored:
+        print("\n以下参数没有生效（重复运行不覆盖已有配置）：")
+        for line in ignored:
+            print(f"  - {line}")
     if shutil.which("pmem") is None:
         print("\n注意：当前 PATH 中找不到 pmem 命令，Agent 将无法启动 MCP 与 Hooks。请先运行：uv tool install pmem")
     print("\n下一步：")

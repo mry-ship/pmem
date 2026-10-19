@@ -21,7 +21,20 @@ NEGATIVE_KINDS = ("exclusion", "correction")
 # 词集合的 Jaccard 相似度；长正文天然偏低，实测同议题无关的一正一反记忆在 0.11 以下
 CONTRADICTION_OVERLAP = 0.15
 SEARCH_EVENTS = ("search", "mcp_search", "search_call")
-# 按顺序匹配拒绝原因；“上限”的提示里也提到 draft_id，所以排在前面
+REJECT_CODES = {
+    "content_length": "字数不在允许范围",
+    "secret": "疑似敏感信息",
+    "daily_cap": "当天同议题条数达到上限",
+    "draft_forbidden": "草稿覆盖不被允许",
+    "module_deprecated": "模块已废弃（只读）",
+    "category_unknown": "大类不存在",
+    "module_invalid": "模块名有误",
+    "modules_yaml": "modules.yaml 有误",
+    "entity_missing": "缺少议题",
+    "kind_invalid": "类型不对",
+    "status_invalid": "状态不对",
+}
+# 没有错误码的旧事件按提示文字归类，按顺序匹配；“上限”的提示里也提到 draft_id，所以排在前面
 REJECT_REASONS = (
     ("正文长度", "字数不在允许范围"),
     ("敏感信息", "疑似敏感信息"),
@@ -38,7 +51,9 @@ REJECT_REASONS = (
 )
 
 
-def reject_reason(error: str) -> str:
+def reject_reason(error: str, code: str | None = None) -> str:
+    if code:
+        return REJECT_CODES.get(code, "其他")
     return next((label for key, label in REJECT_REASONS if key in error), "其他")
 
 
@@ -68,8 +83,11 @@ def _misses(searches: list[dict]) -> list[tuple[str, str, int]]:
         module = e.get("module") or "（全局）"
         if not e.get("ids"):
             what = e.get("entity") or (e.get("query") or "")[:30]
-            if not what:
-                what = "（整模块浏览：当时模块里还没有记忆）" if e.get("module") else "（按路径检索：路径未登记到模块）"
+            if not what and e.get("module"):
+                what = "（整模块浏览：当时模块里还没有记忆）"
+            elif not what:
+                # 早期日志没记录路径
+                what = f"路径 {e['path']}（未登记到模块）" if e.get("path") else "（按路径检索：路径未登记到模块）"
             counter[(module, what)] += 1
         elif e.get("fallback") == "module" and e.get("entity"):
             counter[(module, f"议题 {e['entity']}（退回整模块）")] += 1
@@ -163,7 +181,7 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
         "contradictions": _contradictions(visible),
         "idle_modules": idle,
         "rejected": {"total": len(rejected),
-                     "by_reason": Counter(reject_reason(e.get("error") or "") for e in rejected).most_common(),
+                     "by_reason": Counter(reject_reason(e.get("error") or "", e.get("code")) for e in rejected).most_common(),
                      "by_module": Counter(e.get("module") or "？" for e in rejected).most_common(5)},
         "server_restarts": Counter(e.get("reason") or "？" for e in restarts).most_common(TOP),
         "seeds": Counter(e.module for e in visible if e.status == "seed").most_common(),

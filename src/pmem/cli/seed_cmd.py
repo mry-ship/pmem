@@ -62,12 +62,36 @@ def render_seeds(result: dict) -> str:
     return "\n".join(lines)
 
 
-def run_seed(root: Path, ids: list[str], module: str, plan: bool, top: int, accept: bool, reject: bool,
+def unused_options(ids: list[str], module: str, plan: bool, top: int | None, accept: bool, reject: bool,
+                   accept_all: bool) -> str | None:
+    """参数组合里会被悄悄忽略的部分；有就报错，不让用户以为生效了。"""
+    if plan:
+        extra = [name for name, given in (("记忆 id", ids), ("--module", module), ("--accept", accept),
+                                          ("--reject", reject), ("--all", accept_all)) if given]
+        return f"--plan 只列候选模块，不能同时给 {'、'.join(extra)}" if extra else None
+    if top is not None:
+        return "--top 只配合 --plan 使用"
+    if accept_all and not accept:
+        return "--all 只配合 --accept 使用"
+    if accept_all and (ids or module):
+        return "--all 表示确认全部种子，不能同时给记忆 id 或 --module"
+    if ids and module:
+        return "给了记忆 id 就按 id 处理，不能同时给 --module"
+    if ids and not (accept or reject):
+        return "给了记忆 id 时要配合 --accept 或 --reject；只查看待确认列表不用给 id"
+    return None
+
+
+def run_seed(root: Path, ids: list[str], module: str, plan: bool, top: int | None, accept: bool, reject: bool,
              accept_all: bool, as_json: bool) -> int:
+    problem = unused_options(ids, module, plan, top, accept, reject, accept_all)
+    if problem:
+        print(problem)
+        return 2
     service = MemoryService(root)
     try:
         if plan:
-            result = seed_plan(service, top)
+            result = seed_plan(service, top or 10)
             text = render_plan(result) if result.get("ok") else ""
         elif accept or reject:
             if not ids:

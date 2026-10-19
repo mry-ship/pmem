@@ -142,17 +142,22 @@ def test_merge_moves_paths_and_memories_into_target(project):
     assert main(["migrate", "merge", "economy.Shop", "economy.Store", "--root", str(project)]) == 1
 
 
-def test_merge_unregistered_and_candidate_modules(project):
+def test_merge_unregistered_and_candidate_modules(project, capsys):
     typo = record(project, "economy.Shopp")
     record(project, "economy.Coupon")
+    nickname = record(project, "economy.Mall")
     assert main(["migrate", "merge", "economy.Shopp", "economy.Shop", "--root", str(project), "--apply"]) == 0
+    assert "--alias" in capsys.readouterr().out
     assert main(["migrate", "merge", "economy.Coupon", "economy.Shop", "--root", str(project), "--apply"]) == 0
+    assert main(["migrate", "merge", "economy.Mall", "economy.Shop", "--alias", "--root", str(project),
+                 "--apply"]) == 0
     data = modules_yaml(project)[1]
-    assert data["modules"]["economy.Shop"]["aliases"] == ["economy.Shopp", "economy.Coupon"]
+    assert data["modules"]["economy.Shop"]["aliases"] == ["economy.Coupon", "economy.Mall"]
     assert data["modules"]["economy.Shop"]["paths"] == ["src/Shop/**", "src/Coupon/**"]
     assert data["candidates"] == {}
-    assert typo in [i["id"] for i in search(project, "economy.Shop")["items"]]
-    assert len(search(project, "economy.Shop")["items"]) == 2
+    moved = sorted(p.stem for p in (project / ".memory" / "entries" / "economy.Shop").glob("*.md"))
+    assert typo in moved and nickname in moved and len(moved) == 3
+    assert main(["migrate", "merge", "gameplay.Jigsaw", "economy.Shop", "--alias", "--root", str(project)]) == 1
 
 
 def test_move_relocates_misfiled_memories_by_id(project, capsys):

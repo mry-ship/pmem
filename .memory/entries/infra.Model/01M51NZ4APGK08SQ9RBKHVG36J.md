@@ -14,6 +14,7 @@ aliases:
 - read_digest
 - question_review
 - 默认开关
+verified: '2026-10-19'
 ---
 决定：记忆审查的两个开关 gate.read_digest（读代码时附摘要）和 gate.question_review（结束时要求核对问题涉及的模块）默认都开。
 

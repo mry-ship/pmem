@@ -10,7 +10,7 @@ anchors:
 revision: git:e258c6e
 author: 1002378395@qq.com
 note_date: '2026-10-14'
-verified: '2026-10-16'
+verified: '2026-10-19'
 ---
 Cursor 3.9 preToolUse 返回 permission=deny 时，Agent 收到的是 user_message（作为工具报错文本，并附带“不要建议绕过”的说明），agent_message 不会传给 Agent。
 因此闸门的可执行指引（该调用哪个 search_memory、检索后重试）必须完整写在 user_message 里，否则 Agent 只知道被拦、不知道怎么办。

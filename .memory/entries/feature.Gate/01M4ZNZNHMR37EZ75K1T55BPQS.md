@@ -15,7 +15,7 @@ aliases:
 - 自动补参
 - updated_input
 - 注入参数
-verified: '2026-10-16'
+verified: '2026-10-19'
 ---
 结论：Cursor 3.9 对 MCP 调用会采用 preToolUse 返回的 updated_input，所以闸门自动补的参数确实会送到记忆服务。
 

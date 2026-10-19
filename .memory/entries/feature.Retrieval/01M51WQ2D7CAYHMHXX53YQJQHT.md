@@ -1,6 +1,6 @@
 ---
 id: 01M51WQ2D7CAYHMHXX53YQJQHT
-module: infra.Common
+module: feature.Retrieval
 entity: CLI
 kind: decision
 status: active

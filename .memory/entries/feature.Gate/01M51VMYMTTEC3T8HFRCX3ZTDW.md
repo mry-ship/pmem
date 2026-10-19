@@ -21,6 +21,7 @@ aliases:
 - 已查过
 - 放行
 - Out-Null
+verified: '2026-10-19'
 ---
 决定：闸门默认用强制模式（gate.mode: block）；结束提醒默认也覆盖“整个对话只查了记忆”的情况（gate.analysis_reminder: true）。记忆由 Agent 自动写，不再提供“回复无需记录”的出口。
 

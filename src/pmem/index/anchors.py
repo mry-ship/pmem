@@ -20,6 +20,8 @@ if TYPE_CHECKING:
     from pmem.vcs.base import VCS
 
 CHANGE_CACHE_SECONDS = 60.0
+# MCP 服务是长驻进程，每次检索选中的记忆组合不同都会新增缓存项
+MAX_CACHED = 512
 STATE_CACHE_SECONDS = 600.0
 ANCHOR_CACHE = "anchors.json"
 SAME_WORK_DAYS = 7
@@ -111,6 +113,8 @@ class AnchorChecker:
             found = self.vcs.changed_after(files, since)
         except Exception:  # noqa: BLE001
             found = {}
+        if len(self._changes) >= MAX_CACHED:
+            self._changes.clear()
         self._changes[key] = (time.monotonic(), found)
         return found
 
@@ -159,6 +163,8 @@ class AnchorChecker:
             return None
         key = (rel, baseline)
         if key not in self._old_texts:
+            if len(self._old_texts) >= MAX_CACHED:
+                self._old_texts.clear()
             self._old_texts[key] = self.vcs.file_at(rel, baseline)
         old = self._old_texts[key]
         return None if old is None else symbol_block(old, symbol) != now

@@ -170,6 +170,16 @@ def test_graph_marks_stale_current_memories(svc, project):
     assert timeline[0]["stale"] is True
 
 
+def test_anchors_are_stored_relative_with_on_disk_case(svc, project):
+    board = project / "src" / "Jigsaw" / "Board.cs"
+    board.parent.mkdir(parents=True, exist_ok=True)
+    board.write_text("class Board { void Claim() {} }", encoding="utf-8")
+    written = record(svc, anchors=[f"{board}#Claim", "./src/jigsaw/board.cs", "src/Jigsaw/Gone.cs"])
+    entry = svc.storage.get(written["id"])
+    assert entry.anchors == ["src/Jigsaw/Board.cs#Claim", "src/Jigsaw/Board.cs", "src/Jigsaw/Gone.cs"]
+    assert any("Gone.cs 在项目里不存在" in w for w in written["warnings"])
+
+
 def test_search_rejects_bad_as_of(svc):
     assert svc.search(module="gameplay.Jigsaw", as_of="昨天")["ok"] is False
 

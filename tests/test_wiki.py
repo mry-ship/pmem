@@ -99,3 +99,12 @@ def test_wiki_rerun_removes_stale_generated_pages_only(root):
     main(["wiki", "--root", str(root)])
     assert not (wiki / "gameplay.Old.md").exists()
     assert (wiki / "notes.md").exists()
+
+
+def test_wiki_never_overwrites_hand_written_pages(root, capsys):
+    docs = root / "docs"
+    docs.mkdir()
+    (docs / "index.md").write_text("# 项目主页\n", encoding="utf-8")
+    assert main(["wiki", "--root", str(root), "--out", "docs"]) == 1
+    assert (docs / "index.md").read_text(encoding="utf-8") == "# 项目主页\n"
+    assert "index.md" in capsys.readouterr().out

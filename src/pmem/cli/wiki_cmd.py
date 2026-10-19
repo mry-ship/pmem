@@ -17,4 +17,8 @@ def run_wiki(root: Path, out: str | None) -> int:
     finally:
         service.close()
     print(f"Wiki 共 {result.pages} 页（更新 {result.written}、删除 {result.removed}）：{result.index}")
+    if result.skipped:
+        print(f"跳过 {len(result.skipped)} 个同名但不是 pmem 生成的页面（未覆盖）：{'、'.join(result.skipped[:10])}；"
+              "换一个输出目录再生成")
+        return 1
     return 0

@@ -55,14 +55,29 @@ class Module:
 
     @classmethod
     def from_dict(cls, module_id: str, data: dict | None) -> Module:
+        category, dot, name = str(module_id).partition(".")
+        if not dot or not category or not name:
+            raise RegistryError(f"modules.yaml 里的模块名 {module_id!r} 应写成 大类.模块名（如 feature.Login）")
         data = data or {}
+        if not isinstance(data, dict):
+            raise RegistryError(f"modules.yaml 里 {module_id} 的内容应是键值对（paths、aliases 等）")
+
+        def words(key: str) -> list[str]:
+            value = data.get(key) or []
+            # 手写成 paths: src/shop 时不能按字符拆开，否则永远匹配不上、单个字母还会被当成别名
+            if isinstance(value, str):
+                return [value]
+            if not isinstance(value, list):
+                raise RegistryError(f"modules.yaml 里 {module_id}.{key} 应是列表")
+            return [str(v) for v in value]
+
         return cls(
             id=module_id,
-            paths=[str(p) for p in data.get("paths") or []],
-            aliases=[str(a) for a in data.get("aliases") or []],
-            entities=[str(e) for e in data.get("entities") or []],
-            components=[str(c) for c in data.get("components") or []],
-            variants=[str(v) for v in data.get("variants") or []],
+            paths=words("paths"),
+            aliases=words("aliases"),
+            entities=words("entities"),
+            components=words("components"),
+            variants=words("variants"),
             parent=data.get("parent"),
             status=str(data.get("status") or "active"),
             description=str(data.get("description") or ""),
@@ -114,6 +129,11 @@ def _item_path(item) -> str:
 class ModuleRegistry:
     def __init__(self, data: dict | None):
         data = data or {}
+        if not isinstance(data, dict):
+            raise RegistryError("modules.yaml 的顶层应是键值对（categories、modules 等）")
+        for key in ("modules", "candidates", "categories", "entities"):
+            if data.get(key) is not None and not isinstance(data[key], dict):
+                raise RegistryError(f"modules.yaml 里的 {key} 应是键值对")
         self.categories: list[str] = list((data.get("categories") or {}).keys()) or list(DEFAULT_CATEGORIES)
         self.modules: dict[str, Module] = {
             mid: Module.from_dict(mid, body) for mid, body in (data.get("modules") or {}).items()

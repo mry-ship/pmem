@@ -18,6 +18,7 @@ aliases:
 - 记忆审查
 - 读码摘要
 - additional_context
+verified: '2026-10-19'
 ---
 决定：不改代码的问答也做记忆审查，分三层。同一模块在一个对话里只触发一次，用会话状态里的 reviewed 记录（search_memory 查过、看过摘要都算）。
 

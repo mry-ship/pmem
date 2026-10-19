@@ -10,6 +10,7 @@ anchors:
 revision: git:f131206
 author: 1002378395@qq.com
 note_date: '2026-10-14'
+verified: '2026-10-19'
 ---
 决定：pmem import --lancedb 只读导入参考实现（tilematch-dev-memory 一类）的 LanceDB 记忆。
 

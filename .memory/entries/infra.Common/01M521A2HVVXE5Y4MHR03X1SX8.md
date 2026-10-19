@@ -13,6 +13,7 @@ note_date: '2026-10-16'
 aliases:
 - 覆盖草稿
 - 清空别名
+verified: '2026-10-19'
 ---
 决定：pmem record 的 --supersedes / --anchor / --alias 默认值改为“没传”（None），并允许只写参数名不跟值。
 配合 --draft-id 时：不写沿用草稿原值，只写参数名表示清空，写了值则替换。

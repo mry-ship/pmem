@@ -236,6 +236,23 @@ def test_shell_write_is_gated(make_project):
         ("Get-Content a | Set-Content src/Z.cs\",", ["src/Z.cs"]),
         ("$code = @'\nSet-Content src/Q.cs 1\n'@\n$code | python -", []),
         ("cat > notes.txt <<'EOF'\nrm -f src/E.cs\nEOF", ["notes.txt"]),
+        # 审查找到的绕过写法
+        ("echo x 1> src/A1.cs", ["src/A1.cs"]),
+        ("echo x &> src/A2.cs", ["src/A2.cs"]),
+        ("echo x *> src/A3.cs", ["src/A3.cs"]),
+        ("echo x > 'src/A4.cs'", ["src/A4.cs"]),
+        ("echo x 2> err.log", ["err.log"]),
+        ("python -c \"f = lambda a: a->b\"", []),
+        ("/bin/rm src/B1.cs", ["src/B1.cs"]),
+        ("rm.exe src/B2.cs", ["src/B2.cs"]),
+        ("sed -i s/a/b/ src/C1.cs README.md", ["src/C1.cs", "README.md"]),
+        ("sed -i -e s/a/b/ src/C2.cs src/C3.cs", ["src/C2.cs", "src/C3.cs"]),
+        ("perl -pie 's/a/b/' src/C4.cs src/C5.cs", ["src/C4.cs", "src/C5.cs"]),
+        ("Remove-Item README.md, src/D1.cs", ["README.md", "src/D1.cs"]),
+        ("Remove-Item -Path a.md,src/D2.cs", ["a.md", "src/D2.cs"]),
+        ("Remove-Item -Recurse src/D3", ["src/D3"]),
+        ("Set-Content src/D4.cs 'value'", ["src/D4.cs"]),
+        ("cp -t src/E1 tmp/a.cs", ["src/E1"]),
     ],
 )
 def test_shell_write_targets(command, targets):
@@ -270,6 +287,8 @@ def test_git_checkout_without_dashes_restores_existing_files(tmp_path):
         ("svn diff TileMatch/Assets", False),
         ("svn update", True),
         ("svn revert -R src", True),
+        ("/bin/rm src/B1.cs", False),
+        ("C:\\Windows\\System32\\sed.exe -i s/a/b/ x.cs", False),
     ],
 )
 def test_commands_that_may_change_unparsed_files(command, unseen):
@@ -328,6 +347,27 @@ def test_record_injection_adds_conversation_and_draft(make_project):
     assert "draft_id" not in handle("pre-tool", other, root)["updated_input"]
     same = {**payload, "tool_input": {**payload["tool_input"], "entity": "reward"}}
     assert handle("pre-tool", same, root)["updated_input"]["draft_id"] == "01JA7K3M2X9F4Q8W6ZB1C2D3E9"
+
+
+def test_record_does_not_inject_committed_draft(make_project, monkeypatch):
+    root = make_project()
+    draft = "01JA7K3M2X9F4Q8W6ZB1C2D3E9"
+    payload = {"conversation_id": "c1", "tool_name": "MCP:record_memory",
+               "tool_input": {"module": "gameplay.Jigsaw", "entity": "Reward", "kind": "conclusion", "content": "x"}}
+    response = {"ok": True, "id": draft, "module": "gameplay.Jigsaw", "entity": "Reward"}
+    handle("after-mcp", {"conversation_id": "c1", "tool_name": "record_memory", "result_json": json.dumps(response)},
+           root)
+    folder = root / ".memory/entries/gameplay.Jigsaw"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{draft}.md").write_text("x", encoding="utf-8")
+    assert handle("pre-tool", payload, root)["updated_input"]["draft_id"] == draft
+
+    class Committed:
+        def is_committed(self, path):
+            return True
+
+    monkeypatch.setattr("pmem.hooks.gate.Gate.vcs", lambda self: Committed())
+    assert "draft_id" not in handle("pre-tool", payload, root)["updated_input"]
 
 
 def test_record_overwriting_draft_keeps_its_anchors(make_project):
@@ -399,6 +439,9 @@ def test_stop_is_quiet_when_aborted(make_project):
         ("pmem search --module a.B *> out.txt", []),
         ("pmem search --module a.B | Out-Null; pmem search --module c.D", [{"module": "c.D"}]),
         ("pmem search --module a.B 2>&1 | Select-String x", [{"module": "a.B"}]),
+        ("pmem search --module=a.B --path=src/x.cs", [{"module": "a.B", "path": "src/x.cs"}]),
+        ("pmem search --module a.B 2> $null", [{"module": "a.B"}]),
+        ("pmem search --module a.B 1> out.txt", []),
     ],
 )
 def test_cli_search_args(command, args):
@@ -944,6 +987,44 @@ def test_parallel_shell_commands_keep_their_own_snapshots(git_project):
     assert "src/Jigsaw/Board.cs" in handle("post-tool", shell("python gen.py"), root)["additional_context"]
     assert handle("post-tool", shell("uv run ruff format src"), root) == {}
     assert SessionState(Config.load(root).cache_dir, "c1").data["shell_before"] == {}
+
+
+def test_read_only_command_finishing_first_does_not_take_another_commands_snapshot(git_project):
+    root = git_project
+    handle("pre-tool", shell("python gen.py"), root)
+    assert handle("post-tool", shell("ls src"), root) == {}
+    (root / "src" / "Jigsaw" / "Board.cs").write_text("class Board { int p; }\n", encoding="utf-8")
+    assert "src/Jigsaw/Board.cs" in handle("post-tool", shell("python gen.py"), root)["additional_context"]
+
+
+def test_deleting_a_folder_checks_the_modules_registered_under_it(make_project):
+    root = make_project("block", with_memory=False)
+    modules = root / ".memory" / "modules.yaml"
+    modules.write_text(MODULES + "  infra.Common: { paths: [src/**] }\n", encoding="utf-8")
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3B1", "conclusion", "拼图的结论", "2026-09-01")
+    (root / "src" / "Jigsaw").mkdir(parents=True)
+    (root / "src" / "Jigsaw" / "Board.cs").write_text("x", encoding="utf-8")
+    denied = handle("pre-tool", shell("rm -rf src"), root)
+    assert denied["permission"] == "deny" and "gameplay.Jigsaw" in denied["user_message"]
+
+
+def test_searching_a_folder_digests_the_module_inside_not_the_umbrella(make_project):
+    root = make_project("block")
+    modules = root / ".memory" / "modules.yaml"
+    modules.write_text(MODULES + "  infra.Common: { paths: [src/**] }\n", encoding="utf-8")
+    (root / "src" / "Jigsaw").mkdir(parents=True)
+    grep = {"conversation_id": "c1", "tool_name": "Grep", "tool_input": {"pattern": "x", "path": str(root / "src/Jigsaw")}}
+    assert "gameplay.Jigsaw" in handle("post-tool", grep, root)["additional_context"]
+
+
+def test_corrupt_session_state_is_repaired_field_by_field(tmp_path):
+    state = SessionState(tmp_path, "c1")
+    state.path.parent.mkdir(parents=True, exist_ok=True)
+    state.path.write_text(json.dumps({"written": [], "searched": ["a.B"], "skip": "yes"}), encoding="utf-8")
+    data = SessionState(tmp_path, "c1").data
+    assert data["written"] == {} and data["searched"] == ["a.B"] and data["skip"] is False
+    state.path.write_text("null", encoding="utf-8")
+    assert SessionState(tmp_path, "c1").data["searched"] == []
 
 
 def test_cd_then_relative_write_is_gated(git_project):

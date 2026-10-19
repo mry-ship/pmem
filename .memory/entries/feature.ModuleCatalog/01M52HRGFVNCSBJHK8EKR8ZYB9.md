@@ -6,7 +6,7 @@ kind: decision
 status: active
 supersedes: []
 anchors:
-- src/pmem/cli/migrate_cmd.py#plan_deprecate
+- src/pmem/catalog/migrate.py#plan_deprecate
 - src/pmem/core/registry.py#deprecated
 - src/pmem/service.py#_record
 - src/pmem/hooks/gate.py#_deprecated

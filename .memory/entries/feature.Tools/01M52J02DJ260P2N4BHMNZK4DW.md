@@ -20,6 +20,7 @@ aliases:
 - 退回
 - archive
 - restore
+verified: '2026-10-19'
 ---
 决定：记忆状态的变更集中在 MemoryService.change_status，只允许四种动作：archive（active/seed/draft → archived）、restore（archived → 归档前的状态，没记录时 active）、accept（seed → active）、reject（seed → archived）。
 归档时在 YAML 头记 archived: {on: 日期, from: 原状态}，恢复后清掉；

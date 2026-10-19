@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 from datetime import date
 from pathlib import Path
 
-from pmem.vcs.base import VCS, run_tool
+from pmem.vcs.base import VCS, path_batches, run_tool
 
 _UNCOMMITTED = {"unversioned", "added", "modified", "replaced"}
 _DIRTY = _UNCOMMITTED | {"deleted", "missing", "conflicted"}
@@ -55,6 +55,10 @@ class SvnVCS(VCS):
         item = self._item_status(path)
         return item is None or item in _UNCOMMITTED
 
+    def is_committed(self, path: Path) -> bool:
+        item = self._item_status(path)
+        return item is not None and item not in ("unversioned", "added")
+
     def uncommitted_count(self, folder: Path, suffix: str = ".md") -> int | None:
         if not folder.is_dir():
             return 0
@@ -83,21 +87,22 @@ class SvnVCS(VCS):
         if not paths:
             return {}
         found: dict[str, str] = {}
-        # svn info 读本地工作副本元数据，不访问服务器；commit/date 是该文件最后一次提交的时间（UTC）
-        # 有路径未纳入版本库时退出码非 0，但其余路径的 XML 仍完整输出
-        info = self._xml("info", *paths, partial=True)
-        for entry in info.iter("entry") if info is not None else []:
-            node = entry.find("commit/date")
-            rel = (entry.get("path") or "").replace("\\", "/")
-            day = (node.text or "")[:10] if node is not None else ""
-            if rel and day > since:
-                found[rel] = day
-        status = self._xml("status", *paths, partial=True)
         today = date.today().isoformat()
-        for entry in status.iter("entry") if status is not None else []:
-            node = entry.find("wc-status")
-            if node is not None and node.get("item") in ("modified", "replaced") and today > since:
-                found[(entry.get("path") or "").replace("\\", "/")] = today
+        for batch in path_batches(paths):
+            # svn info 读本地工作副本元数据，不访问服务器；commit/date 是该文件最后一次提交的时间（UTC）
+            # 有路径未纳入版本库时退出码非 0，但其余路径的 XML 仍完整输出
+            info = self._xml("info", *batch, partial=True)
+            for entry in info.iter("entry") if info is not None else []:
+                node = entry.find("commit/date")
+                rel = (entry.get("path") or "").replace("\\", "/")
+                day = (node.text or "")[:10] if node is not None else ""
+                if rel and day > since:
+                    found[rel] = day
+            status = self._xml("status", *batch, partial=True)
+            for entry in status.iter("entry") if status is not None else []:
+                node = entry.find("wc-status")
+                if node is not None and node.get("item") in ("modified", "replaced") and today > since:
+                    found[(entry.get("path") or "").replace("\\", "/")] = today
         wanted = {p.replace("\\", "/") for p in paths}
         return {k: v for k, v in found.items() if k in wanted}
 

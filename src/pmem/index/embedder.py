@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 import urllib.request
 from pathlib import Path
 
@@ -11,6 +12,7 @@ import numpy as np
 from pmem.index.tokenize import tokenize
 
 DEFAULT_ONNX_MODEL = "BAAI/bge-small-zh-v1.5"
+LOAD_RETRY_SECONDS = 600.0
 
 
 def _normalise(matrix: np.ndarray) -> np.ndarray:
@@ -98,11 +100,19 @@ class LazyOnnxEmbedder(Embedder):
     def __init__(self, model: str, model_path: str = "", cache_dir: Path | None = None):
         self._args = (model, model_path, cache_dir)
         self._inner: OnnxEmbedder | None = None
+        self._failed: tuple[float, Exception] | None = None
         self.id = f"onnx:{model}"
 
     def embed(self, texts: list[str]) -> np.ndarray:
         if self._inner is None:
-            self._inner = OnnxEmbedder(*self._args)
+            # 离线时每次重试加载都可能卡在下载上，拖到看门狗超时；冷却期内直接失败，调用方退回关键词检索
+            if self._failed and time.monotonic() - self._failed[0] < LOAD_RETRY_SECONDS:
+                raise self._failed[1]
+            try:
+                self._inner = OnnxEmbedder(*self._args)
+            except Exception as exc:
+                self._failed = (time.monotonic(), exc)
+                raise
         return self._inner.embed(texts)
 
 

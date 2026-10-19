@@ -71,7 +71,7 @@ class FilesStorage:
             )
         if old.module != entry.module:
             raise StorageError(f"记忆 {draft_id} 属于 {old.module}，不能改到 {entry.module}；请新建一条")
-        if not self.vcs.is_uncommitted(path):
+        if self.vcs.is_committed(path):
             raise StorageError(f"记忆 {draft_id} 已提交到版本库，不能覆盖；请新建一条并在 supersedes 中写 {draft_id}")
         return path
 

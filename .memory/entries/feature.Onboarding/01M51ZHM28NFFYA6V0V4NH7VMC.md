@@ -18,6 +18,7 @@ aliases:
 - 静默失效
 - 包装脚本
 - sessionStart
+verified: '2026-10-19'
 ---
 决定：pmem init 生成的 Hooks 不再直接调用 pmem，改为经 .memory/bin/pmem-hook 包装脚本调用（sh 版无扩展名、LF；Windows 版 pmem-hook.cmd、CRLF、纯 ASCII；附 .gitattributes 固定换行，Git 下登记可执行位）。
 包装脚本找得到 pmem 就转交；

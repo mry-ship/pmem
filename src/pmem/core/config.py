@@ -4,6 +4,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -122,12 +123,25 @@ class Config:
             value = self.get(key)
             if value not in allowed:
                 raise ConfigError(f"配置项 {key} 只能是 {' / '.join(allowed)}，当前为 {value!r}")
+        patterns = self.get("write.secret_patterns") or []
+        if not isinstance(patterns, list):
+            raise ConfigError("配置项 write.secret_patterns 应是正则表达式列表")
+        for pattern in patterns:
+            try:
+                re.compile(str(pattern))
+            except re.error as exc:
+                raise ConfigError(f"配置项 write.secret_patterns 里的 {pattern!r} 不是有效的正则：{exc}") from exc
 
     @classmethod
     def load(cls, root: str | Path) -> Config:
         root = Path(root).resolve()
         path = root / MEMORY_DIR / CONFIG_FILE
-        raw = load_yaml(path) if path.exists() else None
+        try:
+            raw = load_yaml(path) if path.exists() else None
+        except Exception as exc:
+            raise ConfigError(f"{MEMORY_DIR}/{CONFIG_FILE} 无法解析：{exc}") from exc
+        if raw is not None and not isinstance(raw, dict):
+            raise ConfigError(f"{MEMORY_DIR}/{CONFIG_FILE} 的顶层应是键值对，当前为 {type(raw).__name__}")
         return cls(root, _merge(DEFAULTS, raw or {}))
 
     def get(self, dotted: str, default=None):

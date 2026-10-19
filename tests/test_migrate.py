@@ -155,6 +155,30 @@ def test_merge_unregistered_and_candidate_modules(project):
     assert len(search(project, "economy.Shop")["items"]) == 2
 
 
+def test_move_relocates_misfiled_memories_by_id(project, capsys):
+    rid = record(project, "gameplay.Jigsaw")
+    before = modules_yaml(project)[0]
+    assert main(["migrate", "move", rid, "--to", "economy.Shop", "--root", str(project)]) == 0
+    assert f"{rid}：gameplay.Jigsaw → economy.Shop" in capsys.readouterr().out
+    assert main(["migrate", "move", rid, rid, "--to", "economy.Shop", "--root", str(project), "--apply"]) == 0
+    assert search(project, "gameplay.Jigsaw")["items"] == []
+    assert [i["id"] for i in search(project, "economy.Shop")["items"]] == [rid]
+    assert modules_yaml(project)[0] == before
+
+
+@pytest.mark.parametrize(("args", "message"), [
+    (["--to", "economy.Nope"], "不是 modules.yaml 里登记的模块"),
+    (["--to", "gameplay.Jigsaw"], "已经在 gameplay.Jigsaw 下"),
+])
+def test_move_rejects_bad_targets(project, capsys, args, message):
+    rid = record(project, "gameplay.Jigsaw")
+    assert main(["migrate", "move", rid, *args, "--root", str(project)]) == 1
+    assert message in capsys.readouterr().out
+    assert main(["migrate", "move", "01M0000000000000000000000Z", "--to", "economy.Shop",
+                 "--root", str(project)]) == 1
+    assert "找不到记忆" in capsys.readouterr().out
+
+
 def test_tidy_moves_memories_left_under_an_alias(project, capsys):
     assert main(["migrate", "tidy", "--root", str(project)]) == 0
     assert "没有需要搬动" in capsys.readouterr().out

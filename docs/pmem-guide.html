@@ -182,6 +182,8 @@ pmem doctor</code></pre>
     <tr><td>刚接入、记忆库还空</td><td>对 AI 说“按 pmem-seed 技能提炼种子记忆”，负责人用 <code>pmem seed</code> 过目后转正</td></tr>
     <tr><td>模块改名、合并</td><td><code>pmem migrate rename</code> / <code>merge</code>，记忆随之搬家（默认预览，<code>--apply</code> 执行）</td></tr>
     <tr><td>一个模块管得太宽，要拆开</td><td><code>pmem migrate split &lt;模块&gt; --to &lt;新模块&gt;=&lt;路径&gt;</code>，记忆按关联代码分过去</td></tr>
+    <tr><td>个别记忆写错了模块</td><td><code>pmem migrate move &lt;id&gt; ... --to &lt;模块&gt;</code>（默认预览，<code>--apply</code> 执行）</td></tr>
+    <tr><td>代码文件改名、搬家后记忆都标“需核实”</td><td><code>pmem anchors --rename &lt;旧路径&gt;=&lt;新路径&gt;</code> 改写关联代码，再核对后 <code>pmem confirm</code></td></tr>
     <tr><td>某条记忆已过时、又没有替代结论</td><td><code>pmem archive &lt;id&gt;</code>，<code>--restore</code> 撤销</td></tr>
     <tr><td>业务下线、模块不再维护</td><td><code>pmem migrate deprecate &lt;模块&gt; --apply</code>，<code>--undo</code> 撤销</td></tr>
     <tr><td>定期收口（模块负责人）</td><td>对 AI 说“按 pmem-consolidate 技能整理记忆库”（按 <code>pmem health</code> 逐节处理）</td></tr>
@@ -497,6 +499,8 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem terms</code></td><td>记忆里的高频词，用于整理同义词</td></tr>
     <tr><td><code>pmem compact</code></td><td>列出零碎记忆较多的议题；指定议题时输出全部正文供合并</td></tr>
     <tr><td><code>pmem anchors [--apply]</code></td><td>给没有关联代码的旧记忆补 anchors（默认只预览）</td></tr>
+    <tr><td><code>pmem anchors --rename 旧=新 [--apply]</code></td><td>代码改名、搬家后批量改写记忆的关联代码</td></tr>
+    <tr><td><code>pmem migrate move &lt;id&gt;... --to &lt;模块&gt; [--apply]</code></td><td>把归错模块的记忆搬到正确的模块</td></tr>
     <tr><td><code>pmem format [--apply]</code></td><td>把旧记忆里一整行的长正文按句号、分号和编号断行，编号小项缩进两格，方便直接打开文件阅读（默认只预览；新写入和导入的记忆会自动整理）</td></tr>
     <tr><td><code>pmem import</code></td><td>从 LanceDB 记忆库只读导入</td></tr>
     <tr><td><code>pmem reindex</code></td><td>清空本机索引缓存并重建</td></tr>

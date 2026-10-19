@@ -23,53 +23,62 @@ synonyms:
   - [过期, 失效, stale]
 modules:
   feature.Gate:
-    description: Cursor Hooks 闸门：按模块提醒先查记忆、注入草稿、结束提醒
-    paths: [src/pmem/hooks/**, src/pmem/cli/hook_cmd.py, tests/hooks/**, tests/fixtures/hook_payloads/**, spike/cursor_hooks/**]
+    description: Hooks 闸门：改代码前按模块拦截、读代码附摘要、问答审查、结束提醒、终端写命令识别
+    paths: [src/pmem/hooks/**, src/pmem/cli/hook_cmd.py, tests/hooks/**, tests/fixtures/hook_payloads/**, tests/test_hook_cmd.py, spike/cursor_hooks/**]
     aliases: [Hooks, Hook]
-    entities: [Encoding, Payload, State, ShellParse]
+    entities: [Encoding, Payload, State, ShellParse, AutoAnchors, PromptReview, HookLatency]
   feature.Retrieval:
-    description: 索引、分词、嵌入与排序
-    paths: [src/pmem/index/**, tests/index/**, scripts/eval_retrieval.py, tests/fixtures/eval/**]
+    description: 检索：索引与缓存、分词、同义词、嵌入、排序、过期核对（stale）与知识图谱
+    paths: [src/pmem/index/**, src/pmem/cli/reindex_cmd.py, tests/index/**, scripts/eval_retrieval.py, tests/fixtures/eval/**]
     aliases: [Index, Search]
-    entities: [Ranking, Embedding, Tokenize]
+    entities: [Ranking, Embedding, Tokenize, StaleCheck, Supersede]
   feature.Tools:
-    description: MCP 服务与 5 个工具背后的业务规则（写入校验、检索参数、核对、图谱）
-    paths: [src/pmem/server/**, src/pmem/service.py, src/pmem/core/secrets.py, tests/test_service.py, tests/test_server.py, scripts/smoke_mcp.py]
-    aliases: [Mcp, Server, Service]
-    entities: [Record, Search, Secrets]
+    description: 记忆服务层：MemoryService 与 5 个 MCP 工具背后的业务规则（写入校验、检索参数、核对、状态变更、图谱出参）
+    paths: [src/pmem/service.py, src/pmem/server/app.py, src/pmem/core/secrets.py, tests/test_service.py, tests/test_server.py, scripts/smoke_mcp.py]
+    aliases: [Mcp, Service]
+    entities: [Record, Search, Secrets, Status, Similar]
+  infra.Watchdog:
+    description: MCP 服务看门狗：pmem serve 守护 serve --worker 子进程，崩溃、超时、代码更新时自动重启并重新握手
+    paths: [src/pmem/server/watchdog.py, tests/test_watchdog.py]
+    aliases: [Server, 看门狗]
   feature.ModuleCatalog:
-    description: modules.yaml 的解析、别名归一与路径映射
-    paths: [src/pmem/core/registry.py, src/pmem/cli/migrate_cmd.py, src/pmem/cli/sync_cmd.py, tests/core/test_registry_*.py, tests/core/conftest.py, tests/test_migrate.py, tests/test_migrate_split.py, tests/test_sync.py]
-    aliases: [Registry]
+    description: 模块目录：modules.yaml 的解析与路径映射（core/registry.py），以及迁移、同步、覆盖率（catalog 包）和对应命令
+    paths: [src/pmem/core/registry.py, src/pmem/catalog/**, src/pmem/cli/migrate_cmd.py, src/pmem/cli/sync_cmd.py, tests/core/test_registry_*.py, tests/core/conftest.py, tests/test_migrate.py, tests/test_migrate_split.py, tests/test_sync.py]
+    aliases: [Registry, Catalog]
+    entities: [Migrate, Split, Deprecate, Loading, NameMatch]
   feature.Storage:
     description: 记忆文件存储与 Git/SVN 适配
     paths: [src/pmem/storage/**, src/pmem/vcs/**, tests/storage/**, tests/vcs/**, tests/conftest.py]
     aliases: [Vcs, Files]
     components: [Files, Git, Svn]
   feature.Onboarding:
-    description: init / scan / doctor 与生成的规则、技能、配置
-    paths: [src/pmem/cli/init_cmd.py, src/pmem/cli/doctor_cmd.py, src/pmem/generate/**, src/pmem/scan/**, tests/test_cli_flow.py]
+    description: 接入：init 生成的规则、技能、Hooks、MCP 配置模板，scan 目录与热度扫描，doctor 自检
+    paths: [src/pmem/cli/init_cmd.py, src/pmem/cli/doctor_cmd.py, src/pmem/generate/templates.py, src/pmem/scan/**, tests/test_cli_flow.py]
     aliases: [Init, Doctor, Scan]
+    entities: [Skills, Hooks, Rule, Doctor, Scan]
+  feature.Wiki:
+    description: 从记忆生成可浏览的 Markdown Wiki（每模块一页、过期标记、写入后自动更新）
+    paths: [src/pmem/generate/wiki.py, src/pmem/cli/wiki_cmd.py, tests/test_wiki.py]
   feature.Metrics:
-    description: 收益量化：本机事件日志、pmem report、引用识别、对照实验
+    description: 度量与报告：本机事件日志、收益报告 pmem report、引用识别、健康报告 pmem health、对照实验 pmem bench
     paths: [src/pmem/metrics/**, src/pmem/bench/**, tests/metrics/**, tests/bench/**, scripts/calibrate_cite.py, bench/**]
-    aliases: [Report, Bench]
-    entities: [Events, Citation, Compare, Bench]
+    aliases: [Report, Bench, Health]
+    entities: [Events, Citation, Compare, Bench, Health, Contradiction]
   feature.Import:
     description: 从既有记忆系统（LanceDB 参考实现）只读导入
     paths: [src/pmem/importers/**, src/pmem/cli/import_cmd.py, tests/importers/**]
     aliases: [Importer, LanceDB]
   feature.Curation:
-    description: 记忆整理：写入质量提示、相近实体、合并零碎记忆、补关联代码、种子记忆与归档
-    paths: [src/pmem/core/quality.py, src/pmem/cli/compact_cmd.py, src/pmem/cli/anchors_cmd.py, src/pmem/cli/seed_cmd.py, tests/core/test_quality.py, tests/test_compact.py, tests/test_anchors_cmd.py, tests/test_lifecycle.py]
+    description: 记忆整理：写入质量提示、相近议题、合并零碎记忆、补关联代码、正文断行、种子记忆与归档
+    paths: [src/pmem/core/quality.py, src/pmem/cli/compact_cmd.py, src/pmem/cli/anchors_cmd.py, src/pmem/cli/seed_cmd.py, src/pmem/cli/format_cmd.py, tests/core/test_quality.py, tests/test_compact.py, tests/test_anchors_cmd.py, tests/test_lifecycle.py, tests/test_format_cmd.py]
     aliases: [Compact, Quality, Anchors]
-    entities: [WriteHints, Merge, Anchors]
+    entities: [WriteHints, Merge, Anchors, Seed, Format]
   infra.Model:
-    description: 记忆条目、ULID 与配置
-    paths: [src/pmem/core/entry.py, src/pmem/core/ids.py, src/pmem/core/config.py, tests/core/test_entry.py, tests/core/test_ids.py, tests/core/test_config.py]
+    description: 数据模型：记忆条目（类型、状态及其中文名）、ULID、正文断行、配置与默认值
+    paths: [src/pmem/core/entry.py, src/pmem/core/ids.py, src/pmem/core/config.py, src/pmem/core/textfmt.py, tests/core/test_entry.py, tests/core/test_ids.py, tests/core/test_config.py, tests/core/test_textfmt.py]
     aliases: [Entry, Config]
   infra.Common:
-    description: 命令行入口与其余零散文件
+    description: 命令行入口（main.py 参数解析、--brief 精简输出）与尚未归类的文件；新文件先落在这里，成形后归到对应模块
     paths: [src/pmem/**, tests/**]
     aliases: [Cli]
 candidates: {}

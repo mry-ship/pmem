@@ -11,6 +11,7 @@ from pathlib import Path
 TTL_SECONDS = 7 * 24 * 3600
 LOCK_TIMEOUT = 5.0
 _LOCK_POLL = 0.02
+REPLACE_RETRIES = 5
 _DEFAULTS = {
     "searched": [], "warned": [], "edited": [], "written": {}, "nudged": [], "skip": False,
     "returned": [], "recorded": [], "cli_recorded": [], "edited_files": [],
@@ -66,9 +67,15 @@ class SessionState:
         data = {k: (v.copy() if isinstance(v, (list, dict)) else v) for k, v in _DEFAULTS.items()}
         if self.path.exists():
             try:
-                data.update(json.loads(self.path.read_text(encoding="utf-8")))
-            except (OSError, json.JSONDecodeError):
-                pass
+                saved = json.loads(self.path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                saved = None
+            # 文件损坏（null、数组、字段类型不对）时逐项丢弃，否则这个对话的 Hook 会一直出错、默认放行
+            if isinstance(saved, dict):
+                for key, value in saved.items():
+                    default = _DEFAULTS.get(key)
+                    if default is None or isinstance(value, type(default)):
+                        data[key] = value
         return data
 
     @contextmanager
@@ -76,12 +83,19 @@ class SessionState:
         """同一对话的 Hook 会并行执行（Cursor 并行发出的工具调用各起一个进程），读、改、写必须串行，
         否则后写的会覆盖先写的。等锁超时就不加锁继续，宁可偶尔丢一次更新，也不卡住开发。"""
         self.dir.mkdir(parents=True, exist_ok=True)
-        with open(self.path.with_suffix(".lock"), "a+b") as fh:
+        lock_path = self.path.with_suffix(".lock")
+        with open(lock_path, "a+b") as fh:
             deadline = time.monotonic() + LOCK_TIMEOUT
             held = _try_lock(fh)
             while not held and time.monotonic() < deadline:
                 time.sleep(_LOCK_POLL)
                 held = _try_lock(fh)
+            if held:
+                # 锁文件从不写入，按修改时间清理会删掉活跃对话正持有的锁
+                try:
+                    os.utime(lock_path)
+                except OSError:
+                    pass
             try:
                 self.data = self._load()
                 yield self
@@ -100,11 +114,20 @@ class SessionState:
         self.dir.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(f".{os.getpid()}.tmp")
         tmp.write_text(json.dumps(self.data, ensure_ascii=False), encoding="utf-8")
-        os.replace(tmp, self.path)
+        # Windows 上目标文件正被别的 Hook 进程读着时 os.replace 会报 PermissionError，稍等重试
+        for attempt in range(REPLACE_RETRIES):
+            try:
+                os.replace(tmp, self.path)
+                return
+            except PermissionError:
+                if attempt == REPLACE_RETRIES - 1:
+                    tmp.unlink(missing_ok=True)
+                    raise
+                time.sleep(_LOCK_POLL)
 
     def cleanup_old(self) -> None:
         cutoff = time.time() - TTL_SECONDS
-        for pattern in ("*.json", "*.lock"):
+        for pattern in ("*.json", "*.lock", "*.tmp"):
             for path in self.dir.glob(pattern):
                 try:
                     if path.stat().st_mtime < cutoff:

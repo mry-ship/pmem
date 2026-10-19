@@ -1,8 +1,9 @@
 """--brief：把服务返回的 JSON 压成每条一行的文本，终端里直接能读，不必再用管道筛选。"""
 from __future__ import annotations
 
+from pmem.core.entry import KIND_LABELS
 from pmem.index.anchors import STALE_LABEL
-from pmem.index.graph import KIND_LABELS, preview
+from pmem.index.graph import preview
 
 PREVIEW = 120
 

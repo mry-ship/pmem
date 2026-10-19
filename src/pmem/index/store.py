@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pmem.core.entry import Entry
+from pmem.core.entry import REPLACING_STATUSES, VISIBLE_STATUSES, Entry
 from pmem.core.ids import ALPHABET
 from pmem.index.anchors import ANCHOR_CACHE, AnchorChecker
 from pmem.index.embedder import Embedder
@@ -19,9 +19,6 @@ from pmem.index.synonyms import expansions
 from pmem.index.tokenize import tokenize
 from pmem.storage.files import FilesStorage
 
-VISIBLE_STATUSES = ("active", "seed", "draft")
-# 归档的记忆不再出现，但它替代过的旧记忆也不该因此恢复现行
-REPLACING_STATUSES = (*VISIBLE_STATUSES, "archived")
 BOOSTED_KINDS = ("exclusion", "correction")
 _BATCH_WINDOW_MS = 90 * 60 * 1000
 SYNONYM_WEIGHT = 0.8

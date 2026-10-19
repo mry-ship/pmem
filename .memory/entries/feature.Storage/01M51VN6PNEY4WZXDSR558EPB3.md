@@ -16,6 +16,7 @@ aliases:
 - 路径穿越
 - path traversal
 - 通配符
+verified: '2026-10-19'
 ---
 决定：按 id 找记忆文件（find_path，供 draft_id 覆盖、confirm_memory、get 使用）只接受合法的 ULID（26 位 Crockford Base32 大写）；
 不合法时直接当作不存在。

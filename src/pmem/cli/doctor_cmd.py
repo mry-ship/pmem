@@ -9,11 +9,11 @@ import time
 from collections import Counter
 from pathlib import Path
 
+from pmem.catalog.coverage import coverage_report
 from pmem.core.config import Config
+from pmem.core.entry import REPLACING_STATUSES, VISIBLE_STATUSES
 from pmem.core.quality import similar_entity_pairs
 from pmem.core.registry import ModuleRegistry, RegistryError
-from pmem.index.store import REPLACING_STATUSES, VISIBLE_STATUSES
-from pmem.scan.lite import iter_code_files
 from pmem.service import COMPACT_MIN_GROUP
 from pmem.storage.files import FilesStorage
 from pmem.vcs.detect import detect_vcs
@@ -39,42 +39,6 @@ def _recent_errors(path: Path, now: float | None = None) -> list[str]:
         if match and time.mktime(time.strptime(match.group(1), "%Y-%m-%d %H:%M:%S")) >= cutoff:
             recent.append("\n".join(record))
     return recent
-
-
-def coverage_report(root: Path, registry: ModuleRegistry) -> dict:
-    files = list(iter_code_files(root))
-    mapped = excluded = 0
-    unmapped: Counter = Counter()
-    conflicts: set[str] = set()
-    used: Counter = Counter()
-    for rel in files:
-        if registry.is_excluded(rel):
-            excluded += 1
-            continue
-        try:
-            match = registry.module_for_path(rel)
-        except RegistryError as exc:
-            conflicts.add(str(exc).split("，")[0])
-            continue
-        if match is None:
-            unmapped["/".join(rel.split("/")[:3]) if "/" in rel else "（根目录）"] += 1
-        else:
-            mapped += 1
-            used[match.module_id] += 1
-    shells = [
-        mid for mid, m in {**registry.modules, **registry.candidates}.items()
-        if m.paths and not m.merged_into and used[mid] == 0
-    ]
-    total = len(files) - excluded
-    return {
-        "files": len(files),
-        "excluded": excluded,
-        "mapped": mapped,
-        "coverage": mapped / total if total else 1.0,
-        "unmapped": unmapped.most_common(10),
-        "conflicts": sorted(conflicts)[:10],
-        "shells": shells,
-    }
 
 
 def run_doctor(root: Path) -> int:

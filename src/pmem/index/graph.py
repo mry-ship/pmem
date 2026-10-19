@@ -9,15 +9,13 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
-from pmem.core.entry import Entry
+from pmem.core.entry import KIND_LABELS, Entry
+from pmem.core.entry import REPLACING_STATUSES as REPLACING
+from pmem.core.entry import VISIBLE_STATUSES as VISIBLE
 from pmem.core.registry import ModuleRegistry, RegistryError
 
-VISIBLE = ("active", "seed", "draft")
-REPLACING = (*VISIBLE, "archived")
 PREVIEW_CHARS = 80
 LATEST_PER_TOPIC = 2
-KIND_LABELS = {"exclusion": "排除项", "risk": "风险", "correction": "更正", "decision": "决定", "conclusion": "结论"}
-# 先看的顺序：排除项、风险最能避免走弯路
 KIND_ORDER = {kind: i for i, kind in enumerate(KIND_LABELS)}
 
 
@@ -54,7 +52,7 @@ class Link:
     entities: Counter = field(default_factory=Counter)
 
     def describe(self) -> str:
-        parts = [f"共享代码 {self.code}" if self.code else "", f"正文提及 {self.mention}" if self.mention else ""]
+        parts = [f"共享代码 {self.code} 个文件" if self.code else "", f"正文提及 {self.mention}" if self.mention else ""]
         return "、".join(p for p in parts if p)
 
 
@@ -122,10 +120,12 @@ class MemoryGraph:
                 continue
             for target, link in targets.items():
                 total = merged.setdefault(target, Link())
-                total.code += link.code
                 total.mention += link.mention
                 total.files += [f for f in link.files if f not in total.files]
                 total.entities.update(link.entities)
+        # 按共享的不同文件数算：按记忆对累加时，一个文件挂了几十条记忆就会把对端模块的相关度放大几十倍
+        for total in merged.values():
+            total.code = len(total.files)
         rows = sorted(merged.items(), key=lambda kv: (-(kv[1].code + kv[1].mention), kv[0]))[:limit]
         return [
             {"module": target, "via": link.describe(), "files": link.files[:3],

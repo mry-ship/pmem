@@ -31,6 +31,18 @@ def test_invalid_gate_mode_is_rejected(tmp_path):
         Config.load(tmp_path)
 
 
+@pytest.mark.parametrize("text, problem", [
+    ("vcs: [unclosed\n", "无法解析"),
+    ("- a\n- b\n", "顶层应是键值对"),
+    ("write: { secret_patterns: ['(unclosed'] }\n", "不是有效的正则"),
+    ("write: { secret_patterns: 'token' }\n", "正则表达式列表"),
+])
+def test_broken_config_raises_config_error(tmp_path, text, problem):
+    write_config(tmp_path, text)
+    with pytest.raises(ConfigError, match=problem):
+        Config.load(tmp_path)
+
+
 def test_find_root_walks_up(tmp_path):
     write_config(tmp_path, "")
     nested = tmp_path / "a" / "b"

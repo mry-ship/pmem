@@ -101,7 +101,8 @@ def read_rows(db_dir: Path) -> tuple[list[dict], int]:
 
 
 def import_rows(
-    rows: list[dict], storage: FilesStorage, author: str, dry_run: bool = False, infer_kind: bool = False
+    rows: list[dict], storage: FilesStorage, author: str, dry_run: bool = False, infer_kind: bool = False,
+    secret_patterns: list[str] | None = None,
 ) -> ImportReport:
     report = ImportReport()
     existing = {e.source_conversation for _, e in storage.iter_all() if e.source_conversation}
@@ -115,7 +116,7 @@ def import_rows(
         if source in existing:
             report.skipped_existing += 1
             continue
-        if find_secrets(content, []):
+        if find_secrets(content, secret_patterns or []):
             report.skipped_secret.append(f"{row['module']}/{row.get('id')}")
             continue
         created = _timestamp_ms(str(row.get("created_at") or ""), str(row.get("note_date") or ""))

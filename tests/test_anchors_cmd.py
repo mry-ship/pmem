@@ -1,6 +1,8 @@
 import json
 
-from pmem.cli.anchors_cmd import FileIndex, find_anchors
+import pytest
+
+from pmem.cli.anchors_cmd import FileIndex, find_anchors, parse_renames, rename_anchor
 from pmem.cli.main import main
 from pmem.core.registry import ModuleRegistry
 
@@ -56,6 +58,39 @@ def test_cli_previews_then_applies(tmp_path, capsys, monkeypatch):
     assert "TokenStore.ts" not in path.read_text(encoding="utf-8")
     main(["anchors", "--root", str(tmp_path), "--apply"])
     assert "src/Login/TokenStore.ts#refresh" in path.read_text(encoding="utf-8")
+
+
+def test_rename_anchor_prefers_exact_symbol_then_file_then_folder():
+    renames = parse_renames(["src/a.py#run=src/b.py#run", "src/a.py=src/core/a.py", "src/old=src/new"])
+    assert rename_anchor("src/a.py#run", renames) == "src/b.py#run"
+    assert rename_anchor("src/a.py#plan", renames) == "src/core/a.py#plan"
+    assert rename_anchor("src/old/x/y.py#f", renames) == "src/new/x/y.py#f"
+    assert rename_anchor("src/older/y.py", renames) == "src/older/y.py"
+    with pytest.raises(ValueError):
+        parse_renames(["src/a.py#run=src/b.py"])
+
+
+def test_cli_rename_rewrites_anchors_of_all_memories(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("PMEM_AUTHOR", "alice")
+    main(["init", "--root", str(tmp_path), "--type", "generic"])
+    (tmp_path / ".memory" / "config.yaml").write_text("vcs: none\nembedding: { backend: none }\n", encoding="utf-8")
+    write(tmp_path, "src/Login/Session.ts", "export class Session { refresh() {} }")
+    capsys.readouterr()
+    main(["record", "--root", str(tmp_path), "--module", "feature.Login", "--entity", "Token", "--kind",
+          "conclusion", "--content", "刷新失败时要清空缓存，避免死循环重试，已在登录页验证。",
+          "--anchor", "src/Login/TokenStore.ts#refresh", "src/Login/TokenStore.ts#clear"])
+    written = json.loads(capsys.readouterr().out)
+    path = next((tmp_path / ".memory" / "entries").rglob(f"{written['id']}.md"))
+
+    rename = ["anchors", "--root", str(tmp_path), "--rename", "src/Login/TokenStore.ts=src/Login/Session.ts"]
+    assert main(rename) == 0
+    out = capsys.readouterr().out
+    assert "src/Login/TokenStore.ts#refresh → src/Login/Session.ts#refresh" in out
+    assert "文件里找不到 clear" in out and "TokenStore.ts#refresh" in path.read_text(encoding="utf-8")
+    assert main([*rename, "--apply"]) == 0
+    assert "src/Login/Session.ts#refresh" in path.read_text(encoding="utf-8")
+    assert main(["anchors", "--root", str(tmp_path), "--rename", "bad"]) == 1
 
 
 def test_terms_and_graph_commands(tmp_path, capsys, monkeypatch):

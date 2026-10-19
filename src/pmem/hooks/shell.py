@@ -6,7 +6,9 @@ import re
 from pathlib import Path
 
 _NULL_TARGETS = {"$null", "/dev/null", "nul", "&1", "&2"}
-_REDIRECT = re.compile(r"(?<![0-9&])>>?\s*([^\s|;&<>]+)")
+# 1> 2> *> &> >| 都算；->、=> 是代码里的箭头。目标可带引号
+_REDIRECT = re.compile(r"(?<![-=>])([0-9*&]?)>>?\|?\s*(&\d|'[^']*'|\"[^\"]*\"|[^\s|;&<>]+)")
+_STDOUT_FDS = {"", "1", "*", "&"}
 _PS_WRITERS = {"set-content", "add-content", "out-file", "new-item", "ni", "clear-content", "remove-item", "ri", "sc",
                "ac"}
 _TEE = {"tee", "tee-object"}
@@ -85,6 +87,19 @@ def _program(token: str) -> str:
     return re.split(r"[\\/]", token)[-1].lower().removesuffix(".exe")
 
 
+def _command(segment: str) -> tuple[list[str], str]:
+    """（参数, 归一化的命令名）：去掉 PowerShell 的 & / . 调用前缀，命令名去路径和 .exe（/bin/rm、rm.exe 都是 rm）。"""
+    tokens = _tokens(segment)
+    if tokens and tokens[0] in ("&", "."):
+        tokens = tokens[1:]
+    return tokens, (_program(tokens[0]) if tokens else "")
+
+
+def _redirects(segment: str) -> list[tuple[str, str]]:
+    """（文件描述符, 目标）；目标去掉引号。"""
+    return [(fd, target.strip("'\"")) for fd, target in _REDIRECT.findall(segment)]
+
+
 def _expand(token: str) -> str:
     return os.path.expandvars(re.sub(r"\$env:(\w+)", lambda m: os.environ.get(m[1], m[0]), token))
 
@@ -137,6 +152,10 @@ def _copy_targets(head: str, rest: list[str]) -> list[str]:
     positional = [t for t in rest if not t.startswith("-") and t not in named.values()]
     if head in _MOVE:
         return [*named.values(), *positional]
+    lowered = [t.lower() for t in rest]
+    for flag in ("-t", "--target-directory"):
+        if flag in lowered[:-1]:
+            return [rest[lowered.index(flag) + 1]]
     destination = named.get("-destination") or (positional[-1] if len(positional) > 1 else None)
     return [destination] if destination else []
 
@@ -174,20 +193,63 @@ def _in_place(head: str, rest: list[str]) -> bool:
     return head == "perl" and any(t.startswith("-") and not t.startswith("--") and "i" in t[1:] for t in rest)
 
 
+def _in_place_targets(head: str, rest: list[str]) -> list[str]:
+    """就地改写的全部文件：-e/-f 给出脚本时位置参数都是文件，否则第一个位置参数是脚本。"""
+    files: list[str] = []
+    script_given = skip = False
+    for token in rest:
+        if skip:
+            skip = False
+            continue
+        if token in ("-e", "--expression", "-f", "--file") or (
+                head == "perl" and token.startswith("-") and not token.startswith("--") and "e" in token[1:]):
+            script_given = skip = True
+            continue
+        if not token.startswith("-"):
+            files.append(token)
+    return files if script_given else files[1:]
+
+
+# PowerShell 写文件命令里带值的参数；其余以 - 开头的是开关（-Recurse、-Force），不会吞掉后面的路径
+_PS_VALUE_PARAMS = {"-value", "-encoding", "-itemtype", "-type", "-name", "-filter", "-include", "-exclude",
+                    "-inputobject", "-stream", "-width", "-target", "-credential"}
+# 第二个位置参数是写入内容而不是路径
+_PS_CONTENT_WRITERS = {"set-content", "sc", "add-content", "ac", "out-file"}
+
+
+def _ps_targets(head: str, rest: list[str]) -> list[str]:
+    paths: list[str] = []
+    positional: list[str] = []
+    skip = False
+    for i, token in enumerate(rest):
+        if skip:
+            skip = False
+            continue
+        lowered = token.lower()
+        if lowered in ("-path", "-filepath", "-literalpath") and i + 1 < len(rest):
+            paths.append(rest[i + 1])
+            skip = True
+        elif lowered in _PS_VALUE_PARAMS:
+            skip = True
+        elif not token.startswith("-"):
+            positional.append(token)
+    if not paths:
+        paths = positional[:1] if head in _PS_CONTENT_WRITERS else positional
+    return [p for raw in paths for p in raw.split(",") if p.strip()]
+
+
 def scan(command: str, base: str | None, depth: int = 0) -> tuple[list[str], bool]:
     """（终端命令会写到的文件, 是否在跑脚本或内联代码）。命令里先 cd 再写相对路径时，返回的路径带上 cd 的目录。"""
     targets: list[str] = _DOTNET_WRITE.findall(command or "")
     runs_code = False
     cwd = ""  # 相对 base 的当前目录，随命令里的 cd / Set-Location 变化
     for segment in _segments(command):
-        found: list[str] = _REDIRECT.findall(segment)
-        tokens = _tokens(segment)
-        if tokens and tokens[0] in ("&", "."):
-            tokens = tokens[1:]
+        found: list[str] = [target for _, target in _redirects(segment)]
+        tokens, head = _command(segment)
         if not tokens:
             targets += _under(cwd, found)
             continue
-        head, rest = tokens[0].lower(), tokens[1:]
+        rest = tokens[1:]
         here = str(Path(base or ".") / cwd) if cwd else base
         if head in _CD:
             args = [t for t in rest if not t.startswith("-")]
@@ -227,20 +289,16 @@ def _under(cwd: str, paths: list[str]) -> list[str]:
 
 def _segment_targets(head: str, rest: list[str], base: str | None) -> list[str]:
     """单条命令按命令名认出的写入目标。"""
-    if _in_place(head, rest) and rest:
-        return [rest[-1]]
+    if _in_place(head, rest):
+        return _in_place_targets(head, rest)
+    if head in _PS_WRITERS:
+        return _ps_targets(head, rest)
     if head in _TEE or head in _RM:
-        return [t for t in rest if not t.startswith("-")]
+        return [p for t in rest if not t.startswith("-") for p in t.split(",") if p.strip()]
     if head == "git":
         return _git_targets(rest, base)
     if head in _COPY or head in _MOVE:
         return _copy_targets(head, rest)
-    if head in _PS_WRITERS:
-        for i, token in enumerate(rest):
-            if token.lower() in ("-path", "-filepath", "-literalpath") and i + 1 < len(rest):
-                return [rest[i + 1]]
-        positional = [t for i, t in enumerate(rest) if not t.startswith("-") and (i == 0 or not rest[i - 1].startswith("-"))]
-        return positional[:1]
     return []
 
 
@@ -248,9 +306,7 @@ def may_change_unseen(command: str) -> bool:
     """命令里有不认识的程序（构建、格式化、git stash/reset 等），可能改了解析不出来的文件，需要执行前后比对。
     只有只读命令和已按名字认出目标的写命令时为 False。"""
     for segment in _segments(command):
-        tokens = _tokens(segment)
-        if tokens and tokens[0] in ("&", "."):
-            tokens = tokens[1:]
+        tokens, _ = _command(segment)
         if not tokens:
             continue
         names = [_program(t) for t in tokens]
@@ -281,9 +337,10 @@ def shell_write_targets(command: str, base: str | None = None) -> list[str]:
 
 def _output_discarded(segment: str, later_stages: list[str]) -> bool:
     """命令的输出被重定向或被管道吞掉（> $null、| Out-Null、> a.txt），Agent 看不到结果。"""
-    if _REDIRECT.search(segment):
+    # 只看标准输出：2>$null、2>&1 不影响 Agent 看到结果
+    if any(fd in _STDOUT_FDS for fd, _ in _redirects(segment)):
         return True
-    return any((_tokens(stage) or [""])[0].lower() in _DISCARD_STAGES for stage in later_stages)
+    return any(_command(stage)[1] in _DISCARD_STAGES for stage in later_stages)
 
 
 # 以这些程序开头时，pmem 可以出现在它们的参数之后（如 uv run --extra embed pmem record）
@@ -311,8 +368,12 @@ def cli_args(command: str, subcommand: str) -> list[dict]:
             rest = tokens[start:]
             args: dict = {}
             # 取第一个：换行被转码吞掉时，下一行命令的 --module 会接在同一段里
-            for i, token in enumerate(rest[:-1]):
-                if token in ("--module", "--path"):
-                    args.setdefault(token[2:], rest[i + 1])
+            for i, token in enumerate(rest):
+                name, eq, value = token.partition("=")
+                if name in ("--module", "--path"):
+                    if eq:
+                        args.setdefault(name[2:], value)
+                    elif i + 1 < len(rest):
+                        args.setdefault(name[2:], rest[i + 1])
             found.append(args)
     return found

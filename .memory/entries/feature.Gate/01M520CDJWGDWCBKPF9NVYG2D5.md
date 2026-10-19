@@ -1,6 +1,6 @@
 ---
 id: 01M520CDJWGDWCBKPF9NVYG2D5
-module: infra.Common
+module: feature.Gate
 entity: CLI
 kind: decision
 status: active

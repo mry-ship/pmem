@@ -7,12 +7,12 @@ from __future__ import annotations
 
 import os
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from pmem.core.entry import Entry
+from pmem.core.entry import KIND_LABELS, Entry
 from pmem.index.anchors import STALE_LABEL
-from pmem.index.graph import KIND_LABELS, MemoryGraph, preview
+from pmem.index.graph import MemoryGraph, preview
 
 MARKER = "<!-- 由 pmem wiki 从 .memory/entries 生成，重新运行会覆盖；要修改请改记忆本身 -->"
 RECENT = 15
@@ -26,6 +26,7 @@ class WikiResult:
     written: int
     removed: int
     index: Path
+    skipped: list[str] = field(default_factory=list)
 
 
 def _page(module_id: str) -> str:
@@ -162,9 +163,15 @@ def write_wiki(service, out_dir: Path) -> WikiResult:
         out_dir.mkdir(parents=True)
         (out_dir / ".gitignore").write_text(SELF_IGNORE, encoding="utf-8", newline="\n")
     written = 0
+    skipped: list[str] = []
     for name, text in pages.items():
         path = out_dir / name
-        if not path.exists() or path.read_text(encoding="utf-8") != text:
+        old = path.read_text(encoding="utf-8", errors="replace") if path.exists() else None
+        if old is not None and not old.startswith(MARKER):
+            # --out 指到 docs/ 这类目录时，同名的手写页面（如 GitHub Pages 首页 index.md）不能覆盖
+            skipped.append(name)
+            continue
+        if old != text:
             path.write_text(text, encoding="utf-8", newline="\n")
             written += 1
     removed = 0
@@ -172,4 +179,4 @@ def write_wiki(service, out_dir: Path) -> WikiResult:
         if path.name not in pages and path.read_text(encoding="utf-8", errors="replace").startswith(MARKER):
             path.unlink()
             removed += 1
-    return WikiResult(len(pages), written, removed, out_dir / "index.md")
+    return WikiResult(len(pages), written, removed, out_dir / "index.md", skipped)

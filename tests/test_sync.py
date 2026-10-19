@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from pmem.catalog.sync import apply_plan, pascal_name, plan_sync
 from pmem.cli.main import main
-from pmem.cli.sync_cmd import apply_plan, pascal_name, plan_sync
 from pmem.core.registry import ModuleRegistry
 
 CONFIG = "project: { name: demo }\nvcs: none\nembedding: { backend: none }\nwiki: { auto: false }\n"
@@ -86,11 +86,29 @@ def test_apply_only_appends_and_new_registry_covers_files(project):
     assert new.is_excluded("src/Plugins/NewSdk/N.cs")
 
 
+def test_new_folder_named_like_a_deprecated_module_is_never_overwritten(project):
+    data = yaml.safe_load(MODULES)
+    data["modules"]["gameplay.Match"] = {"paths": ["src/Old/Match/**"], "status": "deprecated", "aliases": ["对对碰"]}
+    reg = ModuleRegistry(data)
+    plan = plan_sync(project, reg, Counter(), Counter({"src/Game/Match/A.cs": 3}), Counter())
+    assert plan.conflicts == [("src/Game/Match", "gameplay.Match")]
+    assert "gameplay.Match" not in plan.new_modules and "gameplay.Match" not in plan.append_paths
+    out = apply_plan(data, plan)
+    assert out["modules"]["gameplay.Match"] == data["modules"]["gameplay.Match"]
+
+
+def test_without_history_heat_is_not_used_and_idle_is_skipped(project):
+    plan = plan_sync(project, registry(project), Counter(), Counter(), Counter(), history=False)
+    assert "gameplay.Match" in plan.new_modules and "gameplay.Tiny" in plan.new_candidates
+    assert plan.idle == []
+
+
 def test_cli_preview_then_apply(project, capsys):
     path = project / ".memory" / "modules.yaml"
     assert main(["sync", "--root", str(project)]) == 0
     out = capsys.readouterr().out
     assert "economy.Season += src/Season/Autumn/**" in out and "以上为预览" in out
+    assert "没有取到版本库提交历史" in out and "90 天没有改动" not in out
     assert path.read_text(encoding="utf-8") == MODULES
 
     assert main(["sync", "--root", str(project), "--apply"]) == 0

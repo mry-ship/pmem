@@ -18,6 +18,7 @@ aliases:
 - health
 - 检索落空
 - 知识资产
+verified: '2026-10-19'
 source:
   conversation: 7e7aeed7-103b-4d87-bb8d-18765c815bd5
 ---

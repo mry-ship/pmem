@@ -7,8 +7,8 @@ status: active
 supersedes:
 - 01M52HRGFVNCSBJHK8EKR8ZYB9
 anchors:
-- src/pmem/cli/migrate_cmd.py#plan_deprecate
-- src/pmem/cli/migrate_cmd.py#plan_merge
+- src/pmem/catalog/migrate.py#plan_deprecate
+- src/pmem/catalog/migrate.py#plan_merge
 - src/pmem/core/registry.py#deprecated
 - src/pmem/service.py#_record
 - src/pmem/hooks/gate.py#_deprecated

@@ -90,6 +90,10 @@ def test_draft_overwrite_of_committed_file_is_rejected(git_repo):
     assert result.path.exists()
     with pytest.raises(StorageError, match="已提交"):
         storage.write(make_entry(author="tester"), draft_id="01JA7K3M2X9F4Q8W6ZB1C2D3E4")
+    # 确认、归档会改写已提交的记忆文件，改写后仍不能当草稿覆盖
+    result.path.write_text(result.path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    with pytest.raises(StorageError, match="已提交"):
+        storage.write(make_entry(author="tester"), draft_id="01JA7K3M2X9F4Q8W6ZB1C2D3E4")
 
 
 def test_svn_auto_add_on_write(svn_wc, monkeypatch):

@@ -45,8 +45,10 @@ def iter_code_files(root: Path):
 
 
 def _git_commits(root: Path, since: str) -> list[tuple[str, list[str]]]:
+    # --relative：项目可能是仓库的子目录，路径要相对项目根才对得上 iter_code_files
     proc = subprocess.run(
-        ["git", "-c", "core.quotepath=off", "log", f"--since={since}", "--name-only", "--pretty=format:@@%ci"],
+        ["git", "-c", "core.quotepath=off", "log", f"--since={since}", "--name-only", "--relative",
+         "--pretty=format:@@%ci"],
         cwd=root, capture_output=True, check=False,
     )
     if proc.returncode != 0:

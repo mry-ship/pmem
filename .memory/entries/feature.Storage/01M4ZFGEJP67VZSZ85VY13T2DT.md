@@ -16,6 +16,7 @@ aliases:
 - 未纳入版本库
 - unversioned
 - 慢
+verified: '2026-10-19'
 ---
 结论：用 svn info 批量查文件的最后提交日期时，只要目标里有一个路径未纳入版本库（unversioned，例如 TileMatch 的 Assets/MonopolyGame 整个目录是“?”），命令就会以退出码 1 结束（E200009，并带 W155010 “node not found” 警告）。
 但 stdout 里其余路径的 XML 仍然完整输出，可以直接解析。

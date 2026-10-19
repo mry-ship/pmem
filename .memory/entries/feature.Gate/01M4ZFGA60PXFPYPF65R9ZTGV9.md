@@ -16,7 +16,7 @@ aliases:
 - Codex
 - 多工具
 - 其他大模型
-verified: '2026-10-16'
+verified: '2026-10-19'
 ---
 决定：兼容 Claude Code、Codex 等其他 Agent 工具时，不另写闸门，而是让三家共用同一套闸门逻辑。
 各工具的 Hook 都调用 `pmem hook <事件> --agent <cursor|claude|codex>`，由适配层先把输入转换成 Cursor 的格式，处理完再按目标工具的协议输出。

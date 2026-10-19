@@ -71,6 +71,8 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 | 新增了业务模块 | `pmem sync` 对照代码目录列出新模块、要追加的路径和新的第三方目录（默认预览，加 `--apply` 只追加、不改已有模块名）；也可以直接在 `.memory/modules.yaml` 里加 |
 | 模块改名、合并 | `pmem migrate rename <旧> <新>` / `pmem migrate merge <被并入> <保留>`，记忆随之搬家（默认预览，加 `--apply` 执行）；队友之后写到旧名下的，`pmem migrate tidy --apply` |
 | 一个模块管得太宽，要拆开 | `pmem migrate split <模块> --to <新模块>=<路径>`（按议题拆加 `--by entity`）：记忆按关联代码分到新模块，判断不了的列出来，用 `--assign <id>=<模块>` 指定 |
+| 个别记忆写错了模块 | `pmem migrate move <id> ... --to <模块>`：id、替代关系和关联代码都不变（默认预览，加 `--apply` 执行） |
+| 代码文件改名、搬家后记忆都标“需核实” | `pmem anchors --rename <旧路径>=<新路径>`：改写所有记忆的关联代码，文件、目录或 `路径#函数名` 都行（默认预览） |
 | 业务下线、模块不再维护 | `pmem migrate deprecate <模块> --apply`：旧记忆照常可查，拒绝新写入；`--undo` 撤销 |
 | 去掉过时的记忆 | `pmem archive <id>`：不再出现在检索里，文件保留可追溯；`--restore` 恢复到归档前的状态 |
 | 体检 | `pmem doctor`：提示没提交的记忆、可以合并的议题 |

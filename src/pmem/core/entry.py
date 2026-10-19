@@ -4,7 +4,12 @@ import re
 from dataclasses import dataclass, field
 
 KINDS = ("conclusion", "exclusion", "correction", "risk", "decision")
+# 展示顺序即先看的顺序：排除项、风险最能避免走弯路
+KIND_LABELS = {"exclusion": "排除项", "risk": "风险", "correction": "更正", "decision": "决定", "conclusion": "结论"}
 STATUSES = ("draft", "seed", "active", "archived")
+VISIBLE_STATUSES = ("active", "seed", "draft")
+# 归档记忆不再被检索到，但它的 supersedes 仍然算数：归档表示这条演进线整体过时
+REPLACING_STATUSES = (*VISIBLE_STATUSES, "archived")
 
 _FRONT_MATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
 

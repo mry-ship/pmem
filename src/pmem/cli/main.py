@@ -70,8 +70,10 @@ def build_parser():
     p.add_argument("--min", type=int, default=2, help="至少出现在几条记忆里")
     p.add_argument("--root", default=".")
 
-    p = sub.add_parser("anchors", help="从记忆正文里提到的文件名、类名.成员 补全关联代码（默认只预览）")
+    p = sub.add_parser("anchors", help="从记忆正文里提到的文件名、类名.成员 补全关联代码；代码搬家后用 --rename 改写（默认只预览）")
     p.add_argument("--module", default="")
+    p.add_argument("--rename", action="append", default=[], metavar="旧路径=新路径",
+                   help="代码文件或目录改名、函数搬到别的文件后，改写所有记忆的关联代码；可写多次，也可写 路径#函数名")
     p.add_argument("--apply", action="store_true", help="写回记忆文件")
     p.add_argument("--root", default=".")
 
@@ -126,11 +128,15 @@ def build_parser():
         ("merge", "合并：source 并入 target（source 可以是未登记模块）", ("source", "target")),
         ("split", "拆分：把模块的部分路径或议题分给新模块（或已有模块），记忆按关联代码或议题跟着走", ("module",)),
         ("deprecate", "废弃：旧记忆照常可查，拒绝新写入", ("module",)),
+        ("move", "搬记忆：把归错模块的记忆按 id 搬到另一个模块", ()),
         ("tidy", "把还在旧模块名下的记忆搬到新名下", ()),
     ):
         mp = msub.add_parser(name, help=help_text)
         for arg in args:
             mp.add_argument(arg)
+        if name == "move":
+            mp.add_argument("ids", nargs="+", metavar="记忆id")
+            mp.add_argument("--to", required=True, metavar="模块", help="搬到哪个模块")
         if name == "deprecate":
             mp.add_argument("--undo", action="store_true", help="撤销废弃")
         if name == "split":
@@ -310,8 +316,10 @@ def _bench(args) -> int:
 
 
 def _anchors(args) -> int:
-    from pmem.cli.anchors_cmd import run_anchors
+    from pmem.cli.anchors_cmd import run_anchors, run_rename
 
+    if args.rename:
+        return run_rename(_project_root(args.root), args.rename, args.apply)
     return run_anchors(_project_root(args.root), args.module or None, args.apply)
 
 
@@ -339,9 +347,13 @@ def _migrate(args) -> int:
 
     first = getattr(args, "old", None) or getattr(args, "source", None) or getattr(args, "module", None)
     second = getattr(args, "new", None) or getattr(args, "target", None)
+    targets = getattr(args, "to", None)
+    if args.action == "move":
+        second, targets = targets, None
     return run_migrate(_project_root(args.root), args.action, first, second, args.apply,
-                       undo=getattr(args, "undo", False), targets=getattr(args, "to", None),
-                       by=getattr(args, "by", "path"), assigns=getattr(args, "assign", None))
+                       undo=getattr(args, "undo", False), targets=targets,
+                       by=getattr(args, "by", "path"), assigns=getattr(args, "assign", None),
+                       ids=getattr(args, "ids", None))
 
 
 def _health(args) -> int:
@@ -376,7 +388,11 @@ COMMANDS = {
 def _record_content(args) -> str:
     if args.content_file:
         return Path(args.content_file).read_text(encoding="utf-8-sig")
-    return sys.stdin.read() if args.content == "-" else args.content
+    if args.content != "-":
+        return args.content
+    # 中文 Windows 上 sys.stdin 按 GBK 解码，管道传入的 UTF-8 会变成乱码
+    raw = sys.stdin.buffer.read() if hasattr(sys.stdin, "buffer") else sys.stdin.read().encode("utf-8")
+    return raw.decode("utf-8-sig", errors="replace")
 
 
 SERVICE_COMMANDS = {

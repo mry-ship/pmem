@@ -13,6 +13,7 @@ note_date: '2026-10-16'
 aliases:
 - wiki.auto
 - wiki.dir
+verified: '2026-10-19'
 ---
 决定：配置新增 wiki.auto（默认 true）和 wiki.dir（默认 .memory/wiki）。
 

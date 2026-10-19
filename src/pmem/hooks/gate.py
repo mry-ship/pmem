@@ -10,7 +10,7 @@ from pathlib import Path
 from wcmatch import glob as wglob
 
 from pmem.core.config import Config
-from pmem.core.entry import Entry
+from pmem.core.entry import KIND_LABELS, Entry
 from pmem.core.ids import ULID_PATTERN
 from pmem.core.registry import ModuleRegistry, RegistryError
 from pmem.hooks.payload import (
@@ -25,7 +25,7 @@ from pmem.hooks.payload import (
 from pmem.hooks.shell import VARIABLE_PATH, cli_args, may_change_unseen, scan, shell_write_targets  # noqa: F401
 from pmem.hooks.state import SessionState
 from pmem.index.anchors import ANCHOR_CACHE, STALE_LABEL, AnchorChecker
-from pmem.index.graph import KIND_LABELS, current_entries, digest, preview
+from pmem.index.graph import current_entries, digest, preview
 from pmem.metrics.events import log_event
 
 WRITE_TOOLS = {"write", "strreplace", "edit", "multiedit", "editnotebook", "delete", "search_replace"}
@@ -98,6 +98,13 @@ def foreign_tool(payload: dict) -> bool:
 
 def _command_key(command: str) -> str:
     return "cmd:" + hashlib.sha1(command.encode("utf-8", "replace")).hexdigest()[:16]
+
+
+def _needs_snapshot(command: str, base: str) -> bool:
+    """脚本、内联代码、变量拼出来的路径和不认识的程序（格式化、git stash 等）事前看不出写了什么，
+    放行时记下快照，执行后比对未提交文件，见 Gate._shell_after。"""
+    targets, runs_code = scan(command, base)
+    return runs_code or any(VARIABLE_PATH.search(t) for t in targets) or may_change_unseen(command)
 
 
 def _around(text: str, marker: str, width: int = 12) -> str:
@@ -312,7 +319,11 @@ class Gate:
         """文件或目录所属的模块；目录跨多个模块时为 None。"""
         if not rel or rel == "." or not self._watched(rel):
             return None
-        return self.module_of(rel) or self.module_of(rel.rstrip("/") + "/_")
+        inside = self.module_of(rel.rstrip("/") + "/_")
+        # 目录本身只匹配得上伞形模块（src/pmem/** 能匹配 src/pmem/vcs，src/pmem/vcs/** 不能），先按目录里的文件算
+        if (self.root / rel).is_dir():
+            return inside or self.module_of(rel)
+        return self.module_of(rel) or inside
 
     def _search_digest(self, args: dict) -> dict:
         """Grep、Glob、语义搜索限定在某个模块的文件或目录里时，同读代码一样附上该模块的摘要。"""
@@ -352,12 +363,32 @@ class Gate:
         viewed = [m for m in pending(viewed) if m not in asked][:MAX_REVIEW_MODULES - len(asked)]
         return asked, viewed
 
+    def _target_modules(self, rel: str) -> list[str]:
+        """写入目标涉及的模块。目录（rm -rf、Remove-Item -Recurse）按自身路径会落到更宽泛的伞形模块，
+        要把登记在它下面的各个模块都算上，否则查过伞形模块就能删掉整个子模块。"""
+        if not (self.root / rel).is_dir():
+            return [m for m in [self.module_of(rel)] if m]
+        prefix = rel.strip("/").lower() + "/"
+        found = [self.module_of(rel.rstrip("/") + "/_")]
+        for mid, module in self.registry.modules.items():
+            for pattern in module.paths:
+                literal = re.split(r"[*?\[{]", pattern.replace("\\", "/").lstrip("./"), maxsplit=1)[0].lower()
+                if literal.startswith(prefix):
+                    found.append(mid)
+        return [m for m in dict.fromkeys(found) if m]
+
     def _guard(self, rel: str | None) -> dict | None:
         if rel is None or not self._watched(rel):
             return None
-        module = self.module_of(rel)
+        for module in self._target_modules(rel):
+            denied = self._guard_module(rel, module)
+            if denied is not None:
+                return denied
+        return None
+
+    def _guard_module(self, rel: str, module: str) -> dict | None:
         mode = self.config.get("gate.mode")
-        if module is None or mode == "off" or self.state is None or self.state.data["skip"]:
+        if mode == "off" or self.state is None or self.state.data["skip"]:
             return None
         if self.state.has("searched", module):
             return None
@@ -416,13 +447,11 @@ class Gate:
             # 先登记命令里的 pmem search，同一条命令里对已查模块的写入才放行；其他模块的写入照样检查
             self._note_cli_calls(command)
             base = args.get("cwd") or str(self.root)
-            targets, runs_code = scan(command, base)
+            targets, _ = scan(command, base)
             denied = next((v for v in map(self._guard, [self.relative(t, base) for t in targets]) if v is not None), None)
             if denied is not None:
                 return denied
-            # 脚本、内联代码、变量拼出来的路径和不认识的程序（格式化、git stash 等）事前看不出写了什么，
-            # 放行时记下快照，执行后比对未提交文件，见 _shell_after
-            if runs_code or any(VARIABLE_PATH.search(t) for t in targets) or may_change_unseen(command):
+            if _needs_snapshot(command, base):
                 self._snapshot_before_shell(command)
             return dict(ALLOW)
         if name.lower() not in WRITE_TOOLS:
@@ -452,7 +481,7 @@ class Gate:
         # 同一模块下的不同议题是不同的记忆，只有议题也相同时才覆盖本对话写过的草稿
         entity = self.registry.resolve_entity(module, str(args.get("entity") or "")) if module else None
         draft = self.state.data["written"].get(draft_key(module, entity)) if module else None
-        if draft and not args.get("draft_id"):
+        if draft and not args.get("draft_id") and self._draft_open(module, draft):
             updated["draft_id"] = draft
         # 覆盖草稿时不补锚点，让服务沿用草稿原有的锚点；
         # 载荷被转码损坏、只按字段抠出了部分参数时，看不到 Agent 写的 anchors，补了会把它覆盖成只到文件
@@ -461,6 +490,16 @@ class Gate:
             if files:
                 updated["anchors"] = files[-MAX_AUTO_ANCHORS:]
         return {"permission": "allow", "updated_input": updated}
+
+    def _draft_open(self, module: str, draft: str) -> bool:
+        """草稿已提交就不能再覆盖：长对话跨过提交后，注入旧 id 只会让服务拒绝这次写入。"""
+        path = self.config.entries_dir / module / f"{draft}.md"
+        if not path.exists():
+            return True
+        try:
+            return not self.vcs().is_committed(path)
+        except Exception:  # noqa: BLE001
+            return True
 
     def _mark_searched(self, args: dict, via: str) -> None:
         module = self.module_from_args(args)
@@ -606,9 +645,11 @@ class Gate:
         if self.state is None:
             return {}
         pending = self._pending_snapshots()
-        key = _command_key(str(tool_input(self.payload).get("command") or ""))
-        if key not in pending and len(pending) == 1:
-            # 前后两次拿到的命令文本可能因转码不同；只有一条在等时就是它
+        command = str(tool_input(self.payload).get("command") or "")
+        key = _command_key(command)
+        if key not in pending and len(pending) == 1 and _needs_snapshot(command, str(self.root)):
+            # 前后两次拿到的命令文本可能因转码不同；只有一条在等、且这条命令本身也会存快照时就是它。
+            # 并行的 ls 这类命令先结束时不能把别的命令的快照拿走
             key = next(iter(pending))
         before = pending.pop(key, None)
         if before is None:

@@ -59,3 +59,17 @@ def test_related_modules_via_shared_code_and_mentions():
     assert related["economy.Shop"]["files"] == ["src/Jigsaw/Reward.cs"]
     shop = {r["module"] for r in graph.related("economy.Shop")}
     assert "system.AdChase" not in shop
+
+
+def test_shared_code_counts_files_not_memory_pairs():
+    hub = [entry(f"G{i}", "gameplay.Jigsaw", f"T{i}", "拼图结论", "2026-10-01", anchors=["src/Jigsaw/Hub.cs"])
+           for i in range(10)]
+    graph = MemoryGraph([
+        *hub,
+        entry("S1", "economy.Shop", "Price", "商店结论", "2026-10-01", anchors=["src/Jigsaw/Hub.cs"]),
+        entry("A1", "system.AdChase", "Show", "广告结论", "2026-10-01",
+              anchors=["src/Jigsaw/Hub.cs", "src/Jigsaw/Other.cs"]),
+    ], REGISTRY)
+    related = graph.related("gameplay.Jigsaw")
+    assert [(r["module"], r["via"]) for r in related] == [
+        ("system.AdChase", "共享代码 2 个文件"), ("economy.Shop", "共享代码 1 个文件")]

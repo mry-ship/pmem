@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import difflib
 import functools
+import os
 import time
 from collections import Counter
 from datetime import date
@@ -79,6 +80,22 @@ def _valid_date(raw: str | None) -> str | None:
         return date.fromisoformat(str(raw).strip()).isoformat()
     except ValueError as exc:
         raise ValueError(f"as_of 需要 YYYY-MM-DD 格式的日期，当前为 {raw!r}") from exc
+
+
+def _on_disk_case(root: Path, rel: str) -> str | None:
+    """按磁盘上的真实大小写拼出相对路径；Windows 不区分大小写，Git 区分。路径不存在时返回 None。"""
+    current, parts = root, []
+    for part in Path(rel).parts:
+        try:
+            names = os.listdir(current)
+        except OSError:
+            return None
+        match = part if part in names else next((n for n in names if n.lower() == part.lower()), None)
+        if match is None:
+            return None
+        parts.append(match)
+        current = current / match
+    return "/".join(parts)
 
 
 def _clean_aliases(raw: list[str] | None) -> list[str]:
@@ -279,6 +296,7 @@ class MemoryService:
     @_returns_errors
     def _record(self, module, entity, kind, content, supersedes, anchors, draft_id, source_conversation, aliases,
                 status) -> dict:
+        given_anchors = set(anchors or [])
         resolved = self.registry.resolve_module(module)
         target = self.registry.modules.get(resolved.id)
         if target is not None and target.deprecated:
@@ -311,7 +329,7 @@ class MemoryService:
 
         today = date.today().isoformat()
         supersedes = list(dict.fromkeys(s for s in supersedes or [] if s))
-        replaced = [old for s in supersedes if (old := self.index.find(s)) is not None]
+        replaced = [found for s in supersedes if (found := self.index.find(s)) is not None]
         aliases = _clean_aliases(aliases)
         hints = self._write_hints(resolved.id, entity_id, content, aliases, merging=len(replaced) >= 2)
         if anchors and not any("#" in a for a in anchors):
@@ -322,10 +340,13 @@ class MemoryService:
             if over_cap:
                 return over_cap
 
-        replaced_ids = [old.id for old in replaced]
+        replaced_ids = [e.id for e in replaced]
         warnings = [f"supersedes 中的 {s} 不存在，已忽略对它的替代关系" for s in supersedes if s not in replaced_ids]
         if not anchors and replaced:
-            anchors = list(dict.fromkeys(a for old in replaced for a in old.anchors))[:MAX_INHERITED_ANCHORS]
+            anchors = list(dict.fromkeys(a for e in replaced for a in e.anchors))[:MAX_INHERITED_ANCHORS]
+        anchors = list(dict.fromkeys(
+            self._normalize_anchor(a, warnings if a in given_anchors else []) for a in anchors or [] if a.strip()
+        ))
         entry = Entry(
             id=new_ulid(),
             module=resolved.id,
@@ -333,11 +354,11 @@ class MemoryService:
             kind=kind,
             content=format_content(content),
             note_date=today,
-            author=self.vcs.current_user(),
+            author=self.user,
             revision=self.vcs.revision(),
             status=status or str(self.config.get("write.default_status")),
             supersedes=replaced_ids,
-            anchors=[a.replace("\\", "/") for a in anchors or []],
+            anchors=anchors,
             source_conversation=source_conversation or None,
             aliases=aliases,
         )
@@ -376,6 +397,20 @@ class MemoryService:
             supersedes=entry.supersedes or None,
         )
         return response
+
+    def _normalize_anchor(self, raw: str, warnings: list[str]) -> str:
+        """过期核对按相对路径、区分大小写去比对版本库记录：绝对路径或大小写不对的锚点永远不会标“需核实”。"""
+        path, sep, symbol = raw.strip().replace("\\", "/").partition("#")
+        rel = self._relative(path)
+        while rel.startswith("./"):
+            rel = rel[2:]
+        if Path(rel).is_absolute():
+            warnings.append(f"anchors 中的 {path} 不在项目目录内，无法核对是否过期")
+            return f"{rel}{sep}{symbol}"
+        actual = _on_disk_case(self.root, rel)
+        if actual is None:
+            warnings.append(f"anchors 中的 {rel} 在项目里不存在，请检查路径")
+        return f"{actual or rel}{sep}{symbol}"
 
     def _invalid_content(self, kind: str, content: str) -> str | None:
         if kind not in KINDS:

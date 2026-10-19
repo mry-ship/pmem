@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 from pathlib import Path
 
 from mcp.server.mcpserver import MCPServer
@@ -30,10 +31,27 @@ def resolve_root(raw: str | None) -> Path | None:
 
 
 def build_server(root: Path | None) -> MCPServer:
+    from pmem.core.config import ConfigError
     from pmem.service import MemoryService
 
-    service = MemoryService(root, source="mcp") if root is not None else None
     missing = {"ok": False, "error": "当前工作区还没有接入 pmem：请在项目根目录运行 pmem init"}
+    holder: dict = {}
+    # 框架在线程池里并发执行同步工具；索引、sqlite 连接、模型懒加载都不是线程安全的
+    lock = threading.Lock()
+
+    def call(action) -> str:
+        if root is None:
+            return _dump(missing)
+        with lock:
+            try:
+                if "service" not in holder:
+                    holder["service"] = MemoryService(root, source="mcp")
+                return _dump(action(holder["service"]))
+            except ConfigError as exc:
+                return _dump({"ok": False, "error": f"pmem 配置有误：{exc}；改好后再调用即可，无需重启"})
+            except Exception as exc:  # noqa: BLE001  未预料的错误也要带来源标记返回，闸门才认得出是 pmem 的结果
+                return _dump({"ok": False, "error": f"pmem 内部错误：{type(exc).__name__}: {exc}"})
+
     server = MCPServer("pmem", instructions=INSTRUCTIONS)
 
     @server.tool()
@@ -51,10 +69,8 @@ def build_server(root: Path | None) -> MCPServer:
         都不确定时只传 query 做全局检索。as_of（YYYY-MM-DD）只看那天有效的记忆，用于回答“当时的结论”。
         返回按相关度排序的记忆；stale=true 表示写下（或上次核对）后关联代码改过或已删除，用前先核对。
         source_conversation 由系统自动填写，无需传。"""
-        if service is None:
-            return _dump(missing)
-        return _dump(service.search(module or None, path or None, entity or None, query or None, limit,
-                                    source_conversation or None, as_of or None))
+        return call(lambda s: s.search(module or None, path or None, entity or None, query or None, limit,
+                                       source_conversation or None, as_of or None))
 
     @server.tool()
     def record_memory(
@@ -75,38 +91,26 @@ def build_server(root: Path | None) -> MCPServer:
         推翻旧结论时在 supersedes 写旧记忆 id；anchors 写相关代码位置（相对路径#符号），不填时系统按本次对话改过的该模块文件补上。
         同一任务对同一模块再次写入时，带上次返回的 draft_id 覆盖，避免重复；覆盖时没填的 supersedes / anchors / aliases 沿用原值。
         返回的 similar 是同模块最相近的已有记忆：重复或被推翻时带 draft_id 重写并填 supersedes；hints 是写作提示。"""
-        if service is None:
-            return _dump(missing)
         # 模型常给可选数组顺手填 []，且 draft_id 可能是闸门补的：空列表按“没传”处理，覆盖时沿用原值
-        return _dump(
-            service.record(module, entity, kind, content, supersedes or None, anchors or None, draft_id or None,
-                           source_conversation or None, aliases or None)
-        )
+        return call(lambda s: s.record(module, entity, kind, content, supersedes or None, anchors or None,
+                                       draft_id or None, source_conversation or None, aliases or None))
 
     @server.tool()
     def confirm_memory(ids: list[str], source_conversation: str = "") -> str:
         """确认记忆仍然成立：对照关联代码核对过 stale=true 的记忆、结论依然正确时调用，核对日期记为今天，
         之后不再因更早的代码改动标为 stale，排序时也按核对日期计算新旧。已不成立的不要确认，改写 correction。"""
-        if service is None:
-            return _dump(missing)
-        return _dump(service.confirm(ids, source_conversation or None))
+        return call(lambda s: s.confirm(ids, source_conversation or None))
 
     @server.tool()
     def memory_graph(module: str, entity: str = "") -> str:
         """查看模块的记忆图谱。只传 module：模块概览，列出各议题（现行/已被替代条数、首末日期、最新两条现行结论摘要）
         和相关模块（共享代码或正文提及），用于一次看清模块全貌；再传 entity：给出该议题的时间线（谁在哪天替代了谁）和相关模块。"""
-        if service is None:
-            return _dump(missing)
-        return _dump(service.graph(module, entity or None))
+        return call(lambda s: s.graph(module, entity or None))
 
     @server.tool()
     def list_modules(category: str = "") -> str:
         """列出项目的模块与记忆数量、常用议题。不确定模块名时先调用它。"""
-        if service is None:
-            return _dump(missing)
-        result = service.list_modules(category or None)
-        result["project_root"] = str(service.root)
-        return _dump(result)
+        return call(lambda s: {**s.list_modules(category or None), "project_root": str(s.root)})
 
     return server
 

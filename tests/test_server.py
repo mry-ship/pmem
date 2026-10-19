@@ -37,6 +37,28 @@ def test_every_response_is_marked_as_pmem(project):  # noqa: F811
     assert call(build_server(None), "search_memory", {"query": "x"})["server"] == "pmem"
 
 
+def test_broken_config_is_reported_per_call_and_recovers_without_restart(project):  # noqa: F811
+    config = project / ".memory" / "config.yaml"
+    good = config.read_text(encoding="utf-8")
+    server = build_server(project)
+    config.write_text("vcs: [unclosed\n", encoding="utf-8")
+    broken = call(server, "search_memory", {"module": "gameplay.Jigsaw"})
+    assert broken["ok"] is False and "配置有误" in broken["error"] and broken["server"] == "pmem"
+    config.write_text(good, encoding="utf-8")
+    assert call(server, "search_memory", {"module": "gameplay.Jigsaw"})["ok"] is True
+
+
+def test_unexpected_errors_come_back_marked_as_pmem(project, monkeypatch):  # noqa: F811
+    from pmem.service import MemoryService
+
+    def boom(self, *args, **kwargs):
+        raise PermissionError("记忆文件被占用")
+
+    monkeypatch.setattr(MemoryService, "confirm", boom)
+    result = call(build_server(project), "confirm_memory", {"ids": ["01JA7K3M2X9F4Q8W6ZB1C2D3E4"]})
+    assert result == {"ok": False, "error": "pmem 内部错误：PermissionError: 记忆文件被占用", "server": "pmem"}
+
+
 def test_without_project_tools_explain_how_to_init(tmp_path):
     server = build_server(None)
     assert "pmem init" in call(server, "search_memory", {"query": "x"})["error"]

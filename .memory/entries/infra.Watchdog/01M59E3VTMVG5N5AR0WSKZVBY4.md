@@ -1,6 +1,6 @@
 ---
 id: 01M59E3VTMVG5N5AR0WSKZVBY4
-module: infra.Common
+module: infra.Watchdog
 entity: CLI
 kind: decision
 status: active

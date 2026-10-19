@@ -1,6 +1,6 @@
 ---
 id: 01M51PJS4Z9M2WF1ZVCR5Y07ZC
-module: feature.Onboarding
+module: feature.Wiki
 entity: Wiki
 kind: decision
 status: active

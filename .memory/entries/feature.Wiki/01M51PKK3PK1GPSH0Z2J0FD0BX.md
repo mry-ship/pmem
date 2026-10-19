@@ -1,6 +1,6 @@
 ---
 id: 01M51PKK3PK1GPSH0Z2J0FD0BX
-module: infra.Common
+module: feature.Wiki
 entity: Wiki
 kind: decision
 status: active

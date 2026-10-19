@@ -7,15 +7,15 @@ import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from pmem.core.entry import KIND_LABELS, VISIBLE_STATUSES
 from pmem.core.registry import RegistryError
-from pmem.index.store import VISIBLE_STATUSES, ulid_ms
+from pmem.index.store import ulid_ms
 from pmem.metrics.cite import assistant_text, judge
 from pmem.metrics.events import read_events
 from pmem.scan.lite import file_heat
 from pmem.service import MemoryService
 
 AVOID_KINDS = {"exclusion", "risk", "correction"}
-KIND_NAMES = {"conclusion": "结论", "exclusion": "排除", "correction": "更正", "risk": "风险", "decision": "决定"}
 MIN_GROUP = 5
 HOT_TOP = 10
 CLI_LINK_SECONDS = 30
@@ -300,7 +300,7 @@ def _render_usage(u: dict, memories: int, searches: int) -> list[str]:
 
 def render(report: dict) -> str:
     s, c, r, h, a = (report[k] for k in ("search", "citations", "records", "habits", "assets"))
-    kinds = "、".join(f"{KIND_NAMES.get(k, k)} {n}" for k, n in sorted(r["by_kind"].items(), key=lambda kv: -kv[1]))
+    kinds = "、".join(f"{KIND_LABELS.get(k, k)} {n}" for k, n in sorted(r["by_kind"].items(), key=lambda kv: -kv[1]))
     lines = [
         f"pmem 收益报告（最近 {report['days']} 天，仅本机）",
         "",

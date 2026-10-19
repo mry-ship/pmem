@@ -1,6 +1,6 @@
 ---
 id: 01M51WPMA9NWRCQJ9MQTRV19D0
-module: feature.Onboarding
+module: feature.Gate
 entity: HookLatency
 kind: risk
 status: active

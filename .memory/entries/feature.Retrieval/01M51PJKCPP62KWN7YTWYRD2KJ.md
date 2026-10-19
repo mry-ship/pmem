@@ -15,6 +15,7 @@ aliases:
 - 过期
 - stale
 - 需核实
+verified: '2026-10-19'
 ---
 决定：“记忆是否过期”的判断（锚点文件已删、找不到符号、核对基准日之后又改过）从 MemoryIndex 中抽出为独立的 AnchorChecker（src/pmem/index/anchors.py）。
 检索、memory_graph、读代码摘要、改代码拦截和 Wiki 共用这一套，规则不变：7 天内提交的记忆以提交日为基准；

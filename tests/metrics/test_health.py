@@ -162,3 +162,13 @@ def test_memories_under_a_dotted_alias_are_strays_not_unregistered(project):
     assert h["strays"] == [{"id": rid, "from": "gameplay.Old", "to": "gameplay.Jigsaw"}]
     assert h["unmapped_dirs"] == [("src/Tools/Build.cs", 1)]
     assert "没有归属模块的代码目录" in render(h)
+
+    # 合并冲突后新旧目录各留一份同名文件：报告照常生成，单列一节
+    stray = project / ".memory" / "entries" / "gameplay.Old" / f"{rid}.md"
+    stray.parent.mkdir(parents=True)
+    stray.write_text(file.read_text(encoding="utf-8"), encoding="utf-8")
+    file.write_text(file.read_text(encoding="utf-8").replace("module: gameplay.Old", "module: gameplay.Jigsaw"),
+                    encoding="utf-8")
+    h = build_health(project)
+    assert h["strays"] == [] and "已存在" in h["stray_problem"]
+    assert "【记忆文件重复】" in render(h)

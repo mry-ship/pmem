@@ -7,9 +7,11 @@ import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from pmem.catalog.coverage import coverage_report
+from pmem.catalog.migrate import MigrateError, stray_moves
+from pmem.core.entry import KIND_LABELS
 from pmem.core.quality import similar_entity_pairs
 from pmem.core.registry import RegistryError
-from pmem.index.graph import KIND_LABELS
 from pmem.index.tokenize import tokenize
 from pmem.metrics.events import read_events
 from pmem.service import COMPACT_MIN_GROUP, MemoryService
@@ -104,9 +106,6 @@ def _contradictions(visible: list) -> list[dict]:
 
 
 def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
-    from pmem.cli.doctor_cmd import coverage_report
-    from pmem.cli.migrate_cmd import stray_moves
-
     now = now or time.time()
     since = now - days * 86400
     service = MemoryService(root)
@@ -116,7 +115,11 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
         events = list(read_events(service.config.cache_dir, since))
         stale = service.index.check_anchors(visible)
         compact = service.compact_groups(min_size=COMPACT_MIN_GROUP)
-        strays = stray_moves(service.storage, registry)
+        try:
+            strays, stray_problem = stray_moves(service.storage, registry), None
+        except MigrateError as exc:
+            # 合并冲突后同一个记忆文件在新旧模块目录各留一份：作为一节列出，不让整份报告变成异常
+            strays, stray_problem = [], str(exc)
         unmapped = coverage_report(service.root, registry)["unmapped"]
     finally:
         service.close()
@@ -152,6 +155,7 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
         "unregistered": unregistered,
         "duplicates": _duplicate_modules(registered + [u["module"] for u in unregistered]),
         "strays": [{"id": s.entry_id, "from": s.source, "to": s.target} for s in strays],
+        "stray_problem": stray_problem,
         "unmapped_dirs": unmapped,
         "searches": len(searches),
         "misses": _misses(searches),
@@ -191,6 +195,8 @@ def render(h: dict) -> str:
     section("记忆还在旧模块名下", [f"{s['id']}：{s['from']} → {s['to']}" for s in h["strays"][:TOP]]
             + ([f"……另有 {len(h['strays']) - TOP} 条"] if len(h["strays"]) > TOP else []),
             "pmem migrate tidy --apply 把它们搬到新模块名下")
+    section("记忆文件重复", [h["stray_problem"]] if h.get("stray_problem") else [],
+            "对比两份内容，删掉旧模块目录下那份后再运行 pmem migrate tidy --apply")
     section("没有归属模块的代码目录", [f"{folder}：{n} 个文件" for folder, n in h["unmapped_dirs"]],
             "在 modules.yaml 里把目录加进对应模块的 paths；新业务就登记新模块")
     section(f"检索落空热点（本机 {h['searches']} 次检索）", [f"{m} / {what}：{n} 次" for m, what, n in h["misses"]],

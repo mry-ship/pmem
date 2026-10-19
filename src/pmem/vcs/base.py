@@ -11,6 +11,22 @@ def run_tool(args: list[str], cwd: Path, timeout: float = 30) -> subprocess.Comp
     return subprocess.run(args, cwd=cwd, capture_output=True, timeout=timeout, check=False)
 
 
+MAX_ARGS_CHARS = 8000
+
+
+def path_batches(paths: list[str], limit: int = MAX_ARGS_CHARS) -> list[list[str]]:
+    """按总长度切分路径参数：Windows 命令行上限约 32K 字符，记忆多了一次传完会直接失败。"""
+    batches: list[list[str]] = [[]]
+    size = 0
+    for path in paths:
+        if batches[-1] and size + len(path) + 1 > limit:
+            batches.append([])
+            size = 0
+        batches[-1].append(path)
+        size += len(path) + 1
+    return batches if batches[0] else []
+
+
 def fallback_user() -> str:
     if env := os.environ.get("PMEM_AUTHOR"):
         return env
@@ -38,6 +54,10 @@ class VCS:
 
     def is_uncommitted(self, path: Path) -> bool:
         return True
+
+    def is_committed(self, path: Path) -> bool:
+        """文件是否已有提交记录；之后在工作区里改过也算（确认、归档会改写已提交的记忆）。"""
+        return False
 
     def uncommitted_count(self, folder: Path, suffix: str = ".md") -> int | None:
         """folder 下未提交（新增/修改/未纳入版本库）的文件数；不在版本控制下返回 None。"""

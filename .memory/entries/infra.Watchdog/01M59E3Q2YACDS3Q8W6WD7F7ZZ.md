@@ -1,6 +1,6 @@
 ---
 id: 01M59E3Q2YACDS3Q8W6WD7F7ZZ
-module: feature.Tools
+module: infra.Watchdog
 entity: Watchdog
 kind: decision
 status: active

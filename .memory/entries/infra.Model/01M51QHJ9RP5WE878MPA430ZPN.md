@@ -13,6 +13,7 @@ note_date: '2026-10-16'
 aliases:
 - 恢复记忆
 - resume
+verified: '2026-10-19'
 ---
 决定：配置新增 gate.resume_markers，默认 ["恢复记忆", "resume-memory"]。
 用户在已“跳过记忆”的对话里说出其中之一，就撤销本对话的跳过，恢复检索、拦截和提醒。

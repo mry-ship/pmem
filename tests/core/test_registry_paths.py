@@ -4,6 +4,23 @@ import yaml
 from pmem.core.registry import ModuleRegistry, RegistryError, glob_specificity
 
 
+def test_scalar_paths_and_aliases_are_not_split_into_characters():
+    registry = ModuleRegistry({"modules": {"economy.Shop": {"paths": "src/Shop", "aliases": "Store"}}})
+    assert registry.module_for_path("src/Shop/Buy.cs").module_id == "economy.Shop"
+    assert registry.resolve_module("Store").id == "economy.Shop"
+
+
+@pytest.mark.parametrize("data, problem", [
+    ({"modules": {"Reward": {}}}, "大类.模块名"),
+    ({"modules": {"economy.Shop": {"paths": {"a": 1}}}}, "应是列表"),
+    ({"modules": ["economy.Shop"]}, "modules 应是键值对"),
+    ({"modules": {"economy.Shop": "src/Shop"}}, "内容应是键值对"),
+])
+def test_malformed_modules_raise_registry_error(data, problem):
+    with pytest.raises(RegistryError, match=problem):
+        ModuleRegistry(data)
+
+
 def test_specific_feature_path_wins_over_umbrella(registry):
     match = registry.module_for_path("Assets/Framework/Common/Util.cs")
     assert match.module_id == "infra.Common"

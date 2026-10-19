@@ -2,7 +2,7 @@
 name: pmem-consolidate
 description: 按 pmem health 健康报告定期收口记忆库：核对过时记忆、处理互相矛盾的结论、归档、合并零碎记忆、确认种子、整理模块目录。用户说“整理记忆库”“收口记忆”“按 pmem-consolidate”，或负责人每两周例行检查时使用。
 ---
-<!-- 由 pmem init 生成，重新运行 pmem init 会覆盖；如需调整请改 .memory/config.yaml -->
+<!-- {generated} -->
 # pmem 记忆库收口
 
 记忆写得越多，越容易出现过时、互相矛盾、零碎重复的条目，检索质量随之下降。
@@ -27,7 +27,9 @@ description: 按 pmem health 健康报告定期收口记忆库：核对过时记
    - 【未登记模块】【疑似重复模块】：`pmem migrate merge <被并入> <保留>`；
    - 【记忆还在旧模块名下】：`pmem migrate tidy`；
    - 【没有归属模块的代码目录】：`pmem sync` 预览新模块和要追加的路径；
-   - 一个模块管得太宽、需要拆开时：`pmem migrate split <模块> --to <新模块>=<路径>`，预览里列出的“跨模块”“无法判断”的记忆用 `--assign <id>=<模块>` 指定去向。
+   - 一个模块管得太宽、需要拆开时：`pmem migrate split <模块> --to <新模块>=<路径>`，预览里列出的“跨模块”“无法判断”的记忆用 `--assign <id>=<模块>` 指定去向；
+   - 个别记忆写错了模块：`pmem migrate move <id> ... --to <模块>`；
+   - 代码文件或目录改名、函数搬到别的文件后，大批记忆标“需核实”且提示文件不存在：`pmem anchors --rename <旧路径>=<新路径>`（也可写 `路径#函数名`）改写关联代码，再逐条核对后 confirm。
 8. 全部处理完再跑一次 `pmem health`，确认处理过的节已消失，提醒用户提交 `.memory/`。
 
 ## 注意

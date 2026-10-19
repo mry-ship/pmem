@@ -23,6 +23,7 @@ aliases:
 - 终端写文件
 - 快照
 - bypass
+verified: '2026-10-19'
 ---
 结论：闸门识别终端写文件分“事前解析”和“事后比对”两层，解析规则集中在 src/pmem/hooks/shell.py，gate.py 只管拦截和提醒。
 

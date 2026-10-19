@@ -10,7 +10,7 @@ anchors:
 revision: git:e258c6e
 author: 1002378395@qq.com
 note_date: '2026-10-14'
-verified: '2026-10-16'
+verified: '2026-10-19'
 ---
 Cursor 3.9 Hook 输入实测：所有事件都带 conversation_id（与 session_id 相同）和 workspace_roots（形如 /c:/Users/...，需去掉开头斜杠）；
 Hook 进程工作目录就是工作区根。

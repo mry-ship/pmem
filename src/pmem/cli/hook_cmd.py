@@ -35,6 +35,7 @@ def _find_project(payload: dict):
 def run_hook(event: str, agent: str = "cursor") -> int:
     fallback = _fallback(event, agent)
     root = None
+    emitted = False
     try:
         from pmem.core.config import Config
         from pmem.hooks.agents import normalize, render
@@ -48,11 +49,17 @@ def run_hook(event: str, agent: str = "cursor") -> int:
             return 0
         result = handle(event, payload, root)
         _emit(render(agent, event, result) or fallback)
+        emitted = True
         if result.get("permission") == "deny" or result.get("followup_message") or result.get("updated_input"):
             tag = event if agent == "cursor" else f"{event}@{agent}"
-            _log(Config.load(root).cache_dir, f"{tag} {json.dumps(result, ensure_ascii=False)[:300]}")
+            try:
+                _log(Config.load(root).cache_dir, f"{tag} {json.dumps(result, ensure_ascii=False)[:300]}")
+            except Exception:  # noqa: BLE001, S110  日志轮转撞车或文件被占用不能影响已输出的结果
+                pass
     except Exception:  # noqa: BLE001
-        _emit(fallback)
+        # 只输出一次：两份 JSON 拼在一起 Cursor 解析不了，已给出的拦截结果也会作废
+        if not emitted:
+            _emit(fallback)
         try:
             from pmem.core.config import Config
 

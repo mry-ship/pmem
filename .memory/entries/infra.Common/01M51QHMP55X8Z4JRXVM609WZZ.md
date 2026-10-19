@@ -15,6 +15,7 @@ aliases:
 - 乱码
 - 精简输出
 - brief
+verified: '2026-10-19'
 ---
 决定：命令行 search、graph、record 增加 --brief，输出每条一行的中文摘要（类型｜议题｜日期｜id：正文前 120 字，过期的下一行标“⚠ 需核实：原因”，末尾附提示和相关模块），默认仍输出 JSON 供程序解析。
 record 的 --alias、--anchor、--supersedes 改为可跟多个值（--alias 闪退 崩溃），也可重复写。

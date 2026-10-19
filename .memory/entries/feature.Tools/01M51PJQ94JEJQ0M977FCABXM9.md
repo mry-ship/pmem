@@ -14,6 +14,7 @@ aliases:
 - memory_graph
 - stale
 - 自动生成Wiki
+verified: '2026-10-19'
 ---
 决定：
 - memory_graph 的模块全貌（topics[].latest）和议题时间线里的现行记忆，与检索用同一口径标 stale/check；有过期项时附 verify_hint。

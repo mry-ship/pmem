@@ -4,12 +4,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from pmem.metrics.report import KIND_NAMES
+from pmem.core.entry import KIND_LABELS
 from pmem.service import MemoryService
 
 
 def _kinds(kinds: dict) -> str:
-    return "、".join(f"{KIND_NAMES.get(k, k)} {n}" for k, n in sorted(kinds.items(), key=lambda kv: -kv[1]))
+    return "、".join(f"{KIND_LABELS.get(k, k)} {n}" for k, n in sorted(kinds.items(), key=lambda kv: -kv[1]))
 
 
 def render_groups(result: dict) -> str:
@@ -28,7 +28,7 @@ def render_group(result: dict) -> str:
     items = result["items"]
     lines = [f"{result['module']} / {result['entity']}：{len(items)} 条有效记忆，共 {result['chars']} 字（从旧到新）", ""]
     for item in items:
-        lines.append(f"[{item['id']}] {item['date']} {KIND_NAMES.get(item['kind'], item['kind'])} {item['author']}")
+        lines.append(f"[{item['id']}] {item['date']} {KIND_LABELS.get(item['kind'], item['kind'])} {item['author']}")
         lines.append(item["content"])
         if item["anchors"]:
             lines.append("关联代码：" + "、".join(item["anchors"]))

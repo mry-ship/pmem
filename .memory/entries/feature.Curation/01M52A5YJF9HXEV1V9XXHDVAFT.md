@@ -1,6 +1,6 @@
 ---
 id: 01M52A5YJF9HXEV1V9XXHDVAFT
-module: infra.Common
+module: feature.Curation
 entity: CLI
 kind: decision
 status: active

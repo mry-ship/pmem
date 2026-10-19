@@ -1,6 +1,6 @@
 ---
 id: 01M4Z8DKS76NGDNNKWYDQX29SW
-module: feature.Tools
+module: feature.Curation
 entity: WriteHints
 kind: decision
 status: active

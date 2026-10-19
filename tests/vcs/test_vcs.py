@@ -133,6 +133,27 @@ def test_git_changed_after_commits_and_local_edits(git_repo):
     assert vcs.changed_after(["README.md"], "2000-01-01") == {"README.md": today}
 
 
+def test_git_changed_after_splits_long_path_lists(git_repo):
+    """Windows 命令行约 32K 字符上限：记忆多了一次传完所有路径会失败，被当成“都没改过”。"""
+    vcs = detect_vcs(git_repo)
+    (git_repo / "src").mkdir()
+    (git_repo / "src" / "a.ts").write_text("x", encoding="utf-8")
+    run(["git", "add", "-A"], git_repo)
+    run(["git", "commit", "-q", "-m", "a"], git_repo)
+    padding = [f"src/{'deep/' * 20}missing{i}.ts" for i in range(400)]
+    assert sum(len(p) for p in padding) > 40000
+    found = vcs.changed_after([*padding, "src/a.ts"], "2000-01-01")
+    assert found == {"src/a.ts": date.today().isoformat()}
+
+
+def test_path_batches_respect_the_length_limit():
+    from pmem.vcs.base import path_batches
+
+    batches = path_batches(["aaaa", "bbbb", "cccc"], limit=10)
+    assert batches == [["aaaa", "bbbb"], ["cccc"]]
+    assert path_batches([]) == []
+
+
 def test_svn_lists_dirty_files_relative_to_root(svn_wc):
     vcs = detect_vcs(svn_wc)
     assert vcs.dirty_files() == []

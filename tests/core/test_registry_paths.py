@@ -21,6 +21,12 @@ def test_malformed_modules_raise_registry_error(data, problem):
         ModuleRegistry(data)
 
 
+@pytest.mark.parametrize("pattern", ["app/[id]/**", "app/[id]"])
+def test_folders_named_with_brackets_match_literally(pattern):
+    registry = ModuleRegistry({"modules": {"feature.Detail": {"paths": [pattern]}}})
+    assert registry.module_for_path("app/[id]/page.tsx").module_id == "feature.Detail"
+
+
 def test_specific_feature_path_wins_over_umbrella(registry):
     match = registry.module_for_path("Assets/Framework/Common/Util.cs")
     assert match.module_id == "infra.Common"

@@ -5,11 +5,13 @@ import difflib
 import json
 import time
 from collections import Counter, defaultdict
+from datetime import datetime
 from pathlib import Path
 
 from pmem.catalog.coverage import coverage_report
 from pmem.catalog.migrate import MigrateError, stray_moves
 from pmem.core.entry import KIND_LABELS
+from pmem.core.ids import ulid_ms
 from pmem.core.quality import similar_entity_pairs
 from pmem.core.registry import RegistryError
 from pmem.index.tokenize import tokenize
@@ -94,6 +96,23 @@ def _misses(searches: list[dict]) -> list[tuple[str, str, int]]:
     return [(m, what, n) for (m, what), n in counter.most_common(TOP)]
 
 
+def _reviewed_after(old, new) -> bool:
+    """较早那条是否在较晚那条写下之后被核对过。核对日期晚于写入日期即是；同一天时比核对时刻与较晚那条
+    ULID 里的生成时间，没记核对时刻（旧版本核对的）分不出先后，按没看过算，再 confirm 一次即可。"""
+    if not old.verified or old.verified < new.note_date:
+        return False
+    if old.verified > new.note_date:
+        return True
+    written = ulid_ms(new.id)
+    if not old.verified_at or not written:
+        return False
+    try:
+        at = datetime.fromisoformat(old.verified_at)
+    except ValueError:
+        return False
+    return (at if at.tzinfo else at.astimezone()).timestamp() * 1000 >= written
+
+
 def _contradictions(visible: list) -> list[dict]:
     """同模块同议题、都还现行、正文高度相似但一条肯定一条否定（结论/决定 对 排除/更正）的记忆对。
     较早那条在较晚那条写下之后被核对过，视为负责人已看过，不再提示。"""
@@ -111,7 +130,7 @@ def _contradictions(visible: list) -> list[dict]:
                 if a.id in b.supersedes or b.id in a.supersedes:
                     continue
                 old, new = sorted((a, b), key=lambda e: (e.note_date, e.id))
-                if old.checked_date >= new.note_date and old.verified:
+                if _reviewed_after(old, new):
                     continue
                 union = tokens[a.id] | tokens[b.id]
                 score = len(tokens[a.id] & tokens[b.id]) / len(union) if union else 0.0

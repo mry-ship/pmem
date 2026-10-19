@@ -97,6 +97,15 @@ def test_new_folder_named_like_a_deprecated_module_is_never_overwritten(project)
     assert out["modules"]["gameplay.Match"] == data["modules"]["gameplay.Match"]
 
 
+@pytest.mark.parametrize("candidate", ["gameplay.Match", "economy.Match"])
+def test_new_folder_named_like_a_candidate_is_appended_to_it(project, candidate):
+    data = yaml.safe_load(MODULES)
+    data["candidates"][candidate] = {"paths": ["src/Old/Match/**"]}
+    plan = plan_sync(project, ModuleRegistry(data), Counter(), Counter({"src/Game/Match/A.cs": 3}), Counter())
+    assert plan.append_paths.get(candidate) == ["src/Game/Match/**"]
+    assert plan.conflicts == [] and "gameplay.Match" not in plan.new_modules
+
+
 def test_without_history_heat_is_not_used_and_idle_is_skipped(project):
     plan = plan_sync(project, registry(project), Counter(), Counter(), Counter(), history=False)
     assert "gameplay.Match" in plan.new_modules and "gameplay.Tiny" in plan.new_candidates

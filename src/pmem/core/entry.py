@@ -13,7 +13,7 @@ REPLACING_STATUSES = (*VISIBLE_STATUSES, "archived")
 
 _FRONT_MATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
 KNOWN_KEYS = frozenset({"id", "module", "entity", "kind", "status", "supersedes", "anchors", "revision", "author",
-                        "note_date", "aliases", "verified", "archived", "source"})
+                        "note_date", "aliases", "verified", "verified_at", "archived", "source"})
 
 
 @dataclass
@@ -32,6 +32,8 @@ class Entry:
     source_conversation: str | None = None
     aliases: list[str] = field(default_factory=list)
     verified: str | None = None
+    # 核对的精确时刻（带时区的 ISO 时间）：verified 只到天，同一天写下的新记忆分不出先后
+    verified_at: str | None = None
     archived_on: str | None = None
     archived_from: str | None = None
     archived_by: str | None = None
@@ -72,6 +74,8 @@ class Entry:
             meta["aliases"] = list(self.aliases)
         if self.verified:
             meta["verified"] = self.verified
+            if self.verified_at:
+                meta["verified_at"] = self.verified_at
         if self.archived_on:
             meta["archived"] = {"on": self.archived_on, "from": self.archived_from or "active"}
             if self.archived_by:
@@ -110,6 +114,7 @@ class Entry:
             source_conversation=source.get("conversation"),
             aliases=[str(x) for x in meta.get("aliases") or []],
             verified=str(meta["verified"]) if meta.get("verified") else None,
+            verified_at=str(meta["verified_at"]) if meta.get("verified_at") else None,
             archived_on=str(archived["on"]) if archived.get("on") else None,
             archived_from=restored if restored in STATUSES and restored != "archived" else None,
             archived_by=str(archived["by"]) if archived.get("by") else None,

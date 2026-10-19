@@ -66,6 +66,19 @@ def search_payload(conv="c1", **args) -> dict:
             "tool_input": json.dumps(args)}
 
 
+def record_output(module: str) -> str:
+    """pmem record --brief 写入成功时的输出。"""
+    return f"已写入 {module} / Price：01JA7K3M2X9F4Q8W6ZB1C2D3E9（再次写入同一条时用 --draft-id 01JA7K3M2X9F4Q8W6ZB1C2D3E9）\n"
+
+
+def run_shell(root: Path, command: str, output: str | None = None, conv="c1") -> dict:
+    """终端命令执行前后各触发一次 Hook；返回执行前的结果。"""
+    shell = {"conversation_id": conv, "tool_name": "Shell", "tool_input": {"command": command, "cwd": ""}}
+    before = handle("pre-tool", shell, root)
+    handle("post-tool", shell if output is None else {**shell, "tool_output": output}, root)
+    return before
+
+
 def search_done(root: Path, conv="c1", module="gameplay.Jigsaw", items=()) -> dict:
     """MCP 检索返回了结果（afterMCPExecution）。"""
     after = {"conversation_id": conv, "tool_name": "MCP:search_memory",
@@ -227,6 +240,8 @@ def test_shell_write_is_gated(make_project):
         ("pwsh -c 'Out-File -FilePath src/S.cs'", ["src/S.cs"]),
         ("cmd /c \"del src\\T.cs\"", ["src\\T.cs"]),
         ("bash -c 'rm -f src/U.cs'", ["src/U.cs"]),
+        ("bash -lc 'rm -f src/U1.cs'", ["src/U1.cs"]),
+        ("sh -ec 'rm -f src/U2.cs'", ["src/U2.cs"]),
         ("Get-Content a | Tee-Object -FilePath src/V.cs", ["src/V.cs"]),
         ("ni src/W.cs -ItemType File", ["src/W.cs"]),
         ("powershell -Command Get-ChildItem src", []),
@@ -316,7 +331,7 @@ def test_multiline_command_registers_every_pmem_call(make_project):
                "  --kind risk --content-file $t\\a.txt\r\n")
     shell = {"conversation_id": "c1", "tool_name": "Shell", "tool_input": {"command": command, "cwd": ""}}
     assert handle("pre-tool", shell, root)["permission"] == "allow"
-    handle("post-tool", shell, root)
+    handle("post-tool", {**shell, "tool_output": "gameplay.Jigsaw：1 条\n" + record_output("economy.Shop")}, root)
     assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
     assert handle("stop", stop_payload(), root) == {}
     assert cli_args(command, "record") == [{"module": "economy.Shop"}]
@@ -444,10 +459,20 @@ def test_stop_is_quiet_when_aborted(make_project):
         ("pmem search --module=a.B --path=src/x.cs", [{"module": "a.B", "path": "src/x.cs"}]),
         ("pmem search --module a.B 2> $null", [{"module": "a.B"}]),
         ("pmem search --module a.B 1> out.txt", []),
+        ("& pmem search --module a.B", [{"module": "a.B"}]),
+        ('& "C:\\Tools\\pmem.exe" search --module a.B', [{"module": "a.B"}]),
     ],
 )
 def test_cli_search_args(command, args):
     assert cli_args(command, "search") == args
+
+
+@pytest.mark.parametrize("text", ["看下 ./src/Jigsaw/Board.cs 的问题", "看下 src/Jigsaw/Board.cs。", r"看下 .\src\Jigsaw\Board.cs"])
+def test_paths_in_question_map_to_module(make_project, text):
+    from pmem.hooks.gate import Gate
+
+    root = make_project()
+    assert Gate(root, {"conversation_id": "c1"}).modules_in_text(text) == ["gameplay.Jigsaw"]
 
 
 def test_discarded_output_still_counts_for_record():
@@ -463,14 +488,26 @@ def test_cli_search_with_discarded_output_does_not_unlock(make_project):
     assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
 
 
+CLI_RECORD = "pmem record --module economy.Shop --entity Price --kind risk --content-file note.txt"
+
+
 def test_cli_record_in_shell_silences_stop_reminder(make_project):
     root = make_project()
     handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
-    shell = {"conversation_id": "c1", "tool_name": "Shell",
-             "tool_input": {"command": "pmem record --module economy.Shop --entity Price --kind risk "
-                                       "--content-file note.txt", "cwd": ""}}
-    assert handle("pre-tool", shell, root)["permission"] == "allow"
+    assert run_shell(root, CLI_RECORD, record_output("economy.Shop"))["permission"] == "allow"
     assert handle("stop", {"conversation_id": "c1", "status": "completed"}, root) == {}
+
+
+def test_failed_cli_record_does_not_count(make_project):
+    root = make_project()
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    shell = {"conversation_id": "c1", "tool_name": "Shell", "tool_input": {"command": CLI_RECORD, "cwd": ""}}
+    handle("pre-tool", shell, root)
+    # 执行前只挂起，写入失败或根本没执行都不算写过
+    assert "economy.Shop" in handle("stop", {"conversation_id": "c1", "status": "completed"}, root)["followup_message"]
+    handle("post-tool", {**shell, "tool_output": "失败：正文 12 字，少于下限 30 字"}, root)
+    events = [e["type"] for e in read_events(Config.load(root).cache_dir)]
+    assert "record_call_failed" in events and "record_call" not in events
 
 
 def test_every_cli_record_in_one_command_counts(make_project):
@@ -479,19 +516,28 @@ def test_every_cli_record_in_one_command_counts(make_project):
         handle("edited", {"conversation_id": "c1", "file_path": str(root / path)}, root)
     command = ("$t=$env:TEMP; uv run pmem record --module economy.Shop --entity A --kind risk --content-file a.md; "
                "uv run pmem record --module gameplay.Jigsaw --entity B --kind risk --content-file b.md")
-    shell = {"conversation_id": "c1", "tool_name": "Shell", "tool_input": {"command": command, "cwd": ""}}
-    assert handle("pre-tool", shell, root)["permission"] == "allow"
+    output = record_output("economy.Shop") + record_output("gameplay.Jigsaw")
+    assert run_shell(root, command, output)["permission"] == "allow"
     assert handle("stop", {"conversation_id": "c1", "status": "completed"}, root) == {}
 
 
 def test_cli_record_is_logged_for_report(make_project):
     root = make_project()
-    shell = {"conversation_id": "c1", "tool_name": "Shell",
-             "tool_input": {"command": "pmem record --module economy.Shop --entity Price --kind risk "
-                                       "--content-file note.txt", "cwd": ""}}
-    handle("pre-tool", shell, root)
+    run_shell(root, CLI_RECORD, record_output("economy.Shop"))
     events = list(read_events(Config.load(root).cache_dir))
     assert [(e["type"], e["module"], e["conv"]) for e in events] == [("record_call", "economy.Shop", "c1")]
+
+
+def test_parallel_command_does_not_take_pending_cli_search(make_project):
+    root = make_project("block")
+    search = {"conversation_id": "c1", "tool_name": "Shell",
+              "tool_input": {"command": "pmem search --module gameplay.Jigsaw", "cwd": ""}}
+    handle("pre-tool", search, root)
+    ls = {"conversation_id": "c1", "tool_name": "Shell", "tool_input": {"command": "ls", "cwd": ""}}
+    handle("pre-tool", ls, root)
+    handle("post-tool", {**ls, "tool_output": "src"}, root)
+    handle("post-tool", {**search, "tool_output": "gameplay.Jigsaw：1 条"}, root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
 
 
 def test_record_injection_adds_files_edited_in_module(make_project):
@@ -568,9 +614,8 @@ def test_non_analysis_or_recorded_conversations_are_not_counted(make_project):
     assert "analyzed" not in _last_stop(root)
     handle("prompt", {"conversation_id": "rec", "prompt": "排查一下拼图报错"}, root)
     search_done(root, conv="rec")
-    shell = {"conversation_id": "rec", "tool_name": "Shell",
-             "tool_input": {"command": "pmem record --module gameplay.Jigsaw --entity A --kind risk --content-file a.md"}}
-    handle("pre-tool", shell, root)
+    run_shell(root, "pmem record --module gameplay.Jigsaw --entity A --kind risk --content-file a.md",
+              record_output("gameplay.Jigsaw"), conv="rec")
     handle("stop", {"conversation_id": "rec", "status": "completed"}, root)
     assert "analyzed" not in _last_stop(root)
 
@@ -1080,6 +1125,31 @@ def test_deleting_a_folder_checks_the_modules_registered_under_it(make_project):
     (root / "src" / "Jigsaw" / "Board.cs").write_text("x", encoding="utf-8")
     denied = handle("pre-tool", shell("rm -rf src"), root)
     assert denied["permission"] == "deny" and "gameplay.Jigsaw" in denied["user_message"]
+
+
+@pytest.mark.parametrize("command", ["rm -rf src/*", "Remove-Item src\\* -Recurse -Force", "rm -rf .", "rm -rf ./"])
+def test_deleting_by_wildcard_or_project_root_checks_modules_inside(make_project, command):
+    root = make_project("block")
+    (root / "src" / "Jigsaw").mkdir(parents=True)
+    (root / "src" / "Jigsaw" / "Board.cs").write_text("x", encoding="utf-8")
+    denied = handle("pre-tool", shell(command), root)
+    assert denied["permission"] == "deny" and "gameplay.Jigsaw" in denied["user_message"]
+
+
+def test_wildcard_matching_no_module_file_is_allowed(make_project):
+    root = make_project("block")
+    (root / "a.log").write_text("x", encoding="utf-8")
+    assert handle("pre-tool", shell("rm *.log"), root)["permission"] == "allow"
+
+
+def test_deleting_dot_folder_checks_modules_registered_under_it(make_project):
+    root = make_project("block", with_memory=False)
+    modules = root / ".memory" / "modules.yaml"
+    modules.write_text(MODULES + "  gameplay.Ci: { paths: [./.github/workflows/**] }\n", encoding="utf-8")
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3B2", "conclusion", "CI 的结论", "2026-09-01", module="gameplay.Ci")
+    (root / ".github" / "workflows").mkdir(parents=True)
+    denied = handle("pre-tool", shell("rm -rf .github"), root)
+    assert denied["permission"] == "deny" and "gameplay.Ci" in denied["user_message"]
 
 
 def test_searching_a_folder_digests_the_module_inside_not_the_umbrella(make_project):

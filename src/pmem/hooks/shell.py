@@ -22,6 +22,9 @@ _MAX_NESTING = 3
 # 跟在 pmem search 后面会吞掉输出的管道；输出被丢弃的检索不算查过
 _DISCARD_STAGES = {"out-null", "out-file", "set-content", "add-content"}
 VARIABLE_PATH = re.compile(r"[$%]|\{")
+WILDCARD_PATH = re.compile(r"[*?\[]")
+# bash -c、bash -lc、sh -ec：合在一起的短参数里带 c 就是内联命令
+_POSIX_INLINE_FLAG = re.compile(r"-[a-zA-Z]*c[a-zA-Z]*")
 _RM = {"rm", "del", "erase", "rmdir", "rd"}
 _COPY = {"cp", "copy", "copy-item", "cpi"}
 _MOVE = {"mv", "move", "move-item", "mi", "rename-item", "rni", "ren"}
@@ -185,8 +188,8 @@ def _nested(tokens: list[str]) -> tuple[str | None, str | None]:
         at = next((i for i, flag in enumerate(lowered) if flag in ("/c", "/k")), None)
         return (" ".join(rest[at + 1:]) if at is not None else None), None
     if program in _POSIX_SHELLS:
-        if "-c" in lowered:
-            at = lowered.index("-c")
+        at = next((i for i, flag in enumerate(rest) if _POSIX_INLINE_FLAG.fullmatch(flag)), None)
+        if at is not None:
             return (rest[at + 1] if at + 1 < len(rest) else None), None
         return None, next((t for t in rest if t.lower().endswith(_SHELL_SCRIPT_SUFFIXES)), None)
     return None, None
@@ -362,7 +365,7 @@ def cli_args(command: str, subcommand: str) -> list[dict]:
             continue
         stages = _stages(statement)
         for n, segment in enumerate(stages):
-            tokens = _tokens(segment)
+            tokens = _command(segment)[0]
             names = [_program(t) for t in tokens]
             start = next(
                 (i + 2 for i in range(len(tokens) - 1)

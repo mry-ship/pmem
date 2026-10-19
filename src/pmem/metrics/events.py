@@ -32,7 +32,11 @@ def log_event(cache_dir: Path, event_type: str, **fields) -> None:
         # 多个 pmem 进程（CLI、Hook、MCP 服务）会同时追加；Windows 的追加写不是原子的，不加锁会写坏行
         with _exclusive(cache_dir / LOCK_FILE):
             if path.exists() and path.stat().st_size > MAX_BYTES:
-                path.replace(path.with_suffix(".old.jsonl"))
+                try:
+                    path.replace(path.with_suffix(".old.jsonl"))
+                except OSError:
+                    # Windows 上别的进程（report、health）正读着日志时改不了名，这次先照常追加，下次再轮转
+                    pass
             with path.open("ab") as fh:
                 fh.write(data)
     except OSError:

@@ -34,6 +34,11 @@ def test_does_not_break_inside_brackets():
     assert format_content("检索不受影响（换行只是空白；\n句号本来就打断二元组）。") == "检索不受影响（换行只是空白；句号本来就打断二元组）。"
 
 
+def test_unbalanced_bracket_does_not_swallow_following_lines():
+    text = "取值区间为 (0, 1]，超出会被截断。\n原因：配置没校验。\n风险：旧存档里的 0 值 :( 会报错。"
+    assert format_content(text) == text
+
+
 def test_list_items_keep_continuation_indent():
     item = "- " + "第一句说明根因在服务端校验。" * 5 + "第二句说明影响范围。"
     lines = format_content(item).splitlines()

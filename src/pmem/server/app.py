@@ -30,22 +30,36 @@ def resolve_root(raw: str | None) -> Path | None:
     return None
 
 
+def _stamp(path: Path) -> tuple[int, int] | None:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    return stat.st_mtime_ns, stat.st_size
+
+
 def build_server(root: Path | None) -> MCPServer:
-    from pmem.core.config import ConfigError
+    from pmem.core.config import CONFIG_FILE, MEMORY_DIR, ConfigError
     from pmem.service import MemoryService
 
     missing = {"ok": False, "error": "当前工作区还没有接入 pmem：请在项目根目录运行 pmem init"}
     holder: dict = {}
     # 框架在线程池里并发执行同步工具；索引、sqlite 连接、模型懒加载都不是线程安全的
     lock = threading.Lock()
+    config_path = root / MEMORY_DIR / CONFIG_FILE if root is not None else None
 
     def call(action) -> str:
         if root is None:
             return _dump(missing)
         with lock:
             try:
+                # 服务常驻：config.yaml 改了就整个重建，检索、写入、嵌入等设置下一次调用即生效
+                stamp = _stamp(config_path)
+                if "service" in holder and holder.get("stamp") != stamp:
+                    holder.pop("service").close()
                 if "service" not in holder:
                     holder["service"] = MemoryService(root, source="mcp")
+                    holder["stamp"] = stamp
                 return _dump(action(holder["service"]))
             except ConfigError as exc:
                 return _dump({"ok": False, "error": f"pmem 配置有误：{exc}；改好后再调用即可，无需重启"})

@@ -527,12 +527,16 @@ project:
   name: MyGame
   type: game
 vcs: auto                   <span class="c"># auto / git / svn / none</span>
+svn_auto_add: true          <span class="c"># SVN 下新写的记忆文件自动 svn add</span>
 gate:
-  mode: block               <span class="c"># block / warn / off</span>
+  mode: block               <span class="c"># block 检索成功返回才放行 / warn 只提醒一次 / off 只靠规则</span>
   watch: []                 <span class="c"># 为空 = 所有已登记模块的路径都受守护</span>
   ignore: ["**/*.md", "docs/**", ".memory/**", ".cursor/**"]
-  skip_markers: ["跳过记忆", "skip-memory"]
+  skip_markers: ["跳过记忆", "skip-memory"]       <span class="c"># 用户这样说时本对话不查也不写（须是独立短语）</span>
+  resume_markers: ["恢复记忆", "resume-memory"]   <span class="c"># 误判或改主意时，说这个重新打开</span>
+  stop_reminder: true       <span class="c"># 改了模块却没写记忆时，结束提醒一次</span>
   analysis_reminder: true   <span class="c"># 只查了记忆、没改也没写时，结束提醒一次</span>
+  analysis_markers: [...]   <span class="c"># 判断“排查类提问”的用语（为什么、报错、根因……），默认值见 core/config.py</span>
   read_digest: true         <span class="c"># 读代码时附上该模块的记忆摘要</span>
   question_review: true     <span class="c"># 问题提到的模块没查过时，结束时要求核对</span>
 wiki:
@@ -543,9 +547,21 @@ write:
   content_min: 20
   content_max: 1200
   recommend_max: 600        <span class="c"># 超过只提示、不拒绝</span>
-  max_per_day_per_entity: 5
+  max_per_day_per_entity: 5 <span class="c"># 同一议题每天最多几条；替代仍现行的旧记忆、覆盖草稿不计</span>
+  secret_patterns: []       <span class="c"># 额外的敏感信息正则，正文、议题名、别名命中就拒绝写入</span>
+search:
+  limit: 5                  <span class="c"># 默认返回条数</span>
+  max_per_batch: 2          <span class="c"># 同一批写入的记忆最多返回几条</span>
+  recency_half_life_days: 90  <span class="c"># 时效加分的半衰期</span>
 embedding:
-  backend: auto             <span class="c"># auto / onnx / ollama / openai / none</span></code></pre>
+  backend: auto             <span class="c"># auto / onnx / ollama / openai / none</span>
+  model: ""                 <span class="c"># 为空用默认：onnx 为 BAAI/bge-small-zh-v1.5，ollama 为 bge-m3；openai 必填</span>
+  model_path: ""            <span class="c"># onnx 用本地模型目录（离线环境）</span>
+  base_url: ""              <span class="c"># ollama 默认 http://localhost:11434；openai 必填，密钥读 PMEM_OPENAI_API_KEY 或 OPENAI_API_KEY</span>
+server:
+  watchdog: true            <span class="c"># MCP 服务崩溃、卡死或 pmem 升级后自动重启</span>
+  request_timeout: 120      <span class="c"># 单次调用超过这么多秒没响应就判定卡死并重启</span></code></pre>
+  <p><code>modules.yaml</code> 改了随时生效；<code>config.yaml</code> 改了之后 Hook、命令行和已在运行的 MCP 服务都在下一次调用时生效；只有 <code>server</code> 下的两项（看门狗开关和超时）要在 Cursor 里重启 pmem 服务（或重开窗口）才会读到。</p>
 </section>
 
 <!-- ============ 存储 ============ -->

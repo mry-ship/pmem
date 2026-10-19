@@ -53,14 +53,27 @@ def _member(symbol: str) -> str:
 
 
 def symbol_block(text: str, symbol: str) -> str | None:
-    """文件里某个符号（函数、类、方法）的完整代码块，找不到返回 None。“类名.成员”按成员找。"""
-    name = _member(symbol)
-    if not name:
+    """文件里某个符号（函数、类、方法）的完整代码块，找不到返回 None。
+    “类名.成员”先找到类，再在类里找成员，免得落到别的类的同名方法（close、__init__）；找不到类时按成员找。"""
+    parts = [p for p in re.split(r"\.|::", symbol.strip()) if p]
+    if not parts:
         return None
+    scope, scoped = text, False
+    for owner in parts[:-1]:
+        block = _block(scope, owner, scoped)
+        if block is not None:
+            scope, scoped = block, True
+    return _block(scope, parts[-1], scoped)
+
+
+def _block(text: str, name: str, inside: bool) -> str | None:
+    """inside 为 True 时 text 是类的代码块，跳过类头那一行（构造函数与类同名）。"""
     lines = [line.rstrip() for line in text.splitlines()]
-    start = _definition_line(lines, name)
+    offset = 1 if inside else 0
+    start = _definition_line(lines[offset:], name)
     if start is None:
         return None
+    start += offset
     head = lines[start]
     indent = len(head) - len(head.lstrip())
     if re.match(r"\s*(?:async\s+)?(?:def|class)\b", head):

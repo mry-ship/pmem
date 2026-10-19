@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pmem.core.config import Config
+from pmem.core.fileio import write_atomic
 from pmem.core.registry import ModuleRegistry, RegistryError
 from pmem.core.textfmt import format_content
 from pmem.storage.files import FilesStorage
@@ -37,7 +38,7 @@ def run_format(root: Path, module: str | None, apply: bool) -> int:
             sample += [f"    {line}" for line in formatted.splitlines()[:PREVIEW_LINES]]
         if apply:
             entry.content = formatted
-            path.write_text(entry.to_markdown(), encoding="utf-8", newline="\n")
+            write_atomic(path, entry.to_markdown())
     print(f"检查记忆 {scanned} 条，其中 {changed} 条有过长的行需要断开。")
     if sample:
         print("\n".join(sample))

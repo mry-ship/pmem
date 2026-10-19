@@ -10,6 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from pmem.core.config import Config
+from pmem.core.fileio import write_atomic
 from pmem.core.registry import ModuleRegistry, RegistryError
 from pmem.scan.lite import THIRD_PARTY_NAMES, kept_dirs
 from pmem.storage.files import FilesStorage
@@ -159,7 +160,7 @@ def run_rename(root: Path, raw: list[str], apply: bool) -> int:
         return 0
     for path, entry, updated in changes:
         entry.anchors = updated
-        path.write_text(entry.to_markdown(), encoding="utf-8", newline="\n")
+        write_atomic(path, entry.to_markdown())
     print(f"已改写 {len(changes)} 条记忆的关联代码。")
     return 0
 
@@ -191,7 +192,7 @@ def run_anchors(root: Path, module: str | None, apply: bool) -> int:
             samples.append(f"  {entry.module}/{entry.entity} {entry.id}: {', '.join(found)}")
         if apply:
             entry.anchors = found
-            path.write_text(entry.to_markdown(), encoding="utf-8", newline="\n")
+            write_atomic(path, entry.to_markdown())
     print(f"没有关联代码的记忆 {scanned} 条，其中 {changed} 条能从正文解析出关联代码，共 {total} 处。示例：")
     print("\n".join(samples) if samples else "  （无）")
     if changed and not apply:

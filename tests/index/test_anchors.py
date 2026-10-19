@@ -49,6 +49,16 @@ def test_brace_block_for_csharp_method():
     assert block.splitlines()[-1].strip() == "}" and "Give();" in block
 
 
+def test_qualified_symbol_is_looked_up_inside_its_class():
+    text = ("class Cache:\n    def close(self):\n        return 1\n\n\n"
+            "class Index:\n    def close(self):\n        return 2\n")
+    assert symbol_block(text, "Index.close") == "    def close(self):\n        return 2"
+    assert symbol_block(text, "Cache.close") == "    def close(self):\n        return 1"
+    assert symbol_block(text, "Missing.close") == "    def close(self):\n        return 1"
+    ctor = "public class Shop\n{\n    public Shop(int a)\n    {\n        x = a;\n    }\n}\n"
+    assert symbol_block(ctor, "Shop.Shop").splitlines()[0].strip() == "public Shop(int a)"
+
+
 def test_calls_are_not_mistaken_for_definitions():
     assert symbol_block("void Run() {\n    return Claim(1);\n}\n", "Claim") is None
     assert symbol_block("x = 1\n", "missing") is None

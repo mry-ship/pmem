@@ -7,6 +7,8 @@ from pathlib import Path
 
 import yaml
 
+from pmem.core.fileio import write_atomic
+
 _QUOTED = re.compile(r'"(?:[^"\\]|\\.)*"|\'[^\']*\'')
 
 
@@ -28,7 +30,7 @@ class ModulesFile:
         return body_comments(self.body)
 
     def write(self, data: dict) -> None:
-        self.path.write_text(dump_modules(self.header, data), encoding="utf-8", newline="\n")
+        write_atomic(self.path, dump_modules(self.header, data))
 
 
 def split_header(text: str) -> tuple[str, str]:

@@ -4,6 +4,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 from datetime import date
 from pathlib import Path
+from urllib.parse import unquote
 
 from pmem.vcs.base import HISTORY_TIMEOUT, VCS, path_batches, run_tool
 
@@ -131,7 +132,8 @@ class SvnVCS(VCS):
     def commits_since(self, since: str) -> list[tuple[str, list[str]]]:
         info = self._xml("info", str(self.root))
         rel = info.findtext("./entry/relative-url") if info is not None else None
-        rel = rel or "^/"
+        # relative-url 是 URL 编码的（中文、空格成了 %XX），svn log 里的路径不编码
+        rel = unquote(rel or "^/")
         prefix = rel[1:].rstrip("/") + "/" if rel.startswith("^") else "/"
         # svn log 要访问服务器，可能较慢
         args = ["svn", "log", "-v", "--xml", "--non-interactive", "-l", "2000", "-r", f"HEAD:{{{since}}}", str(self.root)]

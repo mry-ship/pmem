@@ -7,6 +7,7 @@ from pathlib import Path
 
 import yaml
 
+from pmem.core.fileio import write_atomic
 from pmem.core.registry import DEPRECATED, MERGED_PREFIX, ModuleRegistry, RegistryError, is_module_id
 from pmem.storage.files import FilesStorage
 
@@ -441,7 +442,7 @@ def apply_moves(storage: FilesStorage, moves: list[Move]) -> None:
         dst = storage.entries_dir / move.target / move.path.name
         if dst != move.path:
             storage.vcs.move(move.path, dst)
-        dst.write_text(entry.to_markdown(), encoding="utf-8", newline="\n")
+        write_atomic(dst, entry.to_markdown())
         folder = move.path.parent
         if storage.vcs.name != "svn" and folder.is_dir() and not any(folder.iterdir()):
             folder.rmdir()

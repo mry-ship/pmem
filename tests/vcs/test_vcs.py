@@ -58,6 +58,23 @@ def test_git_counts_uncommitted_memories(git_repo):
     assert vcs.uncommitted_count(entries) == 0
 
 
+def test_svn_history_decodes_relative_url(tmp_path, monkeypatch):
+    """svn info 的 relative-url 是 URL 编码的，svn log 的路径不是；不解码时中文、空格目录下的提交全部对不上。"""
+    from pmem.vcs import svn
+
+    info = "<info><entry><relative-url>^/trunk/%E6%B8%B8%E6%88%8F%20Client</relative-url></entry></info>"
+    log = ("<log><logentry><date>2026-10-18T01:02:03Z</date><paths>"
+           "<path kind=\"file\">/trunk/游戏 Client/src/Reward.cs</path>"
+           "<path kind=\"file\">/branches/x/Other.cs</path></paths></logentry></log>")
+
+    def fake(args, cwd, timeout=30):
+        out = info if args[1] == "info" else log
+        return subprocess.CompletedProcess(args, 0, out.encode("utf-8"), b"")
+
+    monkeypatch.setattr(svn, "run_tool", fake)
+    assert svn.SvnVCS(tmp_path).commits_since("2026-10-01") == [("2026-10-18", ["src/Reward.cs"])]
+
+
 def test_git_detected_from_subdirectory(git_repo):
     sub = git_repo / "src" / "deep"
     sub.mkdir(parents=True)

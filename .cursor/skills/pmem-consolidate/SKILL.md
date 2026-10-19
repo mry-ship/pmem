@@ -2,7 +2,7 @@
 name: pmem-consolidate
 description: 按 pmem health 健康报告定期收口记忆库：核对过时记忆、处理互相矛盾的结论、归档、合并零碎记忆、确认种子、整理模块目录。用户说“整理记忆库”“收口记忆”“按 pmem-consolidate”，或负责人每两周例行检查时使用。
 ---
-<!-- {generated} -->
+<!-- 由 pmem init 生成，重新运行 pmem init 会覆盖；如需调整请改 .memory/config.yaml -->
 # pmem 记忆库收口
 
 记忆写得越多，越容易出现过时、互相矛盾、零碎重复的条目，检索质量随之下降。

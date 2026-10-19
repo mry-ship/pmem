@@ -65,7 +65,8 @@ class GitVCS(VCS):
 
     def commits_since(self, since: str) -> list[tuple[str, list[str]]]:
         # --relative：项目可能是仓库的子目录，路径要相对项目根
-        args = ["git", "-c", "core.quotepath=off", "log", f"--since={since}", "--name-only", "--relative",
+        # 只给日期时 git 用当前时刻补齐，会漏掉起始日较早的提交
+        args = ["git", "-c", "core.quotepath=off", "log", f"--since={since} 00:00", "--name-only", "--relative",
                 "--pretty=format:@@%ci"]
         try:
             proc = run_tool(args, self.root, timeout=HISTORY_TIMEOUT)

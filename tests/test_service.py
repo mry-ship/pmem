@@ -257,6 +257,27 @@ def test_supersedes_hides_old(svc):
     assert ids == [new["id"]]
 
 
+def test_draft_overwrite_cannot_make_supersede_cycle(svc):
+    draft = record(svc)
+    newer = record(svc, kind="correction", content="更正：" + LONG, supersedes=[draft["id"]])
+    cycle = record(svc, content=LONG + "更新", draft_id=draft["id"], supersedes=[newer["id"]])
+    assert cycle["ok"] is False and cycle["code"] == "supersede_cycle"
+    assert [i["id"] for i in svc.search(module="gameplay.Jigsaw")["items"]] == [newer["id"]]
+
+
+def test_superseding_an_already_superseded_entry_does_not_skip_daily_cap(svc):
+    old = record(svc, entity="Config")
+    record(svc, supersedes=[old["id"]])
+    record(svc, content=LONG + "补充一", supersedes=[old["id"]])
+    third = record(svc, content=LONG + "补充二", supersedes=[old["id"]])
+    assert third["ok"] is False and third["code"] == "daily_cap"
+
+
+def test_secret_in_aliases_is_rejected(svc):
+    result = record(svc, aliases=["AKIAABCDEFGHIJKLMNOP"])
+    assert result["ok"] is False and result["code"] == "secret"
+
+
 def test_unknown_supersedes_id_warns(svc):
     result = record(svc, supersedes=["01JA7K3M2X9F4Q8W6ZB1C2D3E9"])
     assert result["ok"] is True

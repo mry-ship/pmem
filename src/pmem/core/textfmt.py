@@ -4,6 +4,7 @@ import re
 
 WRAP_WIDTH = 120
 _MIN_PIECE = 6
+_MAX_BRACKET_LINES = 3
 
 _FENCE = re.compile(r"^\s*(```|~~~)")
 _TABLE = re.compile(r"^\s*\|")
@@ -35,18 +36,32 @@ def format_content(text: str, width: int = WRAP_WIDTH) -> str:
 
 
 def _join_bracket_splits(lines: list[str]) -> list[str]:
-    """并回括号里被断开的行（早期版本会在括注里的分号后断行）。"""
+    """并回括号里被断开的行（早期版本会在括注里的分号后断行）。
+    几行之内闭合不了的括号（区间 (0, 1]、表情 :( ）不是被断开的，原样保留。"""
     joined: list[str] = []
     in_fence = False
-    for line in lines:
+    i = 0
+    while i < len(lines):
+        line = lines[i]
         if _FENCE.match(line):
             in_fence = not in_fence
-        elif (not in_fence and joined and line.strip() and _unclosed(joined[-1])
-              and not _LIST_PREFIX.match(line) and not _ENUM_START.match(line.strip())):
-            joined[-1] += line.strip()
-            continue
+        elif not in_fence and _unclosed(line):
+            merged, j = line, i + 1
+            while j < len(lines) and j - i <= _MAX_BRACKET_LINES and _continues(lines[j]) and _unclosed(merged):
+                merged += lines[j].strip()
+                j += 1
+            if j > i + 1 and not _unclosed(merged):
+                joined.append(merged)
+                i = j
+                continue
         joined.append(line)
+        i += 1
     return joined
+
+
+def _continues(line: str) -> bool:
+    return bool(line.strip()) and not _FENCE.match(line) and not _LIST_PREFIX.match(line) \
+        and not _ENUM_START.match(line.strip())
 
 
 def _wrap_line(line: str) -> list[str]:

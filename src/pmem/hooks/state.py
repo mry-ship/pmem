@@ -22,6 +22,8 @@ _DEFAULTS = {
     "shell_before": {}, "late_warned": [],
     # 终端里的 pmem search 执行前先挂起（命令摘要 → [检索参数]），命令真正跑完、输出看得到才登记为查过
     "cli_pending": {},
+    # 终端里的 pmem record 同样挂起，看到写入成功的输出才算写过
+    "cli_record_pending": {},
 }
 
 

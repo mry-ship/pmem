@@ -40,7 +40,7 @@ project:
   type: {type}
 vcs: auto                 # auto / git / svn / none
 gate:
-  mode: {gate}             # block 未查该模块的记忆不许改（尝试过检索即放行）/ warn 只提醒一次 / off 只靠规则
+  mode: {gate}             # block 未查该模块的记忆不许改（检索成功返回才放行）/ warn 只提醒一次 / off 只靠规则
   watch: []               # 为空 = 所有已登记模块的路径都受守护
   ignore: ["**/*.md", "docs/**", ".memory/**", ".cursor/**"]
   skip_markers: ["跳过记忆", "skip-memory"]       # 用户这样说时，本对话不查也不写（须是独立短语）

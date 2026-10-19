@@ -390,9 +390,27 @@ COMMANDS = {
 
 # ---- 直接调用 MemoryService、输出 JSON 的子命令 ----
 
+class _InputError(Exception):
+    pass
+
+
+def _read_content_file(path: str) -> str:
+    try:
+        raw = Path(path).read_bytes()
+    except OSError as exc:
+        raise _InputError(f"读不了 --content-file {path}：{exc.strerror or exc}") from exc
+    # Windows PowerShell 5 的 > 和 Out-File 默认写 UTF-16
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+        return raw.decode("utf-16")
+    try:
+        return raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise _InputError(f"--content-file {path} 不是 UTF-8 编码，请另存为 UTF-8 后重试") from exc
+
+
 def _record_content(args) -> str:
     if args.content_file:
-        return Path(args.content_file).read_text(encoding="utf-8-sig")
+        return _read_content_file(args.content_file)
     if args.content != "-":
         return args.content
     # 中文 Windows 上 sys.stdin 按 GBK 解码，管道传入的 UTF-8 会变成乱码
@@ -418,7 +436,10 @@ def _run_service(args) -> int:
 
     service = MemoryService(_project_root(args.root))
     try:
-        result = SERVICE_COMMANDS[args.command](service, args)
+        try:
+            result = SERVICE_COMMANDS[args.command](service, args)
+        except _InputError as exc:
+            result = {"ok": False, "error": str(exc), "code": "input_unreadable"}
         if getattr(args, "brief", False):
             from pmem.cli.brief import render_brief
 

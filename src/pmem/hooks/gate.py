@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import glob
 import hashlib
 import json
 import os
@@ -22,7 +23,14 @@ from pmem.hooks.payload import (
     tool_paths,
     turn_tool_paths,
 )
-from pmem.hooks.shell import VARIABLE_PATH, cli_args, may_change_unseen, scan, shell_write_targets  # noqa: F401
+from pmem.hooks.shell import (  # noqa: F401
+    VARIABLE_PATH,
+    WILDCARD_PATH,
+    cli_args,
+    may_change_unseen,
+    scan,
+    shell_write_targets,
+)
 from pmem.hooks.state import SessionState
 from pmem.index.anchors import ANCHOR_CACHE, STALE_LABEL, AnchorChecker
 from pmem.index.graph import current_entries, digest, preview
@@ -43,6 +51,7 @@ DIGEST_PREVIEW = 100
 PITFALL_KINDS = ("exclusion", "risk", "correction")
 MAX_GUARD_PITFALLS = 5
 MAX_PENDING_SNAPSHOTS = 8
+MAX_GLOB_TARGETS = 200
 SLOW_SNAPSHOT_SECONDS = 1.0
 SLOW_SNAPSHOT_PAUSE = 24 * 3600
 SLOW_SNAPSHOT_MARK = "snapshot-slow"
@@ -133,7 +142,8 @@ def _needs_snapshot(command: str, base: str) -> bool:
     """脚本、内联代码、变量拼出来的路径和不认识的程序（格式化、git stash 等）事前看不出写了什么，
     放行时记下快照，执行后比对未提交文件，见 Gate._shell_after。"""
     targets, runs_code = scan(command, base)
-    return runs_code or any(VARIABLE_PATH.search(t) for t in targets) or may_change_unseen(command)
+    return (runs_code or any(VARIABLE_PATH.search(t) or WILDCARD_PATH.search(t) for t in targets)
+            or may_change_unseen(command))
 
 
 def _around(text: str, marker: str, width: int = 12) -> str:
@@ -206,7 +216,8 @@ class Gate:
         lowered = text.lower()
         found = [mid for mid in self.registry.modules if mid.lower() in lowered]
         found += [mid for mid, pattern in self.registry.name_patterns().items() if pattern.search(text)]
-        found += [m for m in (self.module_of(self.relative(t.strip("."))) for t in _PATH_TOKEN.findall(text)) if m]
+        paths = (re.sub(r"^(?:\.[/\\])+", "", t).rstrip(".") for t in _PATH_TOKEN.findall(text))
+        found += [m for m in (self.module_of(self.relative(p)) for p in paths) if m]
         return list(dict.fromkeys(found))
 
     def memory_count(self, module: str) -> int:
@@ -427,16 +438,27 @@ class Gate:
         要把登记在它下面的各个模块都算上，否则查过伞形模块就能删掉整个子模块。"""
         if not (self.root / rel).is_dir():
             return [m for m in [self.module_of(rel)] if m]
-        prefix = rel.strip("/").lower() + "/"
-        found = [self.module_of(rel.rstrip("/") + "/_")]
+        base = rel.strip("/")
+        # 项目根目录（rm -rf .）下的所有模块都算
+        prefix = "" if base in ("", ".") else base.lower() + "/"
+        found = [self.module_of(base + "/_" if prefix else "_")]
         for mid, module in self.registry.modules.items():
             for pattern in module.paths:
-                literal = re.split(r"[*?\[{]", pattern.replace("\\", "/").lstrip("./"), maxsplit=1)[0].lower()
+                unprefixed = re.sub(r"^(?:\./)+", "", pattern.replace("\\", "/"))
+                literal = re.split(r"[*?\[{]", unprefixed, maxsplit=1)[0].lower()
                 if literal.startswith(prefix):
                     found.append(mid)
         return [m for m in dict.fromkeys(found) if m]
 
     def _guard(self, rel: str | None, searched_here: set[str] = frozenset()) -> dict | None:
+        if rel is not None and WILDCARD_PATH.search(rel):
+            # rm -rf src/* 这类通配符目标按实际展开出的文件和目录逐个检查；展开结果不再二次展开
+            matches = glob.glob(rel, root_dir=self.root, recursive=True)[:MAX_GLOB_TARGETS]
+            return next((v for v in (self._guard_path(m.replace("\\", "/"), searched_here) for m in matches)
+                         if v is not None), None)
+        return self._guard_path(rel, searched_here)
+
+    def _guard_path(self, rel: str | None, searched_here: set[str]) -> dict | None:
         if rel is None or not self._watched(rel):
             return None
         for module in self._target_modules(rel):
@@ -522,43 +544,58 @@ class Gate:
         return next((v for v in map(self._guard, [self.relative(str(p)) for p in raw]) if v is not None), dict(ALLOW))
 
     def _note_cli_calls(self, command: str) -> set[str]:
-        """终端里的 pmem search/graph/record 与 MCP 工具等价。检索先挂起，命令执行完、看得到输出才登记
-        （见 _confirm_cli_searches）；返回这条命令里检索的模块。"""
+        """终端里的 pmem search/graph/record 与 MCP 工具等价。都先挂起，命令执行完、看得到结果才登记
+        （见 _confirm_cli_calls）；返回这条命令里检索的模块。"""
         searches = cli_args(command, "search") + cli_args(command, "graph")
         records = cli_args(command, "record")
-        if searches and self.state is not None:
-            pending = self.state.data["cli_pending"]
-            pending[_command_key(command)] = searches
-            self.state.data["cli_pending"] = dict(list(pending.items())[-MAX_PENDING_SNAPSHOTS:])
+        if self.state is not None and (searches or records):
+            for field, calls in (("cli_pending", searches), ("cli_record_pending", records)):
+                if calls:
+                    pending = self.state.data[field]
+                    pending[_command_key(command)] = calls
+                    self.state.data[field] = dict(list(pending.items())[-MAX_PENDING_SNAPSHOTS:])
             self.save()
-        for cli_record in records:
-            module = self.module_from_args(cli_record)
-            if module and self.state is not None:
-                self.state.add("cli_recorded", module)
-                self.save()
-            self.log("record_call", module=module, via="cli")
         return {m for m in map(self.module_from_args, searches) if m}
 
-    def _confirm_cli_searches(self) -> None:
-        """命令跑完：挂起的终端检索登记为查过。拿得到命令输出时，输出里要出现该模块才算（|| 之后、失败退出的没有输出）。"""
+    def _pop_cli_pending(self, field: str, command: str, has_calls: bool) -> list[dict] | None:
+        pending = self.state.data[field]
+        key = _command_key(command)
+        if key not in pending and len(pending) == 1 and has_calls:
+            # 前后两次拿到的命令文本可能因转码不同；只有一条在等、且这条命令本身也调了 pmem 时才认作同一条，
+            # 并行的 ls 这类命令先结束时不能把别的命令挂起的调用拿走
+            key = next(iter(pending))
+        return pending.pop(key, None)
+
+    def _confirm_cli_calls(self) -> None:
+        """命令跑完：挂起的终端检索登记为查过、写入登记为写过。拿得到命令输出时，检索要在输出里看到该模块，
+        写入还要看到 draft_id（写入失败、|| 之后没执行的都没有）。"""
         if self.state is None:
             return
-        pending = self.state.data["cli_pending"]
-        key = _command_key(str(tool_input(self.payload).get("command") or ""))
-        if key not in pending and len(pending) == 1:
-            # 前后两次拿到的命令文本可能因转码不同
-            key = next(iter(pending))
-        searches = pending.pop(key, None)
-        if searches is None:
+        command = str(tool_input(self.payload).get("command") or "")
+        searches = self._pop_cli_pending("cli_pending", command,
+                                         bool(cli_args(command, "search") or cli_args(command, "graph")))
+        records = self._pop_cli_pending("cli_record_pending", command, bool(cli_args(command, "record")))
+        if searches is None and records is None:
             return
         self.save()
         output = shell_output(self.payload)
-        for args in searches:
+        lowered = output.lower() if output is not None else None
+        for args in searches or []:
             module = self.module_from_args(args)
-            if output is not None and (not module or module.lower() not in output.lower()):
+            if lowered is not None and (not module or module.lower() not in lowered):
                 self.log("search_call_unseen", module=module, via="cli")
                 continue
             self._mark_searched(args, via="cli")
+        for args in records or []:
+            module = self.module_from_args(args)
+            if lowered is not None and (not module or module.lower() not in lowered
+                                        or "draft_id" not in lowered.replace("-", "_")):
+                self.log("record_call_failed", module=module, via="cli")
+                continue
+            if module:
+                self.state.add("cli_recorded", module)
+            self.log("record_call", module=module, via="cli")
+        self.save()
 
     def _inject(self, args: dict, with_draft: bool) -> dict:
         if not args or self.state is None:
@@ -707,7 +744,7 @@ class Gate:
         if name.lower() in SEARCH_TOOLS:
             return self._search_digest(tool_input(self.payload))
         if name.lower() == "shell":
-            self._confirm_cli_searches()
+            self._confirm_cli_calls()
             return self._shell_after()
         for path in edited_files(self.payload):
             self._mark_edited(path)

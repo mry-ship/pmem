@@ -11,6 +11,7 @@ import shutil
 import statistics
 import subprocess
 import tempfile
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -24,6 +25,7 @@ from pmem.generate.templates import RULE
 ARMS = ("on", "off")
 DEFAULT_MODEL = "composer-2.5"
 EDIT_TOOLS = {"write", "strreplace", "edit", "multiedit", "delete", "editnotebook"}
+CHECK_TIMEOUT = 600
 
 
 @dataclass
@@ -127,8 +129,11 @@ def run_check(case: Case, repo: Path, workspace: Path) -> tuple[bool, str]:
         shutil.copyfile(repo / src, target)
     if not case.check:
         return True, ""
-    proc = subprocess.run(case.check, cwd=workspace, shell=True, capture_output=True, text=True, env=_utf8_env(),
-                          encoding="utf-8", errors="replace", check=False, timeout=600)
+    try:
+        proc = subprocess.run(case.check, cwd=workspace, shell=True, capture_output=True, text=True,
+                              env=_utf8_env(), encoding="utf-8", errors="replace", check=False, timeout=CHECK_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        return False, f"验收命令超过 {CHECK_TIMEOUT} 秒未结束"
     return proc.returncode == 0, (proc.stdout + proc.stderr)[-2000:]
 
 
@@ -153,17 +158,24 @@ def sdk_executor(prompt: str, cwd: Path, mcp_servers: dict, model: str, timeout_
     try:
         with Agent.create(options) as agent:
             run = agent.send(prompt)
-            for message in run.messages():
-                if getattr(message, "type", "") != "tool_call" or message.call_id in seen_calls:
-                    continue
-                seen_calls.add(message.call_id)
-                name = str(message.name or "").lower()
-                metrics.tool_calls += 1
-                metrics.memory_calls += "search_memory" in name or "record_memory" in name
-                metrics.edit_calls += name in EDIT_TOOLS
-                if time.monotonic() - started > timeout_minutes * 60 and run.supports("cancel"):
-                    run.cancel()
-            result = run.wait()
+            # 按消息检查超时时，Agent 卡在一条长命令里就永远不会取消，改用计时器
+            timer = threading.Timer(timeout_minutes * 60, run.cancel) if run.supports("cancel") else None
+            if timer is not None:
+                timer.daemon = True
+                timer.start()
+            try:
+                for message in run.messages():
+                    if getattr(message, "type", "") != "tool_call" or message.call_id in seen_calls:
+                        continue
+                    seen_calls.add(message.call_id)
+                    name = str(message.name or "").lower()
+                    metrics.tool_calls += 1
+                    metrics.memory_calls += "search_memory" in name or "record_memory" in name
+                    metrics.edit_calls += name in EDIT_TOOLS
+                result = run.wait()
+            finally:
+                if timer is not None:
+                    timer.cancel()
             metrics.status = str(result.status)
             metrics.duration_ms = result.duration_ms or int((time.monotonic() - started) * 1000)
             if result.usage:
@@ -212,6 +224,7 @@ def run_bench(
                 for arm in arms:
                     workspace = scratch / f"{case.id}-{arm}-{i}"
                     log(f"[{case.id}] {arm} 第 {i + 1}/{repeats} 次……")
+                    metrics, passed, output = RunMetrics(), False, ""
                     try:
                         prepare_workspace(repo, case, arm, workspace)
                         if case.setup:
@@ -220,6 +233,12 @@ def run_bench(
                         prefix, servers = arm_options(arm, workspace)
                         metrics = executor(prefix + case.prompt, workspace, servers, model, case.timeout_minutes)
                         passed, output = run_check(case, repo, workspace) if metrics.status != "startup_error" else (False, "")
+                    except RuntimeError:
+                        # 缺 SDK、没设 API Key：每次运行都会失败，直接中止
+                        raise
+                    except Exception as exc:  # noqa: BLE001
+                        # 单次运行出错（起始提交写错、工作区建不出来）记为失败，不让整个实验中止
+                        metrics.status, metrics.error = "error", str(exc)[:500]
                     finally:
                         remove_workspace(repo, workspace)
                     record = RunRecord(case.id, arm, i, passed, metrics, output)
@@ -230,7 +249,8 @@ def run_bench(
                         f"{metrics.input_tokens + metrics.output_tokens} token，{metrics.tool_calls} 次工具调用")
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
-    (out_dir / "summary.md").write_text(summarize(records), encoding="utf-8")
+        # 中途中止也留下已完成部分的汇总
+        (out_dir / "summary.md").write_text(summarize(records), encoding="utf-8")
     return records
 
 

@@ -48,6 +48,18 @@ def test_broken_config_is_reported_per_call_and_recovers_without_restart(project
     assert call(server, "search_memory", {"module": "gameplay.Jigsaw"})["ok"] is True
 
 
+def test_config_changes_take_effect_without_restart(project):  # noqa: F811
+    config = project / ".memory" / "config.yaml"
+    server = build_server(project)
+    args = {"module": "gameplay.Jigsaw", "entity": "Reward", "kind": "conclusion",
+            "content": "拼图奖励重复发放的根因是领取按钮没有防连点，内部工单 TICKET-12345 有复现录像。"}
+    assert call(server, "search_memory", {"module": "gameplay.Jigsaw"})["ok"] is True
+    config.write_text(config.read_text(encoding="utf-8") + "\nwrite:\n  secret_patterns: ['TICKET-\\d+']\n",
+                      encoding="utf-8")
+    rejected = call(server, "record_memory", args)
+    assert rejected["ok"] is False and rejected["code"] == "secret"
+
+
 def test_unexpected_errors_come_back_marked_as_pmem(project, monkeypatch):  # noqa: F811
     from pmem.service import MemoryService
 

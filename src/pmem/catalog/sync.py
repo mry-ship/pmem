@@ -125,11 +125,15 @@ def _existing_module(registry: ModuleRegistry, name: str) -> str | None:
     try:
         resolved = registry.resolve_module(name)
     except RegistryError:
-        return None
-    if resolved.known:
+        resolved = None
+    if resolved is not None and resolved.known:
         module = registry.modules[resolved.id]
         return None if module.deprecated else resolved.id
-    return resolved.id if resolved.candidate else None
+    if resolved is not None and resolved.candidate:
+        return resolved.id
+    # 短名只索引正式模块，同名的冷候选要单独找
+    same = [cid for cid in registry.candidates if cid.split(".", 1)[1].lower() == name.lower()]
+    return same[0] if len(same) == 1 else None
 
 
 def _expand(registry: ModuleRegistry, unit: str, files: list[str]) -> dict[str, list[str]]:

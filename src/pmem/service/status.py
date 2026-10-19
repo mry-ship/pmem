@@ -1,8 +1,9 @@
 """记忆的生命周期：核对（confirm）、归档与恢复、种子转正与退回。只改 YAML 头，正文与替代关系不变。"""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
+from pmem.core.fileio import write_atomic
 from pmem.index.graph import preview
 from pmem.service.base import ServiceBase, returns_errors
 
@@ -21,7 +22,8 @@ class StatusOps(ServiceBase):
 
     def confirm(self, ids: list[str], source_conversation: str | None = None) -> dict:
         """核对过关联代码、仍然成立的记忆：把核对日期记为今天，之后不再因更早的代码改动标为 stale。"""
-        today = date.today().isoformat()
+        now = datetime.now().astimezone()
+        today = now.date().isoformat()
         confirmed, missing = [], []
         for entry_id in dict.fromkeys(i for i in ids or [] if i):
             path = self.storage.find_path(entry_id)
@@ -30,7 +32,8 @@ class StatusOps(ServiceBase):
                 continue
             entry = self.storage.read(path)
             entry.verified = today
-            path.write_text(entry.to_markdown(), encoding="utf-8", newline="\n")
+            entry.verified_at = now.isoformat(timespec="milliseconds")
+            write_atomic(path, entry.to_markdown())
             confirmed.append(entry_id)
         self._log("confirm", conv=source_conversation, ids=confirmed)
         response: dict = {"ok": bool(confirmed) or not missing, "confirmed": confirmed, "verified": today}
@@ -65,7 +68,7 @@ class StatusOps(ServiceBase):
             else:
                 entry.status = (entry.archived_from or target) if action == "restore" else target
                 entry.archived_on = entry.archived_from = entry.archived_by = None
-            path.write_text(entry.to_markdown(), encoding="utf-8", newline="\n")
+            write_atomic(path, entry.to_markdown())
             changed.append(entry_id)
             statuses[entry_id] = entry.status
         self._log("status", action=action, ids=changed)

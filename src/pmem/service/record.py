@@ -114,12 +114,19 @@ class RecordOps(ServiceBase):
         today = date.today().isoformat()
         supersedes = list(dict.fromkeys(s for s in supersedes or [] if s))
         replaced = [found for s in supersedes if (found := self.index.find(s)) is not None]
+        if old is not None and self._reaches(replaced, old.id):
+            return fail(f"supersedes 会和 {old.id} 已有的替代关系连成环，两条记忆都会从检索里消失；"
+                        "请新建一条（不带 draft_id）替代它们", "supersede_cycle")
         aliases = _clean_aliases(aliases)
+        hits = find_secrets(" ".join([entity_id, *aliases]), self.config.get("write.secret_patterns") or [])
+        if hits:
+            return fail("entity 或 aliases 疑似包含敏感信息，已拒绝写入：" + "；".join(hits), "secret")
         hints = self._write_hints(resolved.id, entity_id, content, aliases, merging=len(replaced) >= 2)
         if anchors and not any("#" in a for a in anchors):
             hints.append(ANCHOR_HINT)
-        # 替代旧记忆（含合并零碎记忆）不增加条数，不受每日上限约束
-        if not draft_id and not replaced:
+        # 替代仍然现行的旧记忆（含合并零碎记忆）不增加条数，不受每日上限约束；反复替代同一条已被替代的不算
+        hidden = self.index.superseded()
+        if not draft_id and not any(e.id not in hidden for e in replaced):
             over_cap = self._daily_cap_error(resolved.id, entity_id, today)
             if over_cap:
                 return over_cap
@@ -181,6 +188,19 @@ class RecordOps(ServiceBase):
             supersedes=entry.supersedes or None,
         )
         return response
+
+    def _reaches(self, start: list[Entry], target: str) -> bool:
+        """沿 supersedes 从 start 往下走能否走到 target。"""
+        stack, seen = list(start), set()
+        while stack:
+            entry = stack.pop()
+            if entry.id == target:
+                return True
+            if entry.id in seen:
+                continue
+            seen.add(entry.id)
+            stack += [found for s in entry.supersedes if (found := self.index.find(s)) is not None]
+        return False
 
     def _normalize_anchor(self, raw: str, warnings: list[str]) -> str:
         """过期核对按相对路径、区分大小写去比对版本库记录：绝对路径或大小写不对的锚点永远不会标“需核实”。"""

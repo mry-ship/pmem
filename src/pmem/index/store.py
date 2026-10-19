@@ -138,8 +138,12 @@ class MemoryIndex:
         seen: set[Path] = set()
         warnings: list[str] = []
         for path in self.storage.iter_files():
+            try:
+                stat = path.stat()
+            except OSError:
+                # 列出之后被移走（migrate、切分支），按已删除处理
+                continue
             seen.add(path)
-            stat = path.stat()
             stamp = (stat.st_mtime_ns, stat.st_size)
             current = self._items.get(path)
             if current and current.stamp == stamp:
@@ -149,7 +153,8 @@ class MemoryIndex:
                 entry = Entry.from_markdown(raw.decode("utf-8-sig"))
             except Exception as exc:  # noqa: BLE001
                 warnings.append(f"跳过无法解析的记忆文件 {path.name}：{exc}")
-                self._items.pop(path, None)
+                if self._items.pop(path, None) is not None:
+                    self.version += 1
                 continue
             text = entry_text(entry)
             tokens = Counter(tokenize(text))

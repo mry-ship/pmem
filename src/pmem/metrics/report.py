@@ -249,7 +249,8 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
             "memories": len(visible),
             "new": len([e for e in visible if ulid_ms(e.id) / 1000 >= since]),
             "by_kind": dict(Counter(e.kind for e in visible)),
-            "modules_with_memory": len(authors_by_module),
+            # 与分母同口径：只数登记模块，未登记模块和旧模块名下的记忆不算
+            "modules_with_memory": len(set(authors_by_module) & set(registered)),
             "modules_registered": len(registered),
             "single_author": sorted(m for m, a in authors_by_module.items() if len(a) == 1),
             "hot": hot,

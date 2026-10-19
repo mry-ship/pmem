@@ -64,6 +64,22 @@ def test_arms_get_memory_only_when_on_and_results_are_summarised(git_repo):
     assert "worktree" not in run(["git", "worktree", "list"], git_repo).split("\n", 1)[-1]
 
 
+def test_one_failing_run_is_recorded_and_the_rest_continue(git_repo):
+    cases = make_cases(git_repo)
+    calls = []
+
+    def flaky(prompt: str, cwd: Path, servers: dict, model: str, timeout: int) -> RunMetrics:
+        calls.append(bool(servers))
+        if len(calls) == 1:
+            raise ValueError("boom")
+        return RunMetrics(status="finished")
+
+    out = git_repo / "out"
+    records = run_bench(git_repo, cases, out, repeats=1, executor=flaky, log=lambda _: None)
+    assert [(r.metrics.status, r.passed) for r in records] == [("error", False), ("finished", False)]
+    assert records[0].metrics.error == "boom" and (out / "summary.md").exists()
+
+
 def test_dry_run_checks_the_starting_commit(git_repo):
     cases = make_cases(git_repo)
     records = run_bench(git_repo, cases, git_repo / "out", arms=("off",), repeats=1,

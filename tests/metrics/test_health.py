@@ -145,6 +145,35 @@ def test_health_flags_conflicting_memories_until_confirmed(project):
     assert build_health(project)["contradictions"] == []
 
 
+def test_health_keeps_pair_confirmed_earlier_the_same_day(project):
+    """核对日期只到天：同一天先核对旧记忆、后写下矛盾的新记忆，按核对时刻判断，仍要提示。"""
+    decided = "决定：奖励发放改为服务端校验，客户端只负责展示结果，配置缺字段时直接报错而不是回退默认奖励。"
+    excluded = "排除：奖励发放改为服务端校验行不通，客户端只负责展示结果会让离线模式没法发奖励，配置缺字段时仍回退默认奖励。"
+    service = MemoryService(project)
+    try:
+        old = service.record("gameplay.Jigsaw", "Reward", "decision", decided)["id"]
+        service.confirm([old])
+        path = service.storage.find_path(old)
+        entry = service.storage.read(path)
+        entry.verified_at = "2000-01-01T00:00:00+00:00"
+        path.write_text(entry.to_markdown(), encoding="utf-8")
+        new = service.record("gameplay.Jigsaw", "Reward", "exclusion", excluded)["id"]
+    finally:
+        service.close()
+    assert [(p["old"], p["new"]) for p in build_health(project)["contradictions"]] == [(old, new)]
+
+    # 旧版本核对的没记时刻，同一天分不出先后，也提示；再核对一次就记下时刻
+    entry.verified_at = None
+    path.write_text(entry.to_markdown(), encoding="utf-8")
+    assert len(build_health(project)["contradictions"]) == 1
+    service = MemoryService(project)
+    try:
+        service.confirm([old])
+    finally:
+        service.close()
+    assert build_health(project)["contradictions"] == []
+
+
 def test_health_skips_pairs_already_resolved_by_supersedes(project):
     text = "决定：奖励发放改为服务端校验，客户端只负责展示结果，配置缺字段时直接报错。"
     service = MemoryService(project)

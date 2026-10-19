@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pmem.core.entry import Entry
+from pmem.core.fileio import write_atomic
 from pmem.core.ids import is_ulid
 from pmem.vcs.base import VCS
 
@@ -94,7 +95,7 @@ class FilesStorage:
                 raise StorageError(f"记忆 {entry.id} 已存在")
             overwritten = False
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(entry.to_markdown(), encoding="utf-8", newline="\n")
+        write_atomic(path, entry.to_markdown())
         if not overwritten and self.svn_auto_add and self.vcs.name == "svn":
             self.vcs.add(path)
         return WriteResult(entry, path, overwritten)

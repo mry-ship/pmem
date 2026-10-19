@@ -13,13 +13,15 @@ import numpy as np
 
 from pmem.core.entry import REPLACING_STATUSES, VISIBLE_STATUSES, Entry
 from pmem.core.ids import ulid_ms
-from pmem.index.anchors import ANCHOR_CACHE, AnchorChecker
+from pmem.index.anchors import ANCHOR_CACHE, AnchorChecker, anchor_affinity
 from pmem.index.embedder import Embedder
 from pmem.index.synonyms import expansions
 from pmem.index.tokenize import tokenize
 from pmem.storage.files import FilesStorage
 
 BOOSTED_KINDS = ("exclusion", "correction")
+# 按文件检索时锚点命中的加分。相关度在 0～1 之间：只给路径时它决定顺序，带了 query 时只起辅助作用
+ANCHOR_BONUS = {2: 0.3, 1: 0.1, 0: 0.0}
 _BATCH_WINDOW_MS = 90 * 60 * 1000
 SYNONYM_WEIGHT = 0.8
 
@@ -274,8 +276,10 @@ class MemoryIndex:
         as_of: str | None = None,
         verify: bool = True,
         semantic: bool = True,
+        path: str | None = None,
     ) -> SearchResult:
-        """排序 = (相关度 + 加分) × 时效；相关度 = 0.6 × 语义 + 0.4 × 关键词（无语义时只用关键词）。"""
+        """排序 = (相关度 + 加分) × 时效；相关度 = 0.6 × 语义 + 0.4 × 关键词（无语义时只用关键词）。
+        path 是要改的文件（项目相对路径）：锚点就是它的记忆加分，免得只按新旧排、被模块里别的方面挤掉。"""
         pool = [i for i in self._visible_items(as_of) if module is None or _same(i.entry.module, module)]
         result = SearchResult(warnings=list(self.warnings))
         if entity:
@@ -293,7 +297,8 @@ class MemoryIndex:
         day = date.fromisoformat(as_of) if as_of else (today or date.today())
         ranked = sorted(
             (
-                (_score(i.entry, rel, entity, day, half_life_days, as_of), ulid_ms(i.entry.id), i.entry)
+                (_score(i.entry, rel + ANCHOR_BONUS[anchor_affinity(i.entry.anchors, path)], entity, day,
+                        half_life_days, as_of), ulid_ms(i.entry.id), i.entry)
                 for i, rel in zip(pool, relevance, strict=True)
             ),
             key=lambda t: (t[0], t[1]),

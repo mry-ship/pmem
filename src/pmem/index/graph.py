@@ -13,6 +13,7 @@ from pmem.core.entry import KIND_LABELS, Entry
 from pmem.core.entry import REPLACING_STATUSES as REPLACING
 from pmem.core.entry import VISIBLE_STATUSES as VISIBLE
 from pmem.core.registry import ModuleRegistry, RegistryError
+from pmem.index.anchors import anchor_affinity
 
 PREVIEW_CHARS = 80
 LATEST_PER_TOPIC = 2
@@ -31,11 +32,17 @@ def current_entries(entries: list[Entry]) -> list[Entry]:
     return sorted((e for e in visible if e.id not in replaced), key=lambda e: (e.note_date, e.id), reverse=True)
 
 
-def digest(entries: list[Entry], limit: int = 6, per_topic: int = 2) -> list[Entry]:
-    """一个模块最值得先看的现行记忆：排除项、风险、更正、决定在前，同类从新到旧，每个议题最多 per_topic 条。"""
+def digest(entries: list[Entry], limit: int = 6, per_topic: int = 2, path: str | None = None) -> list[Entry]:
+    """一个模块最值得先看的现行记忆：排除项、风险、更正、决定在前，同类从新到旧，每个议题最多 per_topic 条。
+    给了 path（正在看的文件）时，锚点就是它的记忆先占至多一半名额，其余照旧，模块层面的坑仍排得进来。"""
+    ordered = sorted(current_entries(entries), key=lambda e: KIND_ORDER.get(e.kind, len(KIND_ORDER)))
+    if path:
+        near = [e for e in ordered if anchor_affinity(e.anchors, path) == 2][:limit // 2]
+        first = {e.id for e in near}
+        ordered = near + [e for e in ordered if e.id not in first]
     picked: list[Entry] = []
     per: Counter = Counter()
-    for entry in sorted(current_entries(entries), key=lambda e: KIND_ORDER.get(e.kind, len(KIND_ORDER))):
+    for entry in ordered:
         if per[entry.entity.lower()] < per_topic:
             picked.append(entry)
             per[entry.entity.lower()] += 1

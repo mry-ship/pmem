@@ -82,6 +82,19 @@ def test_search_by_path_maps_to_module(svc):
     assert found["items"][0]["id"] == written["id"]
 
 
+def test_search_by_path_prefers_memories_anchored_to_that_file(svc):
+    """最近几条都在讲模块的另一方面时，按文件检索仍要先给出这个文件的结论，而不是只按新旧排。"""
+    board = record(svc, entity="Snap", content="拼图块吸附阈值过小导致拖动时频繁误判吸附，已调到半格。",
+                   anchors=["src/Jigsaw/Board.cs#Snap"])["id"]
+    for entity in ("Hint", "Timer", "Skin"):
+        record(svc, entity=entity, content=f"{entity} 界面的刷新时机改到关卡加载完成之后，避免闪一下。",
+               anchors=[f"src/Jigsaw/UI/{entity}Panel.cs"])
+    by_path = svc.search(path="src/Jigsaw/Board.cs", limit=1)
+    assert [i["id"] for i in by_path["items"]] == [board]
+    by_module = svc.search(module="gameplay.Jigsaw", limit=1)
+    assert by_module["items"][0]["id"] != board
+
+
 def test_search_unmapped_path_says_so(svc):
     found = svc.search(path="tools/build.py")
     assert found["ok"] is True

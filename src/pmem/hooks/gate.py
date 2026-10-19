@@ -343,12 +343,12 @@ class Gate:
     def _reviews_on(self, setting: str) -> bool:
         return self.state is not None and not self.state.data["skip"] and self._reminders_on(setting, True)
 
-    def _offer_digest(self, module: str, intro: str) -> str | None:
-        """本对话还没看过该模块的记忆时，给出现行记忆摘要并记为已看过。"""
+    def _offer_digest(self, module: str, intro: str, rel: str | None = None) -> str | None:
+        """本对话还没看过该模块的记忆时，给出现行记忆摘要并记为已看过；rel 是正在看的文件，相关记忆优先。"""
         if self.state is None or self.state.has("reviewed", module):
             return None
         entries = self.module_entries(module)
-        picked = digest(entries)
+        picked = digest(entries, path=rel)
         if not picked:
             return None
         self.state.add("reviewed", module)
@@ -382,7 +382,7 @@ class Gate:
         if not self._reviews_on("gate.read_digest"):
             return {}
         module = self.module_of(rel)
-        message = self._offer_digest(module, f"你正在看的 {rel} 属于 {module}") if module else None
+        message = self._offer_digest(module, f"你正在看的 {rel} 属于 {module}", rel) if module else None
         return {"additional_context": message} if message else {}
 
     def module_at(self, rel: str | None) -> str | None:
@@ -409,7 +409,7 @@ class Gate:
             return self._skip_notice(next(iter(found)))
         if not self._reviews_on("gate.read_digest"):
             return {}
-        messages = [self._offer_digest(m, f"你正在搜索的 {rel} 属于 {m}") for m, rel in found.items()]
+        messages = [self._offer_digest(m, f"你正在搜索的 {rel} 属于 {m}", rel) for m, rel in found.items()]
         messages = [m for m in messages if m][:MAX_SEARCH_DIGESTS]
         return {"additional_context": "\n\n".join(messages)} if messages else {}
 

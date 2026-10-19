@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from pmem.core.entry import Entry
-from pmem.index.anchors import AnchorChecker, symbol_block
+from pmem.index.anchors import AnchorChecker, anchor_affinity, symbol_block
 from pmem.vcs.detect import detect_vcs
 
 PY = '''\
@@ -127,3 +127,28 @@ def test_without_history_symbol_anchors_fall_back_to_file_level(tmp_path):
     code.write_text(PY, encoding="utf-8")
     checker = AnchorChecker(tmp_path, detect_vcs(tmp_path, "none"))
     assert "A" in checker.check([_entry("A", "calc.py#first")], {})
+
+
+def test_anchor_affinity_matches_file_then_folder():
+    assert anchor_affinity(["src/Jigsaw/Board.cs#Snap"], "src/jigsaw/board.cs") == 2
+    assert anchor_affinity(["./src/Jigsaw/Board.cs"], "src\\Jigsaw\\Board.cs") == 2
+    assert anchor_affinity(["src/Jigsaw/Piece.cs#Drop"], "src/Jigsaw/Board.cs") == 1
+    assert anchor_affinity(["src/Shop/Board.cs"], "src/Jigsaw/Board.cs") == 0
+    assert anchor_affinity(["README.md"], "setup.py") == 0
+    assert anchor_affinity([], "src/Jigsaw/Board.cs") == 0
+    assert anchor_affinity(["src/Jigsaw/Board.cs"], None) == 0
+
+
+def test_digest_gives_the_open_file_up_to_half_the_slots():
+    from pmem.index.graph import digest
+
+    def entry(n, kind, anchor):
+        return Entry(id=f"01M5AA00000000000000000{n:03d}", module="gameplay.Jigsaw", entity=f"T{n}", kind=kind,
+                     content="正文", note_date="2026-10-19", author="a", anchors=[anchor])
+
+    others = [entry(i, "exclusion", f"src/Jigsaw/UI/P{i}.cs") for i in range(6)]
+    mine = [entry(10 + i, "conclusion", "src/Jigsaw/Board.cs#Snap") for i in range(4)]
+    plain = digest(others + mine)
+    assert all(e.kind == "exclusion" for e in plain)
+    picked = digest(others + mine, path="src/Jigsaw/Board.cs")
+    assert sum(e in mine for e in picked) == 3 and sum(e in others for e in picked) == 3

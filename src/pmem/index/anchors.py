@@ -30,6 +30,29 @@ _DEF_KEYWORDS = r"(?:def|class|function|func|fn|struct|interface|enum|record)"
 _NOT_DEF_PREFIX = re.compile(r"^\s*(?:return|if|else|while|for|foreach|switch|case|await|new|throw|yield)\b")
 
 
+def _anchor_file(path: str) -> str:
+    path = path.split("#", 1)[0].replace("\\", "/").lower()
+    while path.startswith("./"):
+        path = path[2:]
+    return path
+
+
+def anchor_affinity(anchors: list[str], rel: str | None) -> int:
+    """记忆的锚点和某个文件的关系：2 锚点就是这个文件，1 在同一目录，0 无关。不区分大小写（Windows）。"""
+    if not rel:
+        return 0
+    target = _anchor_file(rel)
+    folder = target.rpartition("/")[0]
+    best = 0
+    for anchor in anchors:
+        file = _anchor_file(anchor)
+        if file == target:
+            return 2
+        if folder and file.rpartition("/")[0] == folder:
+            best = 1
+    return best
+
+
 def _definition_line(lines: list[str], name: str) -> int | None:
     """符号的定义行：先找带定义关键字的行，再找“名字(参数)”后面紧跟方法体的行（C#/Java/TS 方法）。"""
     word = re.escape(name)

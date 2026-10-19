@@ -74,6 +74,7 @@ class SearchOps(ServiceBase):
             max_per_batch=int(self.config.get("search.max_per_batch")),
             half_life_days=float(self.config.get("search.recency_half_life_days")),
             as_of=as_of,
+            path=self._relative(path) if path else None,
         )
         response.update({"module": module_id, "items": result.items})
         if as_of:

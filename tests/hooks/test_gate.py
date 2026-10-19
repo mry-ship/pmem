@@ -979,6 +979,16 @@ def test_unknown_tools_that_rewrite_files_are_caught_after_the_fact(git_project)
     assert "src/Jigsaw/Board.cs" in handle("post-tool", shell("uv run ruff format src"), root)["additional_context"]
 
 
+def test_committing_dirty_files_is_not_counted_as_editing_them(git_project):
+    root = git_project
+    (root / "src" / "Jigsaw" / "Board.cs").write_text("class Board { int c; }\n", encoding="utf-8")
+    handle("pre-tool", shell("python commit.py"), root)
+    for args in (["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "c"]):
+        subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+    assert handle("post-tool", shell("python commit.py"), root) == {}
+    assert handle("stop", stop_payload(), root) == {}
+
+
 def test_parallel_shell_commands_keep_their_own_snapshots(git_project):
     root = git_project
     handle("pre-tool", shell("python gen.py"), root)

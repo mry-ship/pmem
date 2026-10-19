@@ -640,6 +640,16 @@ class Gate:
             self.state.data["shell_before"] = dict(list(pending.items())[-MAX_PENDING_SNAPSHOTS:])
             self.save()
 
+    def _only_committed(self, rel: str, before: dict, after: dict) -> bool:
+        """git commit / svn commit 让文件不再“未提交”，但文件本身没动，不算命令改过。"""
+        if rel in after:
+            return False
+        try:
+            stat = (self.root / rel).stat()
+        except OSError:
+            return False
+        return before.get(rel) == [stat.st_mtime_ns, stat.st_size]
+
     def _shell_after(self) -> dict:
         """命令实际改过的文件记为已编辑（结束时提醒写记忆）；改到没查过记忆的模块时立即提醒 Agent 补查。"""
         if self.state is None:
@@ -659,7 +669,8 @@ class Gate:
         if after is None:
             self.save()
             return {}
-        changed = sorted(rel for rel in set(before) | set(after) if before.get(rel) != after.get(rel))
+        changed = sorted(rel for rel in set(before) | set(after)
+                         if before.get(rel) != after.get(rel) and not self._only_committed(rel, before, after))
         # 编辑工具改过的文件已经过闸门检查；与终端命令并行改的不算到命令头上
         by_tools = {item.split("|", 1)[1] for item in self.state.data["edited_files"]}
         late: dict[str, list[str]] = {}

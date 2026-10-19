@@ -51,7 +51,7 @@ uv tool install "pmem[embed] @ git+https://github.com/mry-ship/pmem"
 pmem init --type game            # 项目类型：game / app / backend / generic
 ```
 
-3. **打开开关**：Cursor 设置 → MCP → 启用 `pmem`（Claude Code、Codex 首次打开项目时批准即可）。
+3. **打开开关**：Cursor 设置 → MCP → 启用 `pmem`（Claude Code、Codex 首次打开项目时批准即可）。之后服务崩溃、卡死或 pmem 升级时由看门狗自动重启，不用再手动重连。
 4. **划分模块**：对 AI 说“按 pmem-bootstrap 技能划分模块”，确认它给出的表格。
 5. **提交**：运行 `pmem doctor` 自检，然后把 `.memory/` 和 `.cursor/` 提交到版本库。
 6. **（建议）种子记忆**：对 AI 说“按 pmem-seed 技能提炼种子记忆”，从提交说明和文档里为常改的模块先补一批结论，确认后转正，记忆库就不是从空开始。

@@ -72,6 +72,19 @@ def test_health_lists_problems_for_owners(project, capsys):
     assert "pmem 健康报告" in capsys.readouterr().out
 
 
+def test_health_counts_watchdog_restarts_but_not_reloads(project):
+    from pmem.core.config import Config
+    from pmem.metrics.events import log_event
+
+    cache_dir = Config.load(project).cache_dir
+    log_event(cache_dir, "server_restart", kind="crash", reason="意外退出（返回码 1）")
+    log_event(cache_dir, "server_restart", kind="crash", reason="意外退出（返回码 1）")
+    log_event(cache_dir, "server_restart", kind="reload", reason="代码已更新")
+    h = build_health(project)
+    assert h["server_restarts"] == [("意外退出（返回码 1）", 2)]
+    assert "MCP 服务被看门狗重启（2 次）" in render(h)
+
+
 def test_health_is_quiet_when_nothing_to_do(tmp_path, monkeypatch):
     monkeypatch.setenv("PMEM_AUTHOR", "alice")
     root = tmp_path / "proj"

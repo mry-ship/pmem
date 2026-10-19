@@ -49,7 +49,7 @@ flowchart LR
 | `vcs` / `storage` | 作者与版本号来自 Git/SVN；写文件；判断条目是否已提交（决定能否 `draft_id` 覆盖）；SVN 下自动 `svn add`，`pmem migrate` 搬文件时已纳入版本库的用 `svn mv` 保留历史 |
 | `index` | 分词（中文二元组 + 英文词 + camelCase 拆分）、BM25、嵌入器（ONNX / Ollama / OpenAI 兼容）、SQLite 向量缓存、混合排序、按关联代码核对过期（检索、图谱、Hook、Wiki 共用）、记忆图谱 |
 | `service` | 五个 MCP 工具背后的规则：长度、类型、密钥、每日上限、新模块提示、检索参数归一、同义词扩展；模块和存储错误统一转成 `ok: false` 返回，被拒绝的写入记 `record_rejected` 事件；状态变更（`change_status`：archive / restore / accept / reject）只开放给命令行，归档时在 YAML 头记下日期、原状态和归档人（`archived: {on, from, by}`），供 `as_of` 回看与恢复；废弃模块（`status: deprecated`）拒绝写入；MCP 与 CLI 共用 |
-| `server` | MCP stdio 服务，只做参数转发 |
+| `server` | MCP stdio 服务，只做参数转发；`pmem serve` 默认先起看门狗（`server/watchdog.py`，不导入 mcp 和服务层），真正的服务跑在 `serve --worker` 子进程里。子进程崩溃、单次调用超过 `server.request_timeout`（默认 120 秒，每超时一次放宽一倍、最多 8 倍，有调用成功即恢复）或 pmem 代码更新时换新子进程，并用缓存的 `initialize` 替客户端重新握手，客户端连接不断；进行中的调用返回错误提示重试，连续失败按 0/1/2/5/10/30 秒退避，退避期间的调用直接返回错误并提示改用终端 `pmem search`。重启记 `server_restart` 事件，进 `pmem health` |
 | `hooks` | Hook 输入解析（兼容 Windows 转码，提问原文从对话记录读取）、按对话隔离的状态（读改写加文件锁，并行的 Hook 进程不会互相覆盖）、终端命令解析（`hooks/shell.py`：写到哪些文件、是否在跑脚本、命令里的 pmem 调用）、记忆审查、闸门与结束提醒；事件有 prompt、pre-tool、after-mcp、edited、post-tool、compact、stop（before-mcp 只为兼容旧配置保留，直接放行） |
 | `metrics` | 事件日志、收益报告、引用识别、健康报告（`pmem health`） |
 | `bench` | 基于 Cursor SDK 的有/无记忆对照实验 |
@@ -109,7 +109,8 @@ flowchart LR
 
 ## 已知限制
 
-- Cursor 传给 Hook 的 MCP 工具名不带服务名，别的记忆服务也叫 `search_memory`。pmem 的 MCP 返回统一带 `"server": "pmem"`，闸门只认带标记的结果（或工具名里有 pmem、或返回了本仓库的记忆），别家同名工具不算查过；但调用前分不出来，参数仍会注入给它（实测无害）。升级后没重启的旧版 MCP 服务返回空结果时也不算查过，可改用终端 `pmem search`。
+- Cursor 传给 Hook 的 MCP 工具名不带服务名，别的记忆服务也叫 `search_memory`。pmem 的 MCP 返回统一带 `"server": "pmem"`，闸门只认带标记的结果（或工具名里有 pmem、或返回了本仓库的记忆），别家同名工具不算查过；但调用前分不出来，参数仍会注入给它（实测无害）。升级后没重启的旧版 MCP 服务返回空结果时也不算查过，可改用终端 `pmem search`（带看门狗的版本升级后会自动换新代码；从旧版升级上来的第一次仍需在 Cursor 里重启一次 MCP）。
+- 看门狗管不到它自己：Cursor 那边把 MCP 标成出错（如启动时 `pmem` 命令找不到）后不会自动重连，需要在 Cursor 设置里重新打开；看门狗也判断不了“慢”和“卡死”，只按超时处理。
 - 收益报告只看本机数据，团队汇总尚未实现。
 - `pmem bench` 还没有用真实 API Key 跑过完整对照；示例用例已用 `--dry-run` 验证有效。
 - 模块划分依赖 Agent 按 `pmem-bootstrap` 技能完成：`pmem scan` 只给出目录和提交热度，不会自动划分。

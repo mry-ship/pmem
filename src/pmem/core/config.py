@@ -41,6 +41,7 @@ DEFAULTS: dict = {
     },
     "search": {"limit": 5, "max_per_batch": 2, "recency_half_life_days": 90},
     "wiki": {"auto": True, "dir": ".memory/wiki"},
+    "server": {"watchdog": True, "request_timeout": 120},
 }
 
 _CHOICES = {

@@ -32,8 +32,9 @@ def build_parser():
     p = sub.add_parser("doctor", help="自检：配置、模块覆盖率、Cursor 接入状态")
     p.add_argument("--root", default=".")
 
-    p = sub.add_parser("serve", help="启动 MCP 服务（由 Cursor 调用）")
+    p = sub.add_parser("serve", help="启动 MCP 服务（由 Cursor 调用；带看门狗，服务崩溃或卡死时自动重启）")
     p.add_argument("--root", default=None)
+    p.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
 
     p = sub.add_parser("hook", help="处理 Agent 的 Hook 事件（由 Cursor / Claude Code / Codex 调用）")
     p.add_argument("event", choices=HOOK_EVENTS)
@@ -227,7 +228,7 @@ def _hook(args) -> int:
 def _serve(args) -> int:
     from pmem.server.app import serve
 
-    serve(args.root)
+    serve(args.root, args.worker)
     return 0
 
 

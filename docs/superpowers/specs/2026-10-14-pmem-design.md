@@ -118,7 +118,8 @@ Cursor
  ├─ MCP → pmem serve           —— search_memory / record_memory / list_modules
  └─ 项目技能                   —— bootstrap / seed / consolidate
 
-pmem serve
+pmem serve（看门狗：崩溃 / 超时 / 代码更新时重启子进程并重新握手，连接不断）
+ └─ pmem serve --worker
  ├─ ModuleRegistry   ← .memory/modules.yaml（别名归一、路径→模块）
  ├─ Storage(接口)    ← FilesStorage: .memory/entries/**.md   （将来 RemoteStorage）
  ├─ Index            ← 用户缓存目录 SQLite（向量 + trigram 全文）

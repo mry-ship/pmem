@@ -111,5 +111,39 @@ def build_server(root: Path | None) -> MCPServer:
     return server
 
 
-def serve(raw_root: str | None) -> None:
-    build_server(resolve_root(raw_root)).run("stdio")
+def serve(raw_root: str | None, worker: bool = False) -> None:
+    root = resolve_root(raw_root)
+    config = _load_config(root)
+    settings = (config.get("server") if config else None) or {}
+    if worker or not settings.get("watchdog", True):
+        build_server(root).run("stdio")
+        return
+    import sys
+
+    from pmem.server.watchdog import DEFAULT_TIMEOUT, Watchdog
+
+    command = [sys.executable, "-m", "pmem.cli.main", "serve", "--worker"]
+    if root is not None:
+        command += ["--root", str(root)]
+    try:
+        timeout = float(settings.get("request_timeout") or DEFAULT_TIMEOUT)
+    except (TypeError, ValueError):
+        timeout = DEFAULT_TIMEOUT
+    on_restart = None
+    if config is not None:
+        from pmem.metrics.events import log_event
+
+        cache_dir = config.cache_dir
+        on_restart = lambda kind, reason: log_event(cache_dir, "server_restart", kind=kind, reason=reason)
+    Watchdog(command, sys.stdin.buffer, sys.stdout.buffer, timeout, on_restart).run()
+
+
+def _load_config(root: Path | None):
+    if root is None:
+        return None
+    from pmem.core.config import Config, ConfigError
+
+    try:
+        return Config.load(root)
+    except (ConfigError, OSError, ValueError):
+        return None

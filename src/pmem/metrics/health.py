@@ -106,6 +106,7 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
         if len(searches) >= MIN_SEARCHES_FOR_IDLE else None
 
     rejected = [e for e in events if e["type"] == "record_rejected"]
+    restarts = [e for e in events if e["type"] == "server_restart" and e.get("kind") != "reload"]
     stale_by_module = Counter(e.module for e in visible if e.id in stale)
     entities: dict[str, list[str]] = defaultdict(list)
     for e in visible:
@@ -127,6 +128,7 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
         "rejected": {"total": len(rejected),
                      "by_reason": Counter(reject_reason(e.get("error") or "") for e in rejected).most_common(),
                      "by_module": Counter(e.get("module") or "？" for e in rejected).most_common(5)},
+        "server_restarts": Counter(e.get("reason") or "？" for e in restarts).most_common(TOP),
         "seeds": Counter(e.module for e in visible if e.status == "seed").most_common(),
         "compact": [(g["module"], g["entity"], g["count"]) for g in compact.get("groups", [])][:TOP],
         "entity_pairs": [(m, a, b) for m, names in sorted(entities.items()) for a, b in similar_entity_pairs(names)][:TOP],
@@ -169,6 +171,9 @@ def render(h: dict) -> str:
     section(f"被拒绝的写入（{r['total']} 次）", [f"{label}：{n} 次" for label, n in r["by_reason"]]
             + ([f"集中在：{'、'.join(f'{m} {n} 次' for m, n in r['by_module'])}"] if r["by_module"] else []),
             "字数或上限拒绝多：提醒合并成一条再写；模块名错误多：给常用叫法加 aliases")
+    section(f"MCP 服务被看门狗重启（{sum(n for _, n in h['server_restarts'])} 次）",
+            [f"{reason}：{n} 次" for reason, n in h["server_restarts"]],
+            "偶发可忽略；反复崩溃看 Cursor 的 MCP 日志，反复超时可调大 config.yaml 的 server.request_timeout")
     section("待确认的种子记忆", [f"{m}：{n} 条" for m, n in h["seeds"]],
             "pmem seed 查看，确认后 pmem seed --accept --module <模块>")
     section(f"零碎记忆可合并（每个议题 {COMPACT_MIN_GROUP} 条以上）", [f"{m} / {e}：{n} 条" for m, e, n in h["compact"]],

@@ -59,6 +59,9 @@ embedding:
 wiki:
   auto: true              # 写入或确认记忆后自动重新生成浏览用的 Wiki
   dir: .memory/wiki       # 首次生成时放一个 .gitignore 不进版本库；想提交就删掉它
+server:
+  watchdog: true          # MCP 服务崩溃、卡死或 pmem 升级后自动重启，Cursor 不用手动重连
+  request_timeout: 120    # 单次调用超过这么多秒没响应就判定卡死并重启
 """
 
 MODULES_HEADER = """\

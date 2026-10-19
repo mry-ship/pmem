@@ -461,7 +461,7 @@ git commit -m "接入 pmem"</code></pre>
 <!-- ============ MCP ============ -->
 <section id="mcp">
   <h2>MCP 工具</h2>
-  <p>MCP（Model Context Protocol，AI 调用外部工具的协议）服务由 <code>pmem serve</code> 提供，Agent 通过下面 5 个工具读写记忆。</p>
+  <p>MCP（Model Context Protocol，AI 调用外部工具的协议）服务由 <code>pmem serve</code> 提供，Agent 通过下面 5 个工具读写记忆。服务自带看门狗：崩溃、卡死（单次调用超过 <code>server.request_timeout</code>，默认 120 秒）或 pmem 升级后自动重启并重新握手，Cursor 不用手动重连；当时正在进行的调用会返回错误，重试即可。</p>
   <table>
     <tr><th>工具</th><th>用途</th><th>主要参数</th></tr>
     <tr><td><code>search_memory</code></td><td>检索记忆。改代码前按文件或模块查一次</td><td><code>path</code> 或 <code>module</code>；可选 <code>entity</code>、<code>query</code>、<code>limit</code>（默认 5，上限 10）、<code>as_of</code>（按某天视角查）</td></tr>

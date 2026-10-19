@@ -638,7 +638,7 @@ embedding:
     </div>
     <div class="card">
       <h4>模块改名与合并（pmem migrate）</h4>
-      <p><code>rename A B</code>：旧名登记为别名，读写自动转到新名。<code>merge A B</code>：A 的路径、别名、议题并入 B，A 标为 <code>merged_into</code>；A 是写入时自动新建的未登记模块或冷候选时，登记为 B 的别名。两者都会把记忆文件搬到新模块下（索引按文件里的模块名过滤，不搬就查不到）。队友迁移前写到旧名下的记忆，拉取后运行 <code>pmem migrate tidy --apply</code>。重写 <code>modules.yaml</code> 只保留文件开头的注释，预览时会提示丢失几行。<code>deprecate A</code>：业务下线时用，A 标为 <code>status: deprecated</code>，旧记忆照常可查，新写入被拒绝，改完 A 的代码也不再提醒写记忆；A 的路径仍归它，改代码前照样要先查。</p>
+      <p><code>rename A B</code>：旧名登记为别名，读写自动转到新名。<code>merge A B</code>：A 的路径、别名、议题并入 B，A 标为 <code>merged_into</code>；A 是冷候选时登记为 B 的别名；A 是写入时自动新建的未登记模块（多半是笔误）时只搬记忆、不登记别名，确实是以后还会用的叫法才加 <code>--alias</code>。搬到一半失败时，按提示运行列出的 <code>pmem migrate move</code> / <code>tidy</code> 命令补完，不要重跑这次迁移。两者都会把记忆文件搬到新模块下（索引按文件里的模块名过滤，不搬就查不到）。队友迁移前写到旧名下的记忆，拉取后运行 <code>pmem migrate tidy --apply</code>。重写 <code>modules.yaml</code> 只保留文件开头的注释，预览时会提示丢失几行。<code>deprecate A</code>：业务下线时用，A 标为 <code>status: deprecated</code>，旧记忆照常可查，新写入被拒绝，改完 A 的代码也不再提醒写记忆；A 的路径仍归它，改代码前照样要先查。</p>
       <p><code>split A --to B=路径</code>：拆分。路径必须真的分走 A 的代码文件，不能抢别的模块的文件；A 里原样写着的路径直接移给 B。记忆按关联代码在新目录里的归属分配：都落在 B 就搬到 B，落在 A 或别的模块就留在 A；横跨 A 和 B 的、没写关联代码且同议题去向不一致的留在 A 并列出来，用 <code>--assign</code> 指定。<code>--by entity</code> 时把这些议题从 A 移到 B，对应记忆跟着走。</p>
     </div>
     <div class="card">

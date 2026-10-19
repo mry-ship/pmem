@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from pmem.core.entry import REPLACING_STATUSES, VISIBLE_STATUSES, Entry
-from pmem.core.ids import ALPHABET
+from pmem.core.ids import ulid_ms
 from pmem.index.anchors import ANCHOR_CACHE, AnchorChecker
 from pmem.index.embedder import Embedder
 from pmem.index.synonyms import expansions
@@ -28,16 +28,6 @@ def entry_text(entry: Entry) -> str:
     """参与检索的文本：议题名 + 正文 + 常用叫法。"""
     text = f"{entry.entity} {entry.content}"
     return f"{text} {' '.join(entry.aliases)}" if entry.aliases else text
-
-
-def ulid_ms(entry_id: str) -> int:
-    value = 0
-    for char in entry_id[:10].upper():
-        index = ALPHABET.find(char)
-        if index < 0:
-            return 0
-        value = value * 32 + index
-    return value
 
 
 @dataclass

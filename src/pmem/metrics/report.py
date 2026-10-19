@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pmem.catalog.coverage import module_heat
 from pmem.core.entry import KIND_LABELS, VISIBLE_STATUSES
-from pmem.index.store import ulid_ms
+from pmem.core.ids import ulid_ms
 from pmem.metrics.cite import assistant_text, judge
 from pmem.metrics.events import MIN_SEARCHES_FOR_IDLE, read_events
 from pmem.scan.lite import file_heat

@@ -1,7 +1,6 @@
 import time
 
-from pmem.core.ids import ALPHABET, new_ulid
-from pmem.index.store import ulid_ms
+from pmem.core.ids import ALPHABET, new_ulid, ulid_ms
 
 
 def test_ulid_has_26_crockford_chars():

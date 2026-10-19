@@ -4,7 +4,7 @@ import pytest
 import yaml
 
 from pmem.cli.main import main
-from pmem.index.store import ulid_ms
+from pmem.core.ids import ulid_ms
 from pmem.storage.files import FilesStorage
 from pmem.vcs.base import VCS
 

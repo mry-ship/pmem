@@ -45,16 +45,31 @@ flowchart LR
 
 | 包 | 职责 |
 |---|---|
-| `core` | 条目模型（Markdown + YAML 头）及共用常量（类型中文名、可见状态）、ULID、配置（YAML 写错、`secret_patterns` 不是合法正则时统一报 `ConfigError`）、模块目录（名称解析、别名、路径映射；`paths` 写成字符串、模块名不带大类时报 `RegistryError`）、敏感信息检测 |
+| `core` | 条目模型（Markdown + YAML 头，不认识的顶层字段原样写回）及共用常量（类型中文名、可见状态）、ULID（生成、校验、取生成时间）、配置（YAML 写错、`secret_patterns` 不是合法正则时统一报 `ConfigError`）、模块目录（名称解析、别名、路径映射；`paths` 写成字符串、模块名不带大类时报 `RegistryError`）、敏感信息检测 |
 | `catalog` | `modules.yaml` 的维护，不依赖 `cli`：读写（保留文件头注释、统一 LF）、rename / merge / split / deprecate / move 的规划与记忆搬家、`sync` 规划（只追加，不覆盖任何已有模块，含已废弃的）、覆盖率统计（`map_files` 把代码文件映射到模块，`module_heat` 把文件热度汇总到模块，`sync`、`seed`、`report` 共用）；`cli` 只解析参数、渲染输出，`metrics`、`doctor` 直接用它 |
 | `vcs` / `storage` | 作者与版本号来自 Git/SVN；提交历史（`commits_since`，热度扫描用）也由各适配器提供，新增版本库类型只需加一个适配器；写文件；判断条目是否已有提交记录（决定能否 `draft_id` 覆盖：确认、归档改写过的已提交记忆仍不能覆盖）；按路径查改动时分批调用（Windows 命令行约 32K 字符上限）；SVN 下自动 `svn add`，`pmem migrate` 搬文件时已纳入版本库的用 `svn mv` 保留历史 |
-| `index` | 分词（中文二元组 + 英文词 + camelCase 拆分）、BM25、嵌入器（ONNX / Ollama / OpenAI 兼容）、SQLite 向量缓存、混合排序、按关联代码核对过期（检索、图谱、Hook、Wiki 共用）、记忆图谱 |
+| `index` | 分词（中文二元组 + 英文词 + camelCase 拆分）、BM25、嵌入器（ONNX / Ollama / OpenAI 兼容）、SQLite 向量缓存（第一次读写向量时才打开，只用关键词检索时不建库）、混合排序、按关联代码核对过期（检索、图谱、Hook、Wiki 共用）、记忆图谱 |
 | `service` | 五个 MCP 工具背后的规则：长度、类型、密钥、每日上限、新模块提示、检索参数归一、同义词扩展；模块和存储错误统一转成 `ok: false` 返回，被拒绝的写入记 `record_rejected` 事件；状态变更（`change_status`：archive / restore / accept / reject）只开放给命令行，归档时在 YAML 头记下日期、原状态和归档人（`archived: {on, from, by}`），供 `as_of` 回看与恢复；废弃模块（`status: deprecated`）拒绝写入；MCP 与 CLI 共用。按职责分文件：`base`（依赖懒加载、错误返回形状、共用小工具）、`search`（检索、图谱、模块列表，只读）、`record`（写入规则）、`status`（核对、归档、种子转正）、`curation`（高频词、可合并议题）；`MemoryService` 由各 `*Ops` 组合而成，新增一类操作加一个文件即可 |
 | `server` | MCP stdio 服务，只做参数转发：工具调用加锁串行执行（框架在线程池里并发跑同步工具），任何异常都转成带 `"server": "pmem"` 的 `ok: false`，配置写错时每次调用返回具体原因、改好即恢复；`pmem serve` 默认先起看门狗（`server/watchdog.py`，不导入 mcp 和服务层），真正的服务跑在 `serve --worker` 子进程里。子进程崩溃、单次调用超过 `server.request_timeout`（默认 120 秒，每超时一次放宽一倍、最多 8 倍，有调用成功即恢复）或 pmem 代码更新时换新子进程，并用缓存的 `initialize` 替客户端重新握手，客户端连接不断；进行中的调用返回错误提示重试，连续失败按 0/1/2/5/10/30 秒退避，退避期间的调用直接返回错误并提示改用终端 `pmem search`。重启记 `server_restart` 事件，进 `pmem health` |
-| `hooks` | Hook 输入解析（兼容 Windows 转码，提问原文从对话记录读取）、按对话隔离的状态（读改写加文件锁，并行的 Hook 进程不会互相覆盖）、终端命令解析（`hooks/shell.py`：写到哪些文件、是否在跑脚本、命令里的 pmem 调用）、记忆审查、闸门与结束提醒；事件有 prompt、pre-tool、after-mcp、edited、post-tool、compact、stop（before-mcp 只为兼容旧配置保留，直接放行） |
-| `metrics` | 事件日志、收益报告、引用识别、健康报告（`pmem health`，含按议题找“一正一反、用词高度相似”的疑似矛盾记忆） |
+| `hooks` | Hook 输入解析（兼容 Windows 转码，提问原文从对话记录读取）、按对话隔离的状态（读改写加文件锁，并行的 Hook 进程不会互相覆盖；摘要里的“需核实”在释放锁之后才核对，避免并行的 Hook 排队等版本库查询）、终端命令解析（`hooks/shell.py`：写到哪些文件、是否在跑脚本、命令里的 pmem 调用）、记忆审查、闸门与结束提醒；事件有 prompt、pre-tool、after-mcp、edited、post-tool、compact、stop（before-mcp 只为兼容旧配置保留，直接放行） |
+| `metrics` | 事件日志（`events.py`，多进程追加时加跨进程锁）、收益报告、引用识别、健康报告（`pmem health`，含按议题找“一正一反、用词高度相似”的疑似矛盾记忆，被拒写入按错误码归类） |
+| `importers` | 从既有记忆系统（LanceDB 参考实现）只读导入：复制后再读、按来源 id 幂等、保留原时间、套用项目的敏感信息规则 |
 | `bench` | 基于 Cursor SDK 的有/无记忆对照实验 |
-| `cli` / `generate` / `scan` | 命令入口（两张分发表：search、record、confirm、graph、list、terms、archive 直接调 `MemoryService`；init、scan、sync、doctor、compact、anchors、format、import、reindex、report、health、seed、migrate、wiki、bench、serve、hook 各自实现；代码搬家后 `anchors --rename 旧=新` 改写所有记忆的关联代码）、`init` 生成的文件模板、目录与提交热度扫描（供 Agent 划分模块；`sync` 读一次提交历史同时算 180 天热度和 90 天是否有改动） |
+| `generate` | `templates`（规则、技能、Hook、配置模板）、`integrations`（按 Agent 写入规则和技能，合并 hooks / MCP 配置时只替换 pmem 自己的条目）、`wiki` |
+| `cli` / `scan` | 命令入口（两张分发表：search、record、confirm、graph、list、terms、archive 直接调 `MemoryService`；init、scan、sync、doctor、compact、anchors、format、import、reindex、report、health、seed、migrate、wiki、bench、serve、hook 各自实现；代码搬家后 `anchors --rename 旧=新` 改写所有记忆的关联代码；`init_cmd` 只建配置和打印结果，接入文件交给 `generate.integrations`）、目录与提交热度扫描（供 Agent 划分模块；`sync` 读一次提交历史同时算 180 天热度和 90 天是否有改动） |
+
+## 分层
+
+依赖只能朝下，由 `tests/test_layering.py` 检查，新增包或新依赖要先在那里登记：
+
+| 层 | 包 | 可以依赖 |
+|---|---|---|
+| 入口 | `cli` | 任何包；其他包都不能导入 `cli` |
+| 汇总 | `metrics`（report、health）、`bench` | 下面各层；report、health 可以用 `service` |
+| 接入 | `server`、`hooks` | `service`（只有 server）、`index`（只有 hooks，且不碰 `index.store`，Hook 进程不加载 numpy）、`core`、`vcs` |
+| 服务 | `service` | `index`、`generate`（写入后自动更新 Wiki）、`storage`、`vcs`、`core` |
+| 领域 | `index`、`catalog`、`generate`、`importers`、`scan` | `storage`、`vcs`、`core`；`catalog` 还可用 `scan`，`generate` 还可用 `index`，`importers` 还可用 `catalog` |
+| 底层 | `storage`、`vcs`、`core`、`metrics.events` | `core`（`storage` 还可用 `vcs`）；`metrics.events` 是谁都能写的事件日志，单独算一层 |
 
 ## 五条主流程
 
@@ -86,10 +101,10 @@ flowchart LR
   models/                            # 语义模型，所有项目共享
   parsed/                            # config.yaml、modules.yaml 的解析结果（按修改时间失效，Hook 免导入 yaml）
   <项目名>-<路径哈希>/
-    vectors.db                       # 向量缓存（按嵌入器 + 内容哈希）
+    vectors.db                       # 向量缓存（按嵌入器 + 内容哈希；用到语义检索才创建）
     anchors.json                     # 过期核对结果（提交号或未提交文件变化即失效，10 分钟过期）
     sessions/<对话>.json             # 闸门状态，7 天过期
-    events.jsonl  cites.json         # 收益统计
+    events.jsonl  cites.json         # 收益统计（events.lock 是追加事件时的跨进程锁）
     hooks.log  hook-errors.log
 ```
 

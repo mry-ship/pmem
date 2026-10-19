@@ -26,6 +26,17 @@ def is_ulid(value: str) -> bool:
     return bool(_ULID_RE.fullmatch(str(value or "")))
 
 
+def ulid_ms(entry_id: str) -> int:
+    """ULID 里的生成时间（毫秒）；不是合法 ULID 时返回 0。"""
+    value = 0
+    for char in entry_id[:10].upper():
+        index = ALPHABET.find(char)
+        if index < 0:
+            return 0
+        value = value * 32 + index
+    return value
+
+
 def new_ulid(now_ms: int | None = None) -> str:
     """生成单调递增的 ULID：同一毫秒内随机部分加一，时钟回拨时沿用上一毫秒。
 

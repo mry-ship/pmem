@@ -37,6 +37,8 @@ def kept_dirs(names: list[str]) -> list[str]:
     """os.walk 同一层的子目录里，去掉依赖、构建产物和 Unity 工程根下的生成目录。"""
     unity_root = UNITY_MARKERS.issubset(names)
     return [d for d in names if not skip_dir(d) and not (unity_root and d in UNITY_GENERATED)]
+
+
 THIRD_PARTY_NAMES = re.compile(
     r"^(plugins?|third[-_ ]?party|3rd[-_ ]?party|vendors?|externals?|deps|sdks?|.*sdk|googlemobileads|firebase|"
     r"facebook.*|appsflyer|maxsdk|ironsource|applovin|spine.*|dotween|demigiant|textmesh ?pro|sirenix|odin.*|"

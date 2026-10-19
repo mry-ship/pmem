@@ -7,8 +7,8 @@ status: active
 supersedes:
 - 01M52G7A71H7RJFBEYNRCY44X1
 anchors:
-- src/pmem/service.py#change_status
-- src/pmem/service.py#_record
+- src/pmem/service/status.py#change_status
+- src/pmem/service/record.py#_record
 - src/pmem/core/entry.py#status_on
 revision: git:5003560
 author: 1002378395@qq.com

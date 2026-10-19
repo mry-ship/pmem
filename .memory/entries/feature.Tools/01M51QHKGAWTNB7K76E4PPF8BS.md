@@ -6,7 +6,7 @@ kind: decision
 status: active
 supersedes: []
 anchors:
-- src/pmem/service.py#_similar_memories
+- src/pmem/service/record.py#_similar_memories
 - src/pmem/index/store.py#search
 revision: git:30e135f
 author: 1002378395@qq.com

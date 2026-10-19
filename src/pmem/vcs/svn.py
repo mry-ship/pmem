@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import subprocess
 import xml.etree.ElementTree as ET
 from datetime import date
 from pathlib import Path
 
-from pmem.vcs.base import VCS, path_batches, run_tool
+from pmem.vcs.base import HISTORY_TIMEOUT, VCS, path_batches, run_tool
 
 _UNCOMMITTED = {"unversioned", "added", "modified", "replaced"}
 _DIRTY = _UNCOMMITTED | {"deleted", "missing", "conflicted"}
@@ -126,6 +127,26 @@ class SvnVCS(VCS):
                 except ValueError:
                     continue
         return list(dict.fromkeys(files))
+
+    def commits_since(self, since: str) -> list[tuple[str, list[str]]]:
+        info = self._xml("info", str(self.root))
+        rel = info.findtext("./entry/relative-url") if info is not None else None
+        rel = rel or "^/"
+        prefix = rel[1:].rstrip("/") + "/" if rel.startswith("^") else "/"
+        # svn log 要访问服务器，可能较慢
+        args = ["svn", "log", "-v", "--xml", "--non-interactive", "-l", "2000", "-r", f"HEAD:{{{since}}}", str(self.root)]
+        try:
+            proc = run_tool(args, self.root, timeout=HISTORY_TIMEOUT)
+            if proc.returncode != 0:
+                return []
+            log = ET.fromstring(proc.stdout)
+        except (subprocess.TimeoutExpired, ET.ParseError):
+            return []
+        commits = []
+        for entry in log.iter("logentry"):
+            paths = [p.text or "" for p in entry.iter("path") if p.get("kind") != "dir" and not p.get("copyfrom-path")]
+            commits.append(((entry.findtext("date") or "")[:10], [p[len(prefix):] for p in paths if p.startswith(prefix)]))
+        return commits
 
     def add(self, path: Path) -> None:
         run_tool(["svn", "add", "--parents", "-q", "--non-interactive", str(path)], self.root)

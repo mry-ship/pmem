@@ -6,7 +6,7 @@ kind: decision
 status: active
 supersedes: []
 anchors:
-- src/pmem/service.py#MemoryService.record
+- src/pmem/service/record.py#record
 revision: git:b383fc9
 author: 1002378395@qq.com
 note_date: '2026-10-16'

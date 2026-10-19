@@ -7,8 +7,8 @@ status: active
 supersedes: []
 anchors:
 - src/pmem/server/app.py#build_server
-- src/pmem/service.py#_normalize_anchor
-- src/pmem/service.py#_on_disk_case
+- src/pmem/service/record.py#_normalize_anchor
+- src/pmem/service/record.py#_on_disk_case
 revision: git:df9b06c
 author: 1002378395@qq.com
 note_date: '2026-10-19'

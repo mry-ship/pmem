@@ -10,7 +10,7 @@ anchors:
 - src/pmem/catalog/migrate.py#plan_deprecate
 - src/pmem/catalog/migrate.py#plan_merge
 - src/pmem/core/registry.py#deprecated
-- src/pmem/service.py#_record
+- src/pmem/service/record.py#_record
 - src/pmem/hooks/gate.py#_deprecated
 revision: git:2f0f6f6
 author: 1002378395@qq.com

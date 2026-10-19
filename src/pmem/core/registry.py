@@ -13,14 +13,20 @@ DEFAULT_CATEGORIES = ("activity", "gameplay", "economy", "infra")
 _CATEGORY_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
 _GLOB_FLAGS = wglob.GLOBSTAR | wglob.BRACE | wglob.DOTGLOB | wglob.FORCEUNIX | wglob.IGNORECASE
-_WILDCARD = re.compile(r"\*\*|\*|\?|\[[^\]]*\]|\{[^}]*\}")
-_MERGED_PREFIX = "merged_into:"
+WILDCARD = re.compile(r"\*\*|\*|\?|\[[^\]]*\]|\{[^}]*\}")
+MERGED_PREFIX = "merged_into:"
 DEPRECATED = "deprecated"
 MIN_ASCII_NAME = 4
 
 
 class RegistryError(ValueError):
     pass
+
+
+def is_module_id(text: str) -> bool:
+    """category.Name：大类小写、模块名字母开头。"""
+    category, dot, name = str(text).partition(".")
+    return bool(dot and _CATEGORY_RE.match(category) and _NAME_RE.match(name))
 
 
 @dataclass
@@ -49,8 +55,8 @@ class Module:
 
     @property
     def merged_into(self) -> str | None:
-        if self.status.startswith(_MERGED_PREFIX):
-            return self.status[len(_MERGED_PREFIX):].strip()
+        if self.status.startswith(MERGED_PREFIX):
+            return self.status[len(MERGED_PREFIX):].strip()
         return None
 
     @classmethod
@@ -103,8 +109,8 @@ class PathMatch:
 
 def glob_specificity(pattern: str) -> tuple[int, int]:
     """越具体越大：先比字面字符数，再比通配符个数（少者优先）。"""
-    literal = _WILDCARD.sub("", pattern)
-    return len(literal), -len(_WILDCARD.findall(pattern))
+    literal = WILDCARD.sub("", pattern)
+    return len(literal), -len(WILDCARD.findall(pattern))
 
 
 def _normalise_path(path: str) -> str:
@@ -116,7 +122,7 @@ def _normalise_path(path: str) -> str:
 
 def _matches(pattern: str, path: str) -> bool:
     pattern = _normalise_path(pattern).rstrip("/")
-    if not _WILDCARD.search(pattern):
+    if not WILDCARD.search(pattern):
         lp, lpath = pattern.lower(), path.lower()
         return lpath == lp or lpath.startswith(lp + "/")
     return wglob.globmatch(path, pattern, flags=_GLOB_FLAGS)

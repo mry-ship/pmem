@@ -6,9 +6,9 @@ kind: decision
 status: active
 supersedes: []
 anchors:
-- src/pmem/service.py#change_status
-- src/pmem/service.py#record
-- src/pmem/service.py#_record
+- src/pmem/service/status.py#change_status
+- src/pmem/service/record.py#record
+- src/pmem/service/record.py#_record
 revision: git:4672c28
 author: 1002378395@qq.com
 note_date: '2026-10-16'

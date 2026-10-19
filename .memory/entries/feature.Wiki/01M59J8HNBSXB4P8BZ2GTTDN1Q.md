@@ -6,7 +6,7 @@ kind: decision
 status: active
 supersedes: []
 anchors:
-- src/pmem/generate/wiki.py#generate_wiki
+- src/pmem/generate/wiki.py#write_wiki
 - src/pmem/cli/wiki_cmd.py#run_wiki
 revision: git:df9b06c
 author: 1002378395@qq.com

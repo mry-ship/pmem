@@ -2,15 +2,11 @@
 from __future__ import annotations
 
 import copy
-import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from pmem.core.registry import DEPRECATED, ModuleRegistry, RegistryError
+from pmem.core.registry import DEPRECATED, MERGED_PREFIX, ModuleRegistry, RegistryError, is_module_id
 from pmem.storage.files import FilesStorage
-
-_NAME_RE = re.compile(r"^[a-z][a-z0-9_]*\.[A-Za-z][A-Za-z0-9_]*$")
-_MERGED_PREFIX = "merged_into:"
 
 
 class MigrateError(ValueError):
@@ -62,7 +58,7 @@ def _free_bare_name(registry: ModuleRegistry, old_id: str, new_id: str) -> list[
 
 def _check_new_name(registry: ModuleRegistry, new_id: str, own: str | None, merge_hint: str) -> None:
     """新模块名合法、大类存在、完整名和短名都没被别的模块占用（own 是允许占着短名的模块，如改名前的自己）。"""
-    if not _NAME_RE.match(new_id):
+    if not is_module_id(new_id):
         raise MigrateError(f"新名字 {new_id!r} 不合法，格式为 category.Name（大类小写，模块名字母开头）")
     if new_id.split(".", 1)[0] not in registry.categories:
         raise MigrateError(f"大类 {new_id.split('.', 1)[0]!r} 不存在，只允许：{' / '.join(registry.categories)}")
@@ -100,8 +96,8 @@ def plan_rename(data: dict, registry: ModuleRegistry, old: str, new: str) -> tup
     for body in [*modules.values(), *(out.get("candidates") or {}).values()]:
         if not isinstance(body, dict):
             continue
-        if str(body.get("status") or "").strip() == f"{_MERGED_PREFIX}{old_id}":
-            body["status"] = f"{_MERGED_PREFIX}{new_id}"
+        if str(body.get("status") or "").strip() == f"{MERGED_PREFIX}{old_id}":
+            body["status"] = f"{MERGED_PREFIX}{new_id}"
         if body.get("parent") == old_id:
             body["parent"] = new_id
     out["modules"] = modules
@@ -148,7 +144,7 @@ def _plan_merge(data: dict, registry: ModuleRegistry, source: str, target: str) 
     for key in ("paths", "aliases", "entities", "components", "variants"):
         _merge_list(dst, key, src.get(key) or [])
     kept = {k: v for k, v in src.items() if k == "description"}
-    modules[src_id] = {**kept, "status": f"{_MERGED_PREFIX}{dst_id}"}
+    modules[src_id] = {**kept, "status": f"{MERGED_PREFIX}{dst_id}"}
     modules[dst_id] = dst
     notes = [f"{src_id} 并入 {dst_id}：路径、别名、议题并入目标模块，{src_id} 标为 merged_into，读写自动转到 {dst_id}"]
     if src.get("paths"):

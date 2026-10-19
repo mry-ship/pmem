@@ -13,14 +13,13 @@ from pmem.core.entry import KIND_LABELS
 from pmem.core.quality import similar_entity_pairs
 from pmem.core.registry import RegistryError
 from pmem.index.tokenize import tokenize
-from pmem.metrics.events import read_events
+from pmem.metrics.events import MIN_SEARCHES_FOR_IDLE, read_events
 from pmem.service import COMPACT_MIN_GROUP, MemoryService
 
 TOP = 10
 NEGATIVE_KINDS = ("exclusion", "correction")
 # 词集合的 Jaccard 相似度；长正文天然偏低，实测同议题无关的一正一反记忆在 0.11 以下
 CONTRADICTION_OVERLAP = 0.15
-MIN_SEARCHES_FOR_IDLE = 20
 SEARCH_EVENTS = ("search", "mcp_search", "search_call")
 # 按顺序匹配拒绝原因；“上限”的提示里也提到 draft_id，所以排在前面
 REJECT_REASONS = (

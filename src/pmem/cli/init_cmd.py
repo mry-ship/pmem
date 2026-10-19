@@ -19,8 +19,8 @@ from pmem.generate.templates import (
     COMPACT_SKILL,
     CONFIG_TEMPLATE,
     CONSOLIDATE_SKILL,
+    CURSOR_HOOKS,
     GENERATED,
-    HOOK_EVENTS,
     HOOK_WRAPPER,
     HOOK_WRAPPER_CMD,
     HOOK_WRAPPER_SH,
@@ -102,13 +102,13 @@ def merge_hooks(path: Path) -> None:
     data.setdefault("version", 1)
     hooks = data.setdefault("hooks", {})
     for event in list(hooks):
-        if event not in HOOK_EVENTS:
+        if event not in CURSOR_HOOKS:
             kept = [h for h in hooks[event] if not _is_pmem(h.get("command"))]
             if kept:
                 hooks[event] = kept
             else:
                 del hooks[event]
-    for event, entry in HOOK_EVENTS.items():
+    for event, entry in CURSOR_HOOKS.items():
         kept = [h for h in hooks.get(event, []) if not _is_pmem(h.get("command"))]
         hooks[event] = [*kept, dict(entry)]
     _write_json(path, data)

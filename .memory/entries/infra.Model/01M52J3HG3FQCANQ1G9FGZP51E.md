@@ -10,7 +10,7 @@ anchors:
 - src/pmem/core/entry.py#status_on
 - src/pmem/core/entry.py#to_markdown
 - src/pmem/core/entry.py#from_markdown
-- src/pmem/service.py#change_status
+- src/pmem/service/status.py#change_status
 revision: git:3ed5001
 author: 1002378395@qq.com
 note_date: '2026-10-16'

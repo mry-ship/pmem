@@ -46,6 +46,9 @@ MAX_PENDING_SNAPSHOTS = 8
 SLOW_SNAPSHOT_SECONDS = 1.0
 SLOW_SNAPSHOT_PAUSE = 24 * 3600
 SLOW_SNAPSHOT_MARK = "snapshot-slow"
+ERROR_LOG = "hook-errors.log"
+ERROR_SEEN = "hook-errors.seen"
+ERROR_NOTICE_WINDOW = 24 * 3600
 _PATH_TOKEN = re.compile(r"[\w.\-]*[/\\][\w./\\\-]+")
 
 def tool_response(payload: dict) -> dict | None:
@@ -78,6 +81,19 @@ def tool_response(payload: dict) -> dict | None:
         return None
 
     return walk({k: v for k, v in payload.items() if k != "tool_input"}, 0)
+
+
+_OUTPUT_FIELDS = ("tool_output", "tool_response", "output")
+
+
+def shell_output(payload: dict) -> str | None:
+    """终端命令执行后的输出文本（Cursor 的 tool_output、Claude Code / Codex 的 tool_response）；载荷里没有时返回 None。"""
+    for key in _OUTPUT_FIELDS:
+        value = payload.get(key)
+        if value is None:
+            continue
+        return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+    return None
 
 
 _SERVER_FIELDS = ("server", "server_name", "mcp_server", "url", "command")
@@ -377,10 +393,12 @@ class Gate:
                     found.append(mid)
         return [m for m in dict.fromkeys(found) if m]
 
-    def _guard(self, rel: str | None) -> dict | None:
+    def _guard(self, rel: str | None, searched_here: set[str] = frozenset()) -> dict | None:
         if rel is None or not self._watched(rel):
             return None
         for module in self._target_modules(rel):
+            if module in searched_here:
+                continue
             denied = self._guard_module(rel, module)
             if denied is not None:
                 return denied
@@ -444,11 +462,12 @@ class Gate:
             return dict(ALLOW)
         if name.lower() == "shell":
             command = str(args.get("command") or "")
-            # 先登记命令里的 pmem search，同一条命令里对已查模块的写入才放行；其他模块的写入照样检查
-            self._note_cli_calls(command)
+            # 命令里的 pmem search 先挂起，执行完才算查过；同一条命令里对这些模块的写入先放行，其他模块照样检查
+            in_command = self._note_cli_calls(command)
             base = args.get("cwd") or str(self.root)
             targets, _ = scan(command, base)
-            denied = next((v for v in map(self._guard, [self.relative(t, base) for t in targets]) if v is not None), None)
+            denied = next((v for v in (self._guard(self.relative(t, base), in_command) for t in targets)
+                           if v is not None), None)
             if denied is not None:
                 return denied
             if _needs_snapshot(command, base):
@@ -459,18 +478,44 @@ class Gate:
         raw = args.get("file_paths") or [args.get("file_path") or args.get("path") or args.get("target_file") or ""]
         return next((v for v in map(self._guard, [self.relative(str(p)) for p in raw]) if v is not None), dict(ALLOW))
 
-    def _note_cli_calls(self, command: str) -> None:
-        """终端里的 pmem search/graph/record 与 MCP 工具等价，照样登记。"""
+    def _note_cli_calls(self, command: str) -> set[str]:
+        """终端里的 pmem search/graph/record 与 MCP 工具等价。检索先挂起，命令执行完、看得到输出才登记
+        （见 _confirm_cli_searches）；返回这条命令里检索的模块。"""
         searches = cli_args(command, "search") + cli_args(command, "graph")
         records = cli_args(command, "record")
-        for cli_search in searches:
-            self._mark_searched(cli_search, via="cli")
+        if searches and self.state is not None:
+            pending = self.state.data["cli_pending"]
+            pending[_command_key(command)] = searches
+            self.state.data["cli_pending"] = dict(list(pending.items())[-MAX_PENDING_SNAPSHOTS:])
+            self.save()
         for cli_record in records:
             module = self.module_from_args(cli_record)
             if module and self.state is not None:
                 self.state.add("cli_recorded", module)
                 self.save()
             self.log("record_call", module=module, via="cli")
+        return {m for m in map(self.module_from_args, searches) if m}
+
+    def _confirm_cli_searches(self) -> None:
+        """命令跑完：挂起的终端检索登记为查过。拿得到命令输出时，输出里要出现该模块才算（|| 之后、失败退出的没有输出）。"""
+        if self.state is None:
+            return
+        pending = self.state.data["cli_pending"]
+        key = _command_key(str(tool_input(self.payload).get("command") or ""))
+        if key not in pending and len(pending) == 1:
+            # 前后两次拿到的命令文本可能因转码不同
+            key = next(iter(pending))
+        searches = pending.pop(key, None)
+        if searches is None:
+            return
+        self.save()
+        output = shell_output(self.payload)
+        for args in searches:
+            module = self.module_from_args(args)
+            if output is not None and (not module or module.lower() not in output.lower()):
+                self.log("search_call_unseen", module=module, via="cli")
+                continue
+            self._mark_searched(args, via="cli")
 
     def _inject(self, args: dict, with_draft: bool) -> dict:
         if not args or self.state is None:
@@ -572,6 +617,42 @@ class Gate:
             self.log("edit", module=module, file=rel)
 
     def on_post_tool(self) -> dict:
+        result = self._post_tool()
+        notice = self.error_notice()
+        if notice:
+            result = dict(result or {})
+            result["additional_context"] = "\n\n".join(filter(None, [result.get("additional_context"), notice]))
+        return result
+
+    def error_notice(self) -> str | None:
+        """Hook 出错时默认放行（不能卡住开发），但用户得知道闸门那次没起作用：有新错误就提醒一次。"""
+        if self.config.get("gate.mode") == "off":
+            return None
+        log = self.config.cache_dir / ERROR_LOG
+        seen = self.config.cache_dir / ERROR_SEEN
+        try:
+            changed = log.stat().st_mtime
+        except OSError:
+            return None
+        try:
+            last_seen = seen.stat().st_mtime
+        except OSError:
+            last_seen = time.time() - ERROR_NOTICE_WINDOW
+        if changed <= last_seen:
+            return None
+        try:
+            seen.parent.mkdir(parents=True, exist_ok=True)
+            seen.write_text(time.strftime("%Y-%m-%d %H:%M:%S"), encoding="utf-8")
+            tail = log.read_bytes()[-4096:].decode("utf-8", "replace")
+        except OSError:
+            return None
+        lines = [line.strip() for line in tail.splitlines() if line.strip()]
+        last = lines[-1][:200] if lines else ""
+        self.log("error_notice", error=last)
+        return (f"[pmem] 记忆闸门刚才出错，那次已自动放行、没有做记忆检查（{last}）。"
+                f"请在回复里提醒用户运行 pmem doctor 查看原因（错误日志：{log}）。")
+
+    def _post_tool(self) -> dict:
         """工具调用之后：读代码时附上该模块的记忆摘要；Claude Code / Codex 另由此处理 pmem 工具的返回与编辑过的文件。"""
         from pmem.hooks.agents import edited_files
 
@@ -583,6 +664,7 @@ class Gate:
         if name.lower() in SEARCH_TOOLS:
             return self._search_digest(tool_input(self.payload))
         if name.lower() == "shell":
+            self._confirm_cli_searches()
             return self._shell_after()
         for path in edited_files(self.payload):
             self._mark_edited(path)
@@ -753,6 +835,7 @@ class Gate:
         pending = self._pending_nudges() if follow else []
         analyzed = self._analyzed() if finished else []
         consulted_pending = self._consulted_only() if follow else []
+        notice = self.error_notice() if follow else None
         usage = {k: self.payload.get(k) for k in TOKEN_FIELDS if isinstance(self.payload.get(k), int)}
         self.save()
         self.log(
@@ -769,7 +852,7 @@ class Gate:
             **usage,
         )
         if not review and not pending and not consulted_pending:
-            return {}
+            return {"followup_message": notice} if notice else {}
         for module in review:
             self.state.add("review_nudged", module)
         for module in pending + consulted_pending:
@@ -796,6 +879,8 @@ class Gate:
                 "得出了新结论（根因、排除过的方向、决定、风险）就直接用 record_memory 记下；"
                 "没有新结论就简短说明“已核对，无新结论”。不要询问用户。"
             )
+        if notice:
+            messages.append(notice)
         return {"followup_message": "\n".join(messages)}
 
 

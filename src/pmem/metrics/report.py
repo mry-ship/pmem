@@ -7,11 +7,11 @@ import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from pmem.catalog.coverage import module_heat
 from pmem.core.entry import KIND_LABELS, VISIBLE_STATUSES
-from pmem.core.registry import RegistryError
 from pmem.index.store import ulid_ms
 from pmem.metrics.cite import assistant_text, judge
-from pmem.metrics.events import read_events
+from pmem.metrics.events import MIN_SEARCHES_FOR_IDLE, read_events
 from pmem.scan.lite import file_heat
 from pmem.service import MemoryService
 
@@ -22,7 +22,6 @@ CLI_LINK_SECONDS = 30
 OWN_WRITE_SLACK = 60
 USAGE_TOP = 5
 MIN_RETURNS_TO_REVIEW = 3
-MIN_SEARCHES_FOR_IDLE = 20
 
 
 def _median(values: list[float]) -> float | None:
@@ -216,16 +215,9 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
 
     hot = []
     if heat:
-        _, file_counts = file_heat(root)
-        module_heat: Counter = Counter()
-        for path, count in file_counts.items():
-            try:
-                match = registry.module_for_path(path)
-            except RegistryError:
-                continue
-            if match is not None:
-                module_heat[match.module_id] += count
-        hot = [(m, n, len([e for e in visible if e.module == m])) for m, n in module_heat.most_common(HOT_TOP)]
+        _, file_counts = file_heat(root, vcs=service.vcs)
+        totals = module_heat(registry, file_counts)
+        hot = [(m, n, len([e for e in visible if e.module == m])) for m, n in totals.most_common(HOT_TOP)]
 
     citations = _citations(cache_dir, convs, contents)
     return {

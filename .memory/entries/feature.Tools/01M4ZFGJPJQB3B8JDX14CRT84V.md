@@ -6,7 +6,7 @@ kind: exclusion
 status: active
 supersedes: []
 anchors:
-- src/pmem/service.py#_similar_memories
+- src/pmem/service/record.py#_similar_memories
 revision: git:fc9f6d8
 author: 1002378395@qq.com
 note_date: '2026-10-15'

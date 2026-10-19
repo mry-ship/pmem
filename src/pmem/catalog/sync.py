@@ -14,15 +14,15 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pmem.core.registry import ModuleRegistry, RegistryError
-from pmem.scan.lite import HEAT_DAYS, THIRD_PARTY_NAMES, iter_code_files
+from pmem.catalog.coverage import map_files
+from pmem.core.registry import WILDCARD, ModuleRegistry, RegistryError
+from pmem.scan.lite import HEAT_DAYS, THIRD_PARTY_NAMES
 
 MODULE_MIN_FILES = 3
 PROMOTE_HEAT = 5
 IDLE_DAYS = 90
 MIN_VARIANT_PATHS = 2
 _WORD = re.compile(r"[A-Za-z0-9]+")
-_WILDCARD = re.compile(r"[*?\[{]")
 
 
 @dataclass
@@ -59,21 +59,8 @@ def _under(path: str, folder: str) -> bool:
 
 def _scan(root: Path, registry: ModuleRegistry) -> tuple[dict[str, str], list[str]]:
     """代码文件 → 所属模块（含冷候选；路径重叠的记为空串，也算已覆盖），以及没被覆盖的文件。"""
-    owner: dict[str, str] = {}
-    unmapped: list[str] = []
-    for rel in iter_code_files(root):
-        if registry.is_excluded(rel):
-            continue
-        try:
-            match = registry.module_for_path(rel)
-        except RegistryError:
-            owner[rel] = ""
-            continue
-        if match is None:
-            unmapped.append(rel)
-        else:
-            owner[rel] = match.module_id
-    return owner, unmapped
+    mapping = map_files(root, registry)
+    return {**dict.fromkeys(mapping.conflicted, ""), **mapping.owner}, mapping.unmapped
 
 
 def _units(owner: dict[str, str], unmapped: list[str]) -> tuple[dict[str, list[str]], Counter]:
@@ -119,7 +106,7 @@ def _variant_owner(registry: ModuleRegistry, owner: dict[str, str], parent: str)
     children = 0
     for pattern in module.paths:
         parts = pattern.replace("\\", "/").lower().split("/")
-        if len(parts) > len(prefix) and parts[:len(prefix)] == prefix and not _WILDCARD.search(parts[len(prefix)]):
+        if len(parts) > len(prefix) and parts[:len(prefix)] == prefix and not WILDCARD.search(parts[len(prefix)]):
             children += 1
     return mid if children >= MIN_VARIANT_PATHS else None
 

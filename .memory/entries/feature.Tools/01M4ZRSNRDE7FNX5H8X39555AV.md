@@ -6,7 +6,7 @@ kind: conclusion
 status: active
 supersedes: []
 anchors:
-- src/pmem/service.py#terms
+- src/pmem/service/curation.py#terms
 revision: git:bfe2969
 author: 1002378395@qq.com
 note_date: '2026-10-15'

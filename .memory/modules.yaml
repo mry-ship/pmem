@@ -34,7 +34,7 @@ modules:
     entities: [Ranking, Embedding, Tokenize, StaleCheck, Supersede]
   feature.Tools:
     description: 记忆服务层：MemoryService 与 5 个 MCP 工具背后的业务规则（写入校验、检索参数、核对、状态变更、图谱出参）
-    paths: [src/pmem/service.py, src/pmem/server/app.py, src/pmem/core/secrets.py, tests/test_service.py, tests/test_server.py, scripts/smoke_mcp.py]
+    paths: [src/pmem/service/**, src/pmem/server/app.py, src/pmem/core/secrets.py, tests/test_service.py, tests/test_server.py, scripts/smoke_mcp.py]
     aliases: [Mcp, Service]
     entities: [Record, Search, Secrets, Status, Similar]
   infra.Watchdog:

@@ -5,7 +5,7 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from pmem.core.registry import RegistryError
+from pmem.catalog.coverage import module_heat
 from pmem.scan.lite import HEAT_DAYS, file_heat
 from pmem.service import MemoryService
 
@@ -15,19 +15,12 @@ ENOUGH_MEMORIES = 10
 def seed_plan(service: MemoryService, top: int) -> dict:
     """按近半年改动热度排出值得先补种子记忆的模块；已有足够记忆的排在后面。"""
     registry = service.registry
-    vcs, heat = file_heat(service.root)
-    module_heat: Counter = Counter()
-    for path, count in heat.items():
-        try:
-            match = registry.module_for_path(path)
-        except RegistryError:
-            continue
-        if match is not None and not match.candidate:
-            module_heat[match.module_id] += count
+    vcs, heat = file_heat(service.root, vcs=service.vcs)
+    totals = module_heat(registry, heat, include_candidates=False)
     current = Counter(e.module for e in service.index.visible())
     seeds = Counter(e.module for e in service.index.visible() if e.status == "seed")
     rows = [
-        {"module": mid, "heat": module_heat[mid], "memories": current[mid], "seeds": seeds[mid],
+        {"module": mid, "heat": totals[mid], "memories": current[mid], "seeds": seeds[mid],
          "paths": module.paths}
         for mid, module in registry.modules.items() if not module.merged_into and not module.deprecated
     ]

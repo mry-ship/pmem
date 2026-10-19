@@ -6,7 +6,8 @@ kind: decision
 status: active
 supersedes: []
 anchors:
-- src/pmem/service.py
+- src/pmem/service/search.py#graph
+- src/pmem/service/base.py#_refresh_wiki
 revision: git:9510a42
 author: 1002378395@qq.com
 note_date: '2026-10-16'

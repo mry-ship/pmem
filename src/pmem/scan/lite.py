@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import os
 import re
-import subprocess
-import xml.etree.ElementTree as ET
 from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
+
+from pmem.vcs.base import VCS
+from pmem.vcs.detect import detect_vcs
 
 CODE_EXTS = {
     ".cs", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".vue", ".svelte", ".py", ".go", ".java", ".kt", ".kts",
@@ -44,55 +45,14 @@ def iter_code_files(root: Path):
                 yield Path(dirpath, name).relative_to(root).as_posix()
 
 
-def _git_commits(root: Path, since: str) -> list[tuple[str, list[str]]]:
-    # --relative：项目可能是仓库的子目录，路径要相对项目根才对得上 iter_code_files
-    proc = subprocess.run(
-        ["git", "-c", "core.quotepath=off", "log", f"--since={since}", "--name-only", "--relative",
-         "--pretty=format:@@%ci"],
-        cwd=root, capture_output=True, check=False,
-    )
-    if proc.returncode != 0:
-        return []
-    commits = []
-    for block in proc.stdout.decode("utf-8", errors="replace").split("@@")[1:]:
-        lines = [f.strip() for f in block.splitlines() if f.strip()]
-        if lines:
-            commits.append((lines[0][:10], lines[1:]))
-    return commits
-
-
-def _svn_commits(root: Path, since: str) -> list[tuple[str, list[str]]]:
-    info = subprocess.run(["svn", "info", "--xml", str(root)], capture_output=True, check=False)
-    if info.returncode != 0:
-        return []
-    rel = ET.fromstring(info.stdout).findtext("./entry/relative-url") or "^/"
-    prefix = rel[1:].rstrip("/") + "/" if rel.startswith("^") else "/"
-    proc = subprocess.run(
-        ["svn", "log", "-v", "--xml", "-l", "2000", "-r", f"HEAD:{{{since}}}", str(root)],
-        capture_output=True, check=False,
-    )
-    if proc.returncode != 0:
-        return []
-    commits = []
-    for entry in ET.fromstring(proc.stdout).iter("logentry"):
-        paths = [p.text or "" for p in entry.iter("path") if p.get("kind") != "dir" and not p.get("copyfrom-path")]
-        commits.append(((entry.findtext("date") or "")[:10], [p[len(prefix):] for p in paths if p.startswith(prefix)]))
-    return commits
-
-
-def file_heat_windows(root: Path, *windows: int) -> tuple[str, list[Counter]]:
-    """一次读取提交历史，分别统计近 N 天各文件的改动次数（排除超过 BULK_COMMIT 个文件的大提交）。"""
+def file_heat_windows(root: Path, *windows: int, vcs: VCS | None = None) -> tuple[str, list[Counter]]:
+    """一次读取提交历史，分别统计近 N 天各文件的改动次数（排除超过 BULK_COMMIT 个文件的大提交）。
+    vcs 不传时自动探测；已接入的项目应传按配置（config 的 vcs）建好的适配器。"""
     windows = windows or (HEAT_DAYS,)
     today = date.today()
     cutoffs = [(today - timedelta(days=days)).isoformat() for days in windows]
-    vcs, commits = "none", []
-    for candidate in (root, *root.parents):
-        if (candidate / ".git").exists():
-            vcs, commits = "git", _git_commits(root, min(cutoffs))
-            break
-        if (candidate / ".svn").is_dir():
-            vcs, commits = "svn", _svn_commits(root, min(cutoffs))
-            break
+    vcs = vcs or detect_vcs(root)
+    commits = vcs.commits_since(min(cutoffs))
     heats = [Counter() for _ in windows]
     for day, files in commits:
         if not 0 < len(files) <= BULK_COMMIT:
@@ -100,12 +60,12 @@ def file_heat_windows(root: Path, *windows: int) -> tuple[str, list[Counter]]:
         for heat, cutoff in zip(heats, cutoffs):
             if day >= cutoff:
                 heat.update(files)
-    return vcs, heats
+    return vcs.name, heats
 
 
-def file_heat(root: Path, days: int = HEAT_DAYS) -> tuple[str, Counter]:
-    vcs, (heat,) = file_heat_windows(root, days)
-    return vcs, heat
+def file_heat(root: Path, days: int = HEAT_DAYS, vcs: VCS | None = None) -> tuple[str, Counter]:
+    name, (heat,) = file_heat_windows(root, days, vcs=vcs)
+    return name, heat
 
 
 def summarize(root: Path, depth: int = 4) -> str:

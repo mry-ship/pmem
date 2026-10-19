@@ -63,10 +63,11 @@ def run_sync(root: Path, apply: bool) -> int:
     except RegistryError as exc:
         print(f"无法同步：{exc}")
         return 1
-    storage = FilesStorage(config.root, detect_vcs(config.root, config.get("vcs")))
+    vcs = detect_vcs(config.root, config.get("vcs"))
+    storage = FilesStorage(config.root, vcs)
     memories = Counter(e.module for _, e in storage.iter_all() if e.status != "archived")
-    vcs, (heat, recent) = file_heat_windows(config.root, HEAT_DAYS, IDLE_DAYS)
-    history = vcs != "none" and config.get("vcs") != "none" and bool(heat or recent)
+    name, (heat, recent) = file_heat_windows(config.root, HEAT_DAYS, IDLE_DAYS, vcs=vcs)
+    history = name != "none" and bool(heat or recent)
     plan = plan_sync(config.root, registry, memories, heat, recent, history=history)
 
     lines = render(plan)

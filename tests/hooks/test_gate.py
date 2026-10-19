@@ -316,6 +316,7 @@ def test_multiline_command_registers_every_pmem_call(make_project):
                "  --kind risk --content-file $t\\a.txt\r\n")
     shell = {"conversation_id": "c1", "tool_name": "Shell", "tool_input": {"command": command, "cwd": ""}}
     assert handle("pre-tool", shell, root)["permission"] == "allow"
+    handle("post-tool", shell, root)
     assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
     assert handle("stop", stop_payload(), root) == {}
     assert cli_args(command, "record") == [{"module": "economy.Shop"}]
@@ -578,7 +579,46 @@ def test_cli_search_in_shell_counts_as_searched(make_project):
     shell = {"conversation_id": "c1", "tool_name": "Shell",
              "tool_input": {"command": "pmem search --module gameplay.Jigsaw", "cwd": ""}}
     assert handle("pre-tool", shell, root)["permission"] == "allow"
+    # 执行前只挂起，命令跑完才算查过
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
+    handle("post-tool", {**shell, "tool_output": "gameplay.Jigsaw：2 条\n- 结论｜Reward｜..."}, root)
     assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+
+
+def test_cli_search_without_visible_result_does_not_count(make_project):
+    root = make_project("block")
+    shell = {"conversation_id": "c1", "tool_name": "Shell",
+             "tool_input": {"command": "pmem search --module gameplay.Jigsaw", "cwd": ""}}
+    handle("pre-tool", shell, root)
+    handle("post-tool", {**shell, "tool_output": "pmem : 无法将“pmem”项识别为 cmdlet"}, root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
+
+
+def test_cli_search_after_or_is_not_counted():
+    assert cli_args("true || pmem search --module gameplay.Jigsaw", "search") == []
+    assert cli_args("false && pmem search --module a.B; pmem search --module c.D", "search") == [
+        {"module": "a.B"}, {"module": "c.D"}]
+    assert cli_args("x || y; pmem graph --module a.B", "graph") == [{"module": "a.B"}]
+
+
+def test_hook_error_is_reported_once(make_project):
+    root = make_project()
+    cache = Config.load(root).cache_dir
+    cache.mkdir(parents=True, exist_ok=True)
+    (cache / "hook-errors.log").write_text("2026-10-19 ERROR pre-tool@cursor\nNameError: boom\n", encoding="utf-8")
+    read = {"conversation_id": "c1", "tool_name": "Read", "tool_input": {"path": str(root / "tools/x.py")}}
+    context = handle("post-tool", read, root)["additional_context"]
+    assert "NameError: boom" in context and "pmem doctor" in context
+    assert "additional_context" not in handle("post-tool", read, root)
+
+
+def test_hook_error_is_reported_at_stop(make_project):
+    root = make_project()
+    cache = Config.load(root).cache_dir
+    cache.mkdir(parents=True, exist_ok=True)
+    (cache / "hook-errors.log").write_text("ValueError: bad\n", encoding="utf-8")
+    assert "ValueError: bad" in handle("stop", stop_payload(), root)["followup_message"]
+    assert handle("stop", stop_payload(), root) == {}
 
 
 def test_search_injection_adds_conversation(make_project):

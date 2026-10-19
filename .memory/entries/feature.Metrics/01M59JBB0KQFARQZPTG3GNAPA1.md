@@ -6,7 +6,7 @@ kind: conclusion
 status: active
 supersedes: []
 anchors:
-- src/pmem/metrics/health.py#collect_health
+- src/pmem/metrics/health.py#build_health
 - src/pmem/catalog/migrate.py#stray_moves
 revision: git:df9b06c
 author: 1002378395@qq.com

@@ -65,8 +65,14 @@ def _strip_heredocs(command: str) -> str:
 
 def _statements(command: str) -> list[str]:
     """按换行和 ; && || 拆成语句（管道还连在一起）；行尾的 ` 或 \\ 是续行，先接回去。"""
+    return [statement for statement, _ in _statements_with_ops(command)]
+
+
+def _statements_with_ops(command: str) -> list[tuple[str, str]]:
+    """语句及其前面的连接符（第一条为空串）；`a || b` 里的 b 只在 a 失败时才执行。"""
     joined = re.sub(r"[`\\][ \t]*\r?\n", " ", _strip_heredocs(command))
-    return re.split(r"\s*(?:\|\||&&|[;\r\n])\s*", joined)
+    parts = re.split(r"\s*(\|\||&&|[;\r\n])\s*", joined)
+    return [(parts[i], parts[i - 1] if i else "") for i in range(0, len(parts), 2)]
 
 
 def _stages(statement: str) -> list[str]:
@@ -349,9 +355,11 @@ _LAUNCHERS = {"uv", "uvx", "pipx", "python", "python3", "py"}
 
 def cli_args(command: str, subcommand: str) -> list[dict]:
     """终端里的 `pmem search/record ...` 与对应 MCP 工具等价，按出现顺序返回每一处的 module/path 参数。
-    search、graph 的输出被丢弃时（> $null、| Out-Null），Agent 并没有看到记忆，不算。"""
+    search、graph 的输出被丢弃时（> $null、| Out-Null），Agent 并没有看到记忆，不算；写在 || 后面的不一定执行，也不算。"""
     found: list[dict] = []
-    for statement in _statements(command):
+    for statement, op in _statements_with_ops(command):
+        if op == "||" and subcommand in ("search", "graph"):
+            continue
         stages = _stages(statement)
         for n, segment in enumerate(stages):
             tokens = _tokens(segment)

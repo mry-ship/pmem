@@ -91,6 +91,8 @@ def test_cli_search_in_bash_unlocks_module(root):
     bash = {"session_id": "s3", "cwd": str(root), "tool_name": "Bash",
             "tool_input": {"command": "pmem search --module gameplay.Jigsaw 奖励"}}
     run("claude", "pre-tool", bash, root)
+    assert run("claude", "pre-tool", claude_edit(root, "src/Jigsaw/Board.cs", "s3"), root) != {}
+    run("claude", "post-tool", {**bash, "tool_response": {"stdout": "gameplay.Jigsaw：1 条", "stderr": ""}}, root)
     assert run("claude", "pre-tool", claude_edit(root, "src/Jigsaw/Board.cs", "s3"), root) == {}
 
 

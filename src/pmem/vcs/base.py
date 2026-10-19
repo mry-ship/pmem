@@ -12,6 +12,7 @@ def run_tool(args: list[str], cwd: Path, timeout: float = 30) -> subprocess.Comp
 
 
 MAX_ARGS_CHARS = 8000
+HISTORY_TIMEOUT = 120.0
 
 
 def path_batches(paths: list[str], limit: int = MAX_ARGS_CHARS) -> list[list[str]]:
@@ -77,6 +78,10 @@ class VCS:
     def dirty_files(self) -> list[str] | None:
         """项目里相对版本库有改动、已删除或未纳入版本库（且未被忽略）的文件，路径相对项目根；不支持时返回 None。"""
         return None
+
+    def commits_since(self, since: str) -> list[tuple[str, list[str]]]:
+        """since（YYYY-MM-DD）以来的每次提交：(提交日期, 改动的文件)，路径相对项目根；取不到时返回空列表。"""
+        return []
 
     def changed_after(self, paths: list[str], since: str) -> dict[str, str]:
         """since（YYYY-MM-DD）之后有改动的文件 → 最近改动日期；含未提交的修改（记为今天）。

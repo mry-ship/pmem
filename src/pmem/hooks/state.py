@@ -20,6 +20,8 @@ _DEFAULTS = {
     "reviewed": [], "asked": [], "review_nudged": [], "skip_reason": "", "skip_noticed": False,
     # 终端命令执行前未提交文件的快照（命令摘要 → {路径 → [mtime_ns, size]}），执行后比对出命令实际改了哪些文件
     "shell_before": {}, "late_warned": [],
+    # 终端里的 pmem search 执行前先挂起（命令摘要 → [检索参数]），命令真正跑完、输出看得到才登记为查过
+    "cli_pending": {},
 }
 
 

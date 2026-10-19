@@ -7,7 +7,7 @@ status: active
 supersedes: []
 anchors:
 - src/pmem/core/quality.py
-- src/pmem/service.py
+- src/pmem/service/record.py#_write_hints
 - src/pmem/cli/doctor_cmd.py
 revision: git:a0936e7
 author: 1002378395@qq.com

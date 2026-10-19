@@ -456,7 +456,8 @@ git commit -m "接入 pmem"</code></pre>
     </li>
     <li>“跳过记忆”只在作为独立短语出现时生效；“如何避免跳过记忆”这类说法不算。生效后 AI 第一次读代码会收到说明（含触发它的原话），误触发时说“恢复记忆”即可。</li>
     <li>上下文压缩后状态清零；会话状态 7 天过期。</li>
-    <li>Hook 出任何异常都直接放行，错误写入用户缓存目录的 <code>hook-errors.log</code>，<code>pmem doctor</code> 只显示近 24 小时的错误次数和最近一次内容。</li>
+    <li>Hook 出任何异常都直接放行，错误写入用户缓存目录的 <code>hook-errors.log</code>；下一次工具调用或回合结束时，闸门会让 AI 在回复里提醒你“刚才闸门出错、那次没做记忆检查”，同一批错误只提醒一次。<code>pmem doctor</code> 显示近 24 小时的错误次数和最近一次内容。</li>
+    <li>终端里的 <code>pmem search --module 模块</code> 要执行完、输出里看得到该模块才算查过；写在 <code>||</code> 之后或输出被丢弃都不算。</li>
     <li>“需核实”的判定：关联代码写成 <code>路径#函数名</code> 时（Git 项目），只看这个函数在核对日期之后有没有改；只写了文件、SVN 项目或找不到函数时按整个文件判断。所以写记忆时 anchors 尽量写到函数。</li>
   </ul>
   <p class="muted">Cursor 接入的 Hook 事件：sessionStart（经 <code>.memory/bin/pmem-hook</code> 调用，本机没装 pmem 时提示 AI 告诉用户安装）、beforeSubmitPrompt、preToolUse、afterMCPExecution、afterFileEdit、postToolUse（匹配 Read、Grep、Glob、语义搜索、Shell）、preCompact、stop。三个工具共用同一套闸门逻辑，统一调用 <code>pmem hook &lt;事件&gt; --agent &lt;工具&gt;</code>。</p>

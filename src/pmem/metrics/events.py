@@ -9,6 +9,8 @@ from pathlib import Path
 
 EVENTS_FILE = "events.jsonl"
 MAX_BYTES = 20 * 1024 * 1024
+# 统计期内本机检索少于这个次数时，“没被检索过”的模块和记忆不说明问题，报告里不列
+MIN_SEARCHES_FOR_IDLE = 20
 
 
 def log_event(cache_dir: Path, event_type: str, **fields) -> None:

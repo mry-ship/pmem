@@ -348,7 +348,7 @@ echo {{"continue":true}}
 exit /b 0
 """
 
-HOOK_EVENTS = {
+CURSOR_HOOKS = {
     "sessionStart": {"command": f"{HOOK_WRAPPER} session"},
     "beforeSubmitPrompt": {"command": "pmem hook prompt"},
     "preToolUse": {

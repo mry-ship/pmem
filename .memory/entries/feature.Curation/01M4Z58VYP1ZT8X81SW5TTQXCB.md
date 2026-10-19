@@ -7,7 +7,8 @@ status: active
 supersedes: []
 anchors:
 - src/pmem/cli/compact_cmd.py
-- src/pmem/service.py
+- src/pmem/service/curation.py#compact_groups
+- src/pmem/service/record.py#_record
 - src/pmem/generate/templates.py
 revision: git:f3e8e07
 author: 1002378395@qq.com

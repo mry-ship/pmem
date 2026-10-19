@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import subprocess
 from datetime import date, timedelta
 from pathlib import Path
 
-from pmem.vcs.base import VCS, fallback_user, path_batches, run_tool
+from pmem.vcs.base import HISTORY_TIMEOUT, VCS, fallback_user, path_batches, run_tool
 
 
 class GitVCS(VCS):
@@ -61,6 +62,23 @@ class GitVCS(VCS):
                     found[rel.strip()] = today
         wanted = {p.replace("\\", "/") for p in paths}
         return {k: v for k, v in found.items() if k in wanted}
+
+    def commits_since(self, since: str) -> list[tuple[str, list[str]]]:
+        # --relative：项目可能是仓库的子目录，路径要相对项目根
+        args = ["git", "-c", "core.quotepath=off", "log", f"--since={since}", "--name-only", "--relative",
+                "--pretty=format:@@%ci"]
+        try:
+            proc = run_tool(args, self.root, timeout=HISTORY_TIMEOUT)
+        except subprocess.TimeoutExpired:
+            return []
+        if proc.returncode != 0:
+            return []
+        commits = []
+        for block in proc.stdout.decode("utf-8", errors="replace").split("@@")[1:]:
+            lines = [f.strip() for f in block.splitlines() if f.strip()]
+            if lines:
+                commits.append((lines[0][:10], lines[1:]))
+        return commits
 
     def dirty_files(self) -> list[str] | None:
         # ls-files 的输出相对当前目录，项目是仓库子目录时也直接相对项目根

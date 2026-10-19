@@ -99,7 +99,7 @@ def build_parser():
 
     p = sub.add_parser("archive", help="归档记忆：不再出现在检索里，文件保留可追溯（负责人用）")
     p.add_argument("ids", nargs="+")
-    p.add_argument("--restore", action="store_true", help="撤销归档，恢复为正式记忆")
+    p.add_argument("--restore", action="store_true", help="撤销归档，恢复到归档前的状态")
     p.add_argument("--root", default=".")
 
     p = sub.add_parser("seed", help="种子记忆：候选模块、待确认列表、转正与退回（配合 pmem-seed 技能）")

@@ -396,7 +396,8 @@ git commit -m "接入 pmem"</code></pre>
 <!-- ============ 日常使用 ============ -->
 <section id="daily">
   <h2>日常使用</h2>
-  <p>正常写需求、修 bug 即可，基本不用手动操作。一次典型对话的流程：</p>
+  <p>正常写需求、修 bug 即可，基本不用手动操作。一次典型对话的流程（左侧色带是环节，①②③ 是 Agent 要主动做的三步）：</p>
+  <p><img src="images/pmem-flow.svg" alt="一次对话的流程：接手 → 改前查 → 改代码 → 写结论 → 提交共享" style="width:100%;max-width:1040px;height:auto;border:1px solid #d0d7de;border-radius:8px;background:#fff"></p>
   <div class="flow">
     <div class="node"><b>1. 改代码前查</b>Agent 按要改的文件调用 <code>search_memory(path=...)</code>，同一模块一个对话查一次。</div>
     <div class="arrow">→</div>

@@ -3,9 +3,14 @@ from __future__ import annotations
 
 import time
 
+from pmem.core import seen
+from pmem.core.entry import auto_summary
 from pmem.service.base import MAX_LIMIT, VERIFY_HINT, ServiceBase, fail, returns_errors, valid_date
 
 MAX_RELATED = 3
+SEEN_HINT = ("标 seen 的 {n} 条本对话已经返回过全文，这次只列标题；上下文里找不到原文时，"
+             "带 full=true（命令行 --full）重查。")
+_KEPT_ON_COLLAPSE = ("module", "id", "entity", "kind", "date", "stale", "check", "status", "scope")
 
 
 class SearchOps(ServiceBase):
@@ -20,16 +25,19 @@ class SearchOps(ServiceBase):
         limit: int | None = None,
         source_conversation: str | None = None,
         as_of: str | None = None,
+        full: bool = False,
     ) -> dict:
         started = time.perf_counter()
         try:
             response = self._search(module, path, entity, query, limit, valid_date(as_of))
         except ValueError as exc:  # 含 RegistryError
             response = fail(str(exc))
+        conversation = source_conversation or self._claim_conversation(response)
+        collapsed = self._collapse_seen(response, conversation, full) if response.get("ok") else []
         items = response.get("items") or []
         self._log(
             "search",
-            conv=source_conversation,
+            conv=conversation,
             ok=response.get("ok"),
             module=response.get("module"),
             path=(path or None) and self._relative(path),
@@ -39,9 +47,40 @@ class SearchOps(ServiceBase):
             kinds=[i["kind"] for i in items],
             authors=[i.get("author") for i in items],
             fallback=response.get("fallback"),
+            collapsed=collapsed or None,
             ms=round((time.perf_counter() - started) * 1000),
         )
         return response
+
+    def _claim_conversation(self, response: dict) -> str | None:
+        """终端里的 pmem search 不带对话 id，认领 Hook 执行前登记的那个对话。"""
+        if self.source != "cli" or not response.get("ok"):
+            return None
+        return seen.claim_handoff(self.config.cache_dir, response.get("module"))
+
+    def _collapse_seen(self, response: dict, conversation: str | None, full: bool) -> list[str]:
+        """同一对话里已返回过全文的记忆只给标题，其余照常返回并记为已返回；返回被折叠的 id。"""
+        items = response.get("items") or []
+        if not conversation or not items:
+            return []
+        cache_dir = self.config.cache_dir
+        shown = set() if full else seen.load(cache_dir, conversation)
+        rows, collapsed, fresh = [], [], []
+        for item in items:
+            if item["id"] in shown:
+                row = {k: item[k] for k in _KEPT_ON_COLLAPSE if k in item}
+                row["summary"] = item.get("summary") or auto_summary(item.get("content") or "")
+                row["seen"] = True
+                rows.append(row)
+                collapsed.append(item["id"])
+            else:
+                rows.append(item)
+                fresh.append(item["id"])
+        seen.add(cache_dir, conversation, fresh)
+        response["items"] = rows
+        if collapsed:
+            response["seen_hint"] = SEEN_HINT.format(n=len(collapsed))
+        return collapsed
 
     def _search(self, module, path, entity, query, limit, as_of=None) -> dict:
         limit = max(1, min(int(limit or self.config.get("search.limit")), MAX_LIMIT))

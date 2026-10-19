@@ -22,6 +22,8 @@ CLI_LINK_SECONDS = 30
 OWN_WRITE_SLACK = 60
 USAGE_TOP = 5
 MIN_RETURNS_TO_REVIEW = 3
+# 新写记忆里防错类（排除项、风险、更正）的目标占比：低于它说明记忆在往“变更记录”漂
+PITFALL_SHARE_TARGET = 0.3
 
 
 def _median(values: list[float]) -> float | None:
@@ -130,6 +132,31 @@ def _usage(convs: dict[str, dict], events: list[dict], citations: dict, visible:
     }
 
 
+def _repeats(events: list[dict]) -> dict:
+    """同一对话里的检索：一共返回多少条，其中多少条是之前给过全文又整条给了一遍、多少条已折叠成标题。"""
+    shown: dict[str, set] = defaultdict(set)
+    total = repeated = collapsed = 0
+    for e in sorted((e for e in events if e["type"] == "search" and e.get("ok") and e.get("conv")),
+                    key=lambda e: e["ts"]):
+        folded = set(e.get("collapsed") or [])
+        for i in e.get("ids") or []:
+            total += 1
+            if i in folded:
+                collapsed += 1
+            elif i in shown[e["conv"]]:
+                repeated += 1
+            shown[e["conv"]].add(i)
+    return {"items": total, "repeated": repeated, "collapsed": collapsed}
+
+
+def _pitfall_share(entries: list, since: float) -> dict:
+    """防错类记忆在本期新写和之前已有记忆里的占比（按记忆文件，含已被替代的）。"""
+    new = [e for e in entries if ulid_ms(e.id) / 1000 >= since]
+    old = [e for e in entries if ulid_ms(e.id) / 1000 < since]
+    return {"new": len(new), "new_pitfalls": sum(e.kind in AVOID_KINDS for e in new),
+            "old": len(old), "old_pitfalls": sum(e.kind in AVOID_KINDS for e in old)}
+
+
 def _compare(convs: dict[str, dict]) -> dict:
     groups: dict[str, list[dict]] = {"hit": [], "miss": []}
     for c in convs.values():
@@ -235,6 +262,8 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
         "citations": citations,
         "usage": _usage(convs, events, citations, visible, since),
         "records": {"total": sum(record_kinds.values()), "by_kind": dict(record_kinds)},
+        "pitfall_share": _pitfall_share(entries, since),
+        "repeats": _repeats(events),
         "habits": {
             "gates": len(gates), "gate_converted": gate_converted,
             "nudges": len(nudges), "nudge_converted": nudge_converted,
@@ -293,6 +322,25 @@ def _render_usage(u: dict, memories: int, searches: int) -> list[str]:
     return lines
 
 
+def _render_quality(share: dict | None, repeats: dict | None) -> list[str]:
+    lines = []
+    if share and share["new"]:
+        ratio = share["new_pitfalls"] / share["new"]
+        before = f"，之前 {_pct(share['old_pitfalls'], share['old'])}" if share["old"] else ""
+        line = (f"  防错类记忆（排除项、风险、更正）占本期新增 {_pct(share['new_pitfalls'], share['new'])}{before}；"
+                f"目标不低于 {PITFALL_SHARE_TARGET:.0%}")
+        if ratio < PITFALL_SHARE_TARGET:
+            line += "，偏低：记忆可能在变成“改了什么”的记录，排查中排除的方向、踩的坑要记下来"
+        lines.append(line)
+    if repeats and repeats["items"]:
+        lines.append(
+            f"  对话内重复：带对话 id 的检索共返回 {repeats['items']} 条，其中 {repeats['repeated']} 条"
+            f"（{_pct(repeats['repeated'], repeats['items'])}）是同一对话里给过全文又整条给了一遍，"
+            f"{repeats['collapsed']} 条已折叠成标题"
+        )
+    return lines
+
+
 def render(report: dict) -> str:
     s, c, r, h, a = (report[k] for k in ("search", "citations", "records", "habits", "assets"))
     kinds = "、".join(f"{KIND_LABELS.get(k, k)} {n}" for k, n in sorted(r["by_kind"].items(), key=lambda kv: -kv[1]))
@@ -306,6 +354,9 @@ def render(report: dict) -> str:
         (f"  记忆被采用：对话中返回 {c['returned']} 条，Agent 回复里明确用到 {c['cited']} 条"
          f"（{_pct(c['cited'], c['returned'])}，按字面重合计，是保守下限）"),
         f"  新写记忆 {r['total']} 条" + (f"（{kinds}）" if kinds else ""),
+    ]
+    lines += _render_quality(report.get("pitfall_share"), report.get("repeats"))
+    lines += [
         "",
         "【习惯】",
         f"  改代码前被提醒先查 {h['gates']} 次，随后真的查了 {h['gate_converted']} 次（{_pct(h['gate_converted'], h['gates'])}）",

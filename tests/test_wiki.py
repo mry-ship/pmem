@@ -52,7 +52,7 @@ def test_wiki_writes_index_and_module_pages(root):
     assert (wiki / ".gitignore").read_text(encoding="utf-8") == "*\n"
     page = (wiki / "gameplay.Jigsaw.md").read_text(encoding="utf-8")
     assert "别名：Puzzle" in page and "## Reward" in page
-    assert "### 排除项 · 2026-10-01 · a · ⚠ 需核实" in page and "不要在客户端去重" in page
+    assert "### 排除项 · 2026-10-01 · a：不要在客户端去重，根因在服务端 · ⚠ 需核实" in page
     assert "> ⚠ 需核实：src/Jigsaw/Reward.cs 已不存在" in page
     assert "[src/Jigsaw/Reward.cs](../../src/Jigsaw/Reward.cs) `Claim`" in page
     assert "历史：1 条已被替代" in page and "被 `01JA7K3M2X9F4Q8W6ZB1C2D3A2` 替代" in page

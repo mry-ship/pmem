@@ -4,7 +4,6 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from pmem.core.fileio import write_atomic
-from pmem.index.graph import preview
 from pmem.service.base import ServiceBase, returns_errors
 
 # 动作 → (允许的原状态, 新状态)；记忆文件写入后只有这些状态变更由负责人通过命令行发起。
@@ -93,7 +92,7 @@ class StatusOps(ServiceBase):
         module = self._module_id(module) if module else None
         rows = [
             {"id": e.id, "module": e.module, "entity": e.entity, "kind": e.kind, "date": e.note_date,
-             "author": e.author, "preview": preview(e.content)}
+             "author": e.author, "preview": e.title}
             for e in sorted(self.index.visible(), key=lambda e: (e.module, e.entity.lower(), e.id))
             if e.status == "seed" and (module is None or e.module == module)
         ]

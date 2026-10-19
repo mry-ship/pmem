@@ -12,7 +12,7 @@ from pathlib import Path
 
 from pmem.core.entry import KIND_LABELS, Entry
 from pmem.index.anchors import STALE_LABEL
-from pmem.index.graph import MemoryGraph, preview
+from pmem.index.graph import MemoryGraph
 
 MARKER = "<!-- 由 pmem wiki 从 .memory/entries 生成，重新运行会覆盖；要修改请改记忆本身 -->"
 RECENT = 15
@@ -45,12 +45,15 @@ def _code_link(anchor: str, to_root: str) -> str:
 
 
 def _entry_block(entry: Entry, to_root: str, problems: list[str] | None) -> list[str]:
-    title = f"### {_kind(entry)} · {entry.note_date} · {entry.author}"
+    scope = " · 全项目" if entry.project_wide else ""
+    title = f"### {_kind(entry)}{scope} · {entry.note_date} · {entry.author}：{entry.title}"
     lines = [f"{title} · ⚠ {STALE_LABEL}" if problems else title, ""]
     if problems:
         lines += [f"> ⚠ {STALE_LABEL}：{'；'.join(problems)}。核对后仍成立就 confirm_memory，不成立就写 correction 替代。",
                   ""]
     lines += [entry.content.strip(), ""]
+    if entry.verify:
+        lines += [f"**怎么验证**：{entry.verify}", ""]
     meta = [f"id `{entry.id}`"]
     if entry.verified:
         meta.append(f"核对于 {entry.verified}")
@@ -104,7 +107,7 @@ def _module_page(module_id: str, entries: list[Entry], graph: MemoryGraph, regis
             lines += [f"<details><summary>历史：{len(history)} 条已被替代</summary>", ""]
             for entry in history:
                 newer = graph.superseded_by[entry.id]
-                lines.append(f"- {entry.note_date} {_kind(entry)}：{preview(entry.content)}"
+                lines.append(f"- {entry.note_date} {_kind(entry)}：{entry.title}"
                              f" → {newer.note_date} 被 `{newer.id}` 替代")
             lines += ["", "</details>", ""]
     return "\n".join(lines).rstrip() + "\n"
@@ -129,11 +132,18 @@ def _index_page(title: str, by_module: dict[str, list[Entry]], graph: MemoryGrap
             lines.append(f"| [{module_id}]({_page(module_id)}) | {len(live)} | {len(graph.topics(module_id))} "
                          f"| {flagged or ''} | {max(e.note_date for e in entries)} |")
         lines.append("")
+    project = sorted((e for e in current if e.project_wide), key=lambda e: (e.note_date, e.id), reverse=True)
+    if project:
+        lines += ["## 全项目通用", "", "不限某个模块、改哪里都可能踩到的坑和约定（读任何模块的代码时都会附上）。", ""]
+        for entry in project:
+            mark = f" ⚠ {STALE_LABEL}" if entry.id in stale else ""
+            lines.append(f"- [{entry.module}]({_page(entry.module)}) · {entry.entity} · {_kind(entry)}{mark}：{entry.title}")
+        lines.append("")
     lines += ["## 最近更新", ""]
     for entry in sorted(current, key=lambda e: (e.note_date, e.id), reverse=True)[:RECENT]:
         mark = f" ⚠ {STALE_LABEL}" if entry.id in stale else ""
         lines.append(f"- {entry.note_date} [{entry.module}]({_page(entry.module)}) · {entry.entity} · "
-                     f"{_kind(entry)}{mark}：{preview(entry.content)}")
+                     f"{_kind(entry)}{mark}：{entry.title}")
     return "\n".join(lines).rstrip() + "\n"
 
 

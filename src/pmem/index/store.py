@@ -27,9 +27,9 @@ SYNONYM_WEIGHT = 0.8
 
 
 def entry_text(entry: Entry) -> str:
-    """参与检索的文本：议题名 + 正文 + 常用叫法。"""
-    text = f"{entry.entity} {entry.content}"
-    return f"{text} {' '.join(entry.aliases)}" if entry.aliases else text
+    """参与检索的文本：议题名 + 标题 + 正文 + 验证方法 + 常用叫法。"""
+    parts = [entry.entity, entry.summary or "", entry.content, entry.verify or "", " ".join(entry.aliases)]
+    return " ".join(p for p in parts if p)
 
 
 @dataclass
@@ -369,8 +369,14 @@ def _row(entry: Entry, problems: list[str] | None, with_module: bool) -> dict:
         "date": entry.note_date,
         "author": entry.author,
         "stale": problems is not None,
-        "content": entry.content,
     }
+    if entry.summary:
+        row["summary"] = entry.summary
+    row["content"] = entry.content
+    if entry.verify:
+        row["verify"] = entry.verify
+    if entry.project_wide:
+        row["scope"] = entry.scope
     if with_module:
         row = {"module": entry.module, **row}
     if problems is not None:

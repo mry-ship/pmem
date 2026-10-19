@@ -22,6 +22,7 @@ TOP = 10
 NEGATIVE_KINDS = ("exclusion", "correction")
 # 词集合的 Jaccard 相似度；长正文天然偏低，实测同议题无关的一正一反记忆在 0.11 以下
 CONTRADICTION_OVERLAP = 0.15
+REPEAT_CORRECTIONS = 2
 SEARCH_EVENTS = ("search", "mcp_search", "search_call")
 REJECT_CODES = {
     "content_length": "字数不在允许范围",
@@ -35,6 +36,8 @@ REJECT_CODES = {
     "entity_missing": "缺少议题",
     "kind_invalid": "类型不对",
     "status_invalid": "状态不对",
+    "scope_invalid": "适用范围不对",
+    "supersede_cycle": "替代关系成环",
 }
 # 没有错误码的旧事件按提示文字归类，按顺序匹配；“上限”的提示里也提到 draft_id，所以排在前面
 REJECT_REASONS = (
@@ -141,6 +144,14 @@ def _contradictions(visible: list) -> list[dict]:
     return pairs[:TOP]
 
 
+def _repeat_corrections(entries: list, since: float) -> list[tuple[str, str, int]]:
+    """统计期内同一议题写了 2 条以上更正（含已被替代的）：同一类错误反复出现，原先的结论或防线没起作用。"""
+    counts = Counter((e.module, e.entity) for e in entries
+                     if e.kind == "correction" and ulid_ms(e.id) / 1000 >= since)
+    rows = [(m, ent, n) for (m, ent), n in counts.items() if n >= REPEAT_CORRECTIONS]
+    return sorted(rows, key=lambda r: (-r[2], r[0], r[1]))[:TOP]
+
+
 def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
     now = now or time.time()
     since = now - days * 86400
@@ -148,6 +159,7 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
     try:
         registry = service.registry
         visible = service.index.visible()
+        all_entries = service.index.entries()
         events = list(read_events(service.config.cache_dir, since))
         stale = service.index.check_anchors(visible)
         compact = service.compact_groups(min_size=COMPACT_MIN_GROUP)
@@ -198,6 +210,7 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
         "stale": {"total": len(stale), "by_module": stale_by_module.most_common(TOP),
                   "ids": sorted(stale)[:TOP]},
         "contradictions": _contradictions(visible),
+        "repeat_corrections": _repeat_corrections(all_entries, since),
         "idle_modules": idle,
         "rejected": {"total": len(rejected),
                      "by_reason": Counter(reject_reason(e.get("error") or "", e.get("code")) for e in rejected).most_common(),
@@ -246,6 +259,10 @@ def render(h: dict) -> str:
         for c in h["contradictions"]
     ], "打开两条对照：确实冲突就写 correction 替代过时的那条（supersedes 填它的 id）；"
        "只是互补就 pmem confirm <较早那条的 id>，之后不再提示")
+    section("同一议题反复更正（同类错误重复出现）",
+            [f"{m} / {e}：{n} 条更正" for m, e, n in h.get("repeat_corrections") or []],
+            "用 pmem graph --module <模块> --entity <议题> 看演变：缺排除项或风险就补一条（全项目都会踩的加 scope: project），"
+            "零碎的按 pmem-compact 合并成一条现状")
     if h["idle_modules"]:
         section(f"统计期内本机没检索过的模块（{len(h['idle_modules'])} 个）", ["、".join(h["idle_modules"][:20])],
                 "可能是没人改这些模块，也可能是路径没登记全导致闸门没提醒；对照 pmem doctor 的覆盖率看")

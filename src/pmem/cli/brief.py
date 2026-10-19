@@ -1,7 +1,7 @@
 """--brief：把服务返回的 JSON 压成每条一行的文本，终端里直接能读，不必再用管道筛选。"""
 from __future__ import annotations
 
-from pmem.core.entry import KIND_LABELS
+from pmem.core.entry import KIND_LABELS, strip_kind_prefix
 from pmem.index.anchors import STALE_LABEL
 from pmem.index.graph import preview
 
@@ -36,9 +36,19 @@ def _search(result: dict) -> list[str]:
     for item in items:
         where = f"{item['module']} · " if item.get("module") else ""
         seed = "（种子，待确认）" if item.get("status") == "seed" else ""
-        lines.append(f"- {where}{_kind(item['kind'])}{seed}｜{item['entity']}｜{item['date']}｜{item['id']}："
-                     f"{preview(item['content'], PREVIEW)}")
+        if item.get("seen"):
+            text = f"（本对话已给过全文）{item.get('summary') or ''}"
+        else:
+            body = preview(strip_kind_prefix(item.get("content") or ""), PREVIEW)
+            text = f"{item['summary']}｜{body}" if item.get("summary") else body
+        scope = "（全项目）" if item.get("scope") == "project" else ""
+        lines.append(f"- {where}{_kind(item['kind'])}{seed}{scope}｜{item['entity']}｜{item['date']}｜{item['id']}："
+                     f"{text}")
+        if item.get("verify"):
+            lines.append(f"    验证：{preview(item['verify'], PREVIEW)}")
         lines += _stale(item)
+    if result.get("seen_hint"):
+        lines.append(f"提示：{result['seen_hint']}")
     return lines + _tail(result)
 
 

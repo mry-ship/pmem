@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
-from pmem.core.entry import KIND_LABELS, Entry
+from pmem.core.entry import KIND_LABELS, PITFALL_KINDS, Entry
 from pmem.core.entry import REPLACING_STATUSES as REPLACING
 from pmem.core.entry import VISIBLE_STATUSES as VISIBLE
 from pmem.core.registry import ModuleRegistry, RegistryError
@@ -49,6 +49,14 @@ def digest(entries: list[Entry], limit: int = 6, per_topic: int = 2, path: str |
         if len(picked) == limit:
             break
     return picked
+
+
+def project_pitfalls(entries: list[Entry], exclude_module: str | None = None, limit: int = 3) -> list[Entry]:
+    """全项目级（scope: project）的排除项、风险、更正：按这个顺序、同类从新到旧；所在模块自己的摘要里已经有了，排除掉。"""
+    picked = [e for e in current_entries(entries)
+              if e.project_wide and e.kind in PITFALL_KINDS
+              and not (exclude_module and e.module.lower() == exclude_module.lower())]
+    return sorted(picked, key=lambda e: PITFALL_KINDS.index(e.kind))[:limit]
 
 
 @dataclass
@@ -146,7 +154,7 @@ class MemoryGraph:
             if entry.module != module or entry.entity.lower() != entity.lower():
                 continue
             row = {"id": entry.id, "date": entry.note_date, "kind": entry.kind, "author": entry.author,
-                   "preview": preview(entry.content)}
+                   "preview": entry.title}
             newer = self.superseded_by.get(entry.id)
             if newer is not None:
                 row["superseded_by"] = newer.id
@@ -173,7 +181,7 @@ class MemoryGraph:
                 "first": items[0].note_date,
                 "last": items[-1].note_date,
                 "kinds": dict(Counter(e.kind for e in current)),
-                "latest": [{"id": e.id, "kind": e.kind, "date": e.note_date, "preview": preview(e.content)}
+                "latest": [{"id": e.id, "kind": e.kind, "date": e.note_date, "preview": e.title}
                            for e in reversed(current[-LATEST_PER_TOPIC:])],
             })
         rows.sort(key=lambda r: (r["last"], r["current"]), reverse=True)

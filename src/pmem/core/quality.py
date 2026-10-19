@@ -14,19 +14,37 @@ SIMILAR_ENTITY_RATIO = 0.8
 SAME_ENTITY_RATIO = 0.85
 MIN_CONTAINED_LEN = 4
 _CHANGELOG_START = re.compile(r"^(已经?|新增|修复|改为|调整|重做|实现|完成|落地|删除|补充|更新|优化)")
+# “决定”类要写取舍：为什么选它、排除了什么、代价；只写做法的，看代码就知道
+_WHY = re.compile(
+    r"原因|因为|由于|为了|目的|避免|防止|以免|否则|排除|而不是|而非|不用|不再|代价|风险|取舍|权衡|考虑到|踩坑|坑"
+    r"|because|instead|trade-?off|otherwise"
+)
+VERIFY_KINDS = ("conclusion", "correction")
+_LABEL_PREFIX = re.compile(r"^\s*(?:决定|结论)(?:\s*[（(][^）)]{0,40}[）)])?\s*[：:]\s*")
 
 
-def content_hints(content: str, recommend_max: int) -> list[str]:
+def content_hints(content: str, recommend_max: int, kind: str | None = None) -> list[str]:
     hints = []
     text = content.strip()
-    has_reason = bool(_REASON.search(text.lower()))
-    if _CHANGELOG_START.match(text) and not has_reason:
+    # 正文开头的“决定：”“结论：”只是类型标签，却会命中原因词，先去掉再判断；“根因：”“风险：”本身就是原因，保留
+    body = _LABEL_PREFIX.sub("", text, count=1).lower()
+    has_reason = bool(_REASON.search(body))
+    if _CHANGELOG_START.match(body) and not has_reason:
         hints.append("读起来像变更记录：改了什么版本库里都有，记忆应写为什么这么改、排除了哪些方向、留下什么风险。")
     elif not has_reason:
         hints.append("没看到原因、结论或风险：下一个人最需要的是“为什么”和“别怎么做”。")
+    elif kind == "decision" and not _WHY.search(body):
+        hints.append("这条决定只写了怎么做：做法看代码就知道，记忆要写为什么这样选、排除了哪些做法、代价或风险是什么。")
     if len(text) > recommend_max:
         hints.append(f"正文 {len(text)} 字，超过建议的 {recommend_max} 字：只留下一个人最需要的结论，细节放进文档或提交说明。")
     return hints
+
+
+def verify_hint(kind: str, verify: str | None) -> str | None:
+    if kind in VERIFY_KINDS and not verify:
+        return ("没填 verify：写一句怎么确认问题已解决或结论仍成立（命令、测试名、可观察的现象），"
+                "下次遇到同样的问题可以直接验证，不用从头排查。")
+    return None
 
 
 def entity_hint(entity: str, known: list[str]) -> str | None:

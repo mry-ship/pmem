@@ -5,13 +5,12 @@ import os
 from datetime import date
 from pathlib import Path
 
-from pmem.core.entry import KINDS, Entry
+from pmem.core.entry import KINDS, SCOPES, SUMMARY_MAX, Entry, auto_summary
 from pmem.core.ids import new_ulid
-from pmem.core.quality import content_hints, entity_hint
+from pmem.core.quality import content_hints, entity_hint, verify_hint
 from pmem.core.registry import ResolvedModule
 from pmem.core.secrets import find_secrets
 from pmem.core.textfmt import format_content
-from pmem.index.graph import preview
 from pmem.service.base import MAX_LIMIT, ServiceBase, fail, returns_errors
 
 MAX_INHERITED_ANCHORS = 10
@@ -29,6 +28,14 @@ ANCHOR_HINT = (
     "（如 src/Reward.cs#Claim），只有这个函数改了才需要核实。"
 )
 HINTS_FOOTER = "以上只是提示，已写入；如需修改，带上 draft_id 再写一次即可覆盖。"
+SUMMARY_HINT = ("没填 summary：已按正文第一句生成标题“{title}”。读代码摘要、Wiki 和去重后的检索只显示标题，"
+                "不准确就带 draft_id 补一句 {limit} 字以内、说清结论的 summary。")
+SUMMARY_LONG_HINT = "summary 有 {n} 字，超过建议的 {limit} 字：标题只写一句结论，细节放正文。"
+MAX_VERIFY_CHARS = 300
+
+
+def _one_line(text: str | None) -> str:
+    return " ".join(str(text or "").split())
 
 
 def _on_disk_case(root: Path, rel: str) -> str | None:
@@ -69,9 +76,12 @@ class RecordOps(ServiceBase):
         source_conversation: str | None = None,
         aliases: list[str] | None = None,
         status: str | None = None,
+        summary: str | None = None,
+        scope: str | None = None,
+        verify: str | None = None,
     ) -> dict:
         response = self._record(module, entity, kind, content, supersedes, anchors, draft_id,
-                                source_conversation, aliases, status)
+                                source_conversation, aliases, status, summary, scope, verify)
         if not response.get("ok"):
             self._log("record_rejected", conv=source_conversation, module=module, entity=entity or None,
                       code=response.get("code"), error=str(response.get("error") or "")[:200])
@@ -79,7 +89,7 @@ class RecordOps(ServiceBase):
 
     @returns_errors
     def _record(self, module, entity, kind, content, supersedes, anchors, draft_id, source_conversation, aliases,
-                status) -> dict:
+                status, summary=None, scope=None, verify=None) -> dict:
         given_anchors = set(anchors or [])
         resolved = self.registry.resolve_module(module)
         target = self.registry.modules.get(resolved.id)
@@ -88,6 +98,14 @@ class RecordOps(ServiceBase):
                         f"pmem migrate deprecate {resolved.id} --undo --apply", "module_deprecated")
         if status and status not in WRITABLE_STATUSES:
             return fail(f"status 只能是 {' / '.join(WRITABLE_STATUSES)}，当前为 {status!r}", "status_invalid")
+        scope = str(scope or "").strip().lower() or None
+        if scope and scope not in SCOPES:
+            return fail(f"scope 只能是 {' / '.join(SCOPES)}，当前为 {scope!r}", "scope_invalid")
+        summary = _one_line(summary) or None
+        verify = str(verify or "").strip() or None
+        if verify and len(verify) > MAX_VERIFY_CHARS:
+            return fail(f"verify 最多 {MAX_VERIFY_CHARS} 字（写怎么确认：命令、测试、现象），当前 {len(verify)} 字",
+                        "content_length")
         content = (content or "").strip()
         problem = self._invalid_content(kind, content)
         if problem:
@@ -108,6 +126,9 @@ class RecordOps(ServiceBase):
             supersedes = old.supersedes if supersedes is None else supersedes
             anchors = old.anchors if anchors is None else anchors
             aliases = old.aliases if aliases is None else aliases
+            summary = summary or old.summary
+            scope = scope or old.scope
+            verify = verify or old.verify
             if status is None and old.status in WRITABLE_STATUSES:
                 status = old.status
 
@@ -118,10 +139,12 @@ class RecordOps(ServiceBase):
             return fail(f"supersedes 会和 {old.id} 已有的替代关系连成环，两条记忆都会从检索里消失；"
                         "请新建一条（不带 draft_id）替代它们", "supersede_cycle")
         aliases = _clean_aliases(aliases)
-        hits = find_secrets(" ".join([entity_id, *aliases]), self.config.get("write.secret_patterns") or [])
+        hits = find_secrets(" ".join([entity_id, *aliases, summary or "", verify or ""]),
+                            self.config.get("write.secret_patterns") or [])
         if hits:
-            return fail("entity 或 aliases 疑似包含敏感信息，已拒绝写入：" + "；".join(hits), "secret")
-        hints = self._write_hints(resolved.id, entity_id, content, aliases, merging=len(replaced) >= 2)
+            return fail("entity、aliases、summary 或 verify 疑似包含敏感信息，已拒绝写入：" + "；".join(hits), "secret")
+        hints = self._write_hints(resolved.id, entity_id, kind, content, aliases, merging=len(replaced) >= 2)
+        hints += self._field_hints(kind, content, summary, verify)
         if anchors and not any("#" in a for a in anchors):
             hints.append(ANCHOR_HINT)
         # 替代仍然现行的旧记忆（含合并零碎记忆）不增加条数，不受每日上限约束；反复替代同一条已被替代的不算
@@ -152,6 +175,9 @@ class RecordOps(ServiceBase):
             anchors=anchors,
             source_conversation=source_conversation or None,
             aliases=aliases,
+            summary=summary,
+            scope=scope if scope != "module" else None,
+            verify=verify,
         )
         written = self.storage.write(entry, draft_id=draft_id or None)
         self.index.refresh(force=True)
@@ -228,10 +254,23 @@ class RecordOps(ServiceBase):
             return "secret", "正文疑似包含敏感信息，已拒绝写入：" + "；".join(hits)
         return None
 
-    def _write_hints(self, module_id: str, entity_id: str, content: str, aliases: list[str], merging: bool) -> list[str]:
+    @staticmethod
+    def _field_hints(kind: str, content: str, summary: str | None, verify: str | None) -> list[str]:
+        hints = []
+        if not summary:
+            hints.append(SUMMARY_HINT.format(title=auto_summary(content), limit=SUMMARY_MAX))
+        elif len(summary) > SUMMARY_MAX:
+            hints.append(SUMMARY_LONG_HINT.format(n=len(summary), limit=SUMMARY_MAX))
+        missing_verify = verify_hint(kind, verify)
+        if missing_verify:
+            hints.append(missing_verify)
+        return hints
+
+    def _write_hints(self, module_id: str, entity_id: str, kind: str, content: str, aliases: list[str],
+                     merging: bool) -> list[str]:
         """只提示、不拦截的写作建议。合并多条零碎记忆时篇长只受硬上限约束。"""
         limit_key = "write.content_max" if merging else "write.recommend_max"
-        hints = content_hints(content, int(self.config.get(limit_key)))
+        hints = content_hints(content, int(self.config.get(limit_key)), kind)
         if not self.registry.is_global_entity(entity_id):
             new_entity = entity_hint(entity_id, self._known_entities(module_id))
             if new_entity:
@@ -288,7 +327,8 @@ class RecordOps(ServiceBase):
             limit=MAX_SIMILAR + len(skip), max_per_batch=MAX_LIMIT, verify=False, semantic=False,
         )
         rows = [
-            {"id": i["id"], "entity": i["entity"], "kind": i["kind"], "date": i["date"], "preview": preview(i["content"])}
+            {"id": i["id"], "entity": i["entity"], "kind": i["kind"], "date": i["date"],
+             "preview": i.get("summary") or auto_summary(i["content"])}
             for i in result.items if i["id"] not in skip
         ]
         return rows[:MAX_SIMILAR]

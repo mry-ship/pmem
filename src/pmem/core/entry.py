@@ -10,10 +10,37 @@ STATUSES = ("draft", "seed", "active", "archived")
 VISIBLE_STATUSES = ("active", "seed", "draft")
 # 归档记忆不再被检索到，但它的 supersedes 仍然算数：归档表示这条演进线整体过时
 REPLACING_STATUSES = (*VISIBLE_STATUSES, "archived")
+# 适用范围：module（默认，只属于本模块）/ project（全项目都会踩的坑，任何模块的摘要都带上）
+SCOPES = ("module", "project")
+PITFALL_KINDS = ("exclusion", "risk", "correction")
+SUMMARY_MAX = 60
 
 _FRONT_MATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
 KNOWN_KEYS = frozenset({"id", "module", "entity", "kind", "status", "supersedes", "anchors", "revision", "author",
-                        "note_date", "aliases", "verified", "verified_at", "archived", "source"})
+                        "note_date", "aliases", "verified", "verified_at", "archived", "source",
+                        "summary", "scope", "verify"})
+# 正文开头常自带“决定：”“更正（2026-10-19）：”，和类型标签放在一起就成了“决定：决定：”
+_KIND_PREFIX = re.compile(
+    r"^\s*(?:决定|结论|更正|排除项?|风险|根因|原因|注意|背景|现象|问题|坑)(?:\s*[（(][^）)]{0,40}[）)])?\s*[：:]\s*"
+)
+_SENTENCE_END = re.compile(r"[。；;！!？?\n]")
+
+
+def strip_kind_prefix(text: str) -> str:
+    return _KIND_PREFIX.sub("", text, count=1)
+
+
+def auto_summary(content: str, limit: int = SUMMARY_MAX) -> str:
+    """没写 summary 时的标题：去掉类型前缀后的第一句，超长截断。"""
+    body = strip_kind_prefix(content.strip())
+    first = _SENTENCE_END.split(body, maxsplit=1)[0].strip() or body
+    flat = " ".join(first.split())
+    return flat if len(flat) <= limit else flat[:limit] + "…"
+
+
+def _text(value) -> str | None:
+    text = " ".join(str(value).split()) if value is not None else ""
+    return text or None
 
 
 @dataclass
@@ -37,8 +64,21 @@ class Entry:
     archived_on: str | None = None
     archived_from: str | None = None
     archived_by: str | None = None
+    summary: str | None = None
+    scope: str | None = None
+    # 怎么确认问题已解决或结论仍成立：命令、测试、现象
+    verify: str | None = None
     # 本版本不认识的 YAML 头字段（较新版本写的）：重写文件时原样带上，团队混用版本时不丢
     extra: dict = field(default_factory=dict)
+
+    @property
+    def title(self) -> str:
+        """一行标题：写入时给的 summary，没有就从正文第一句生成。"""
+        return self.summary or auto_summary(self.content)
+
+    @property
+    def project_wide(self) -> bool:
+        return self.scope == "project"
 
     @property
     def checked_date(self) -> str:
@@ -70,6 +110,12 @@ class Entry:
             "author": self.author,
             "note_date": self.note_date,
         }
+        if self.summary:
+            meta["summary"] = self.summary
+        if self.scope and self.scope != "module":
+            meta["scope"] = self.scope
+        if self.verify:
+            meta["verify"] = self.verify
         if self.aliases:
             meta["aliases"] = list(self.aliases)
         if self.verified:
@@ -118,5 +164,8 @@ class Entry:
             archived_on=str(archived["on"]) if archived.get("on") else None,
             archived_from=restored if restored in STATUSES and restored != "archived" else None,
             archived_by=str(archived["by"]) if archived.get("by") else None,
+            summary=_text(meta.get("summary")),
+            scope=_text(meta.get("scope")),
+            verify=str(meta["verify"]).strip() or None if meta.get("verify") else None,
             extra={k: v for k, v in meta.items() if k not in KNOWN_KEYS},
         )

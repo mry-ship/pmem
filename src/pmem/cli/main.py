@@ -53,6 +53,7 @@ def build_parser():
     p.add_argument("--entity", default="")
     p.add_argument("--limit", type=int, default=5)
     p.add_argument("--as-of", default="", help="只看这一天（YYYY-MM-DD）有效的记忆")
+    p.add_argument("--full", action="store_true", help="本对话已返回过的记忆也给全文（默认只列标题）")
     p.add_argument("--brief", action="store_true", help=BRIEF_HELP)
     p.add_argument("--root", default=".")
 
@@ -98,6 +99,10 @@ def build_parser():
     p.add_argument("--anchor", action="extend", nargs="*", default=None, help="关联代码，写成 路径#函数名" + keep)
     p.add_argument("--alias", action="extend", nargs="*", default=None,
                    help="常用的其他叫法，如 --alias 闪退 崩溃；含空格的叫法要加引号" + keep)
+    p.add_argument("--summary", default="", help="一句话标题（60 字以内）；不写时取正文第一句")
+    p.add_argument("--verify", default="", help="怎么确认问题已解决或结论仍成立：命令、测试名、现象")
+    p.add_argument("--scope", default="", choices=("", "module", "project"),
+                   help="project：全项目都会踩的坑，任何模块的摘要都带上；默认只属于本模块")
     p.add_argument("--draft-id", default="", help="上次写入返回的 draft_id：同一任务再次写入时覆盖那一条")
     p.add_argument("--seed", action="store_true", help="写成种子记忆（pmem-seed 技能用），负责人确认后才转正")
     p.add_argument("--brief", action="store_true", help=BRIEF_HELP)
@@ -421,13 +426,14 @@ def _record_content(args) -> str:
 SERVICE_COMMANDS = {
     "list": lambda s, a: s.list_modules(),
     "record": lambda s, a: s.record(a.module, a.entity, a.kind, _record_content(a), a.supersedes, a.anchor,
-                                    a.draft_id or None, aliases=a.alias, status="seed" if a.seed else None),
+                                    a.draft_id or None, aliases=a.alias, status="seed" if a.seed else None,
+                                    summary=a.summary or None, scope=a.scope or None, verify=a.verify or None),
     "archive": lambda s, a: s.change_status(a.ids, "restore" if a.restore else "archive"),
     "confirm": lambda s, a: s.confirm(a.ids),
     "graph": lambda s, a: s.graph(a.module, a.entity or None),
     "terms": lambda s, a: s.terms(a.module or None, a.top, a.min),
     "search": lambda s, a: s.search(a.module or None, a.path or None, a.entity or None, a.query or None, a.limit,
-                                    as_of=a.as_of or None),
+                                    as_of=a.as_of or None, full=a.full),
 }
 
 

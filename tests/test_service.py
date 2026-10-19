@@ -144,8 +144,9 @@ def test_content_length_is_checked(svc):
 
 
 def test_good_memory_has_no_hints(svc):
-    assert "hints" not in record(svc, aliases=["领奖"])
-    assert "hints" not in record(svc, entity="Popup", aliases=["弹框"],
+    assert "hints" not in record(svc, aliases=["领奖"], summary="领奖重复的根因", verify="断线重连后只发一次奖")
+    assert "hints" not in record(svc, entity="Popup", aliases=["弹框"], summary="弹窗连弹两次：Open 被重复调用",
+                                 verify="快速点击商店入口只弹一次",
                                  content="商店弹窗的根因：动画回调里重复调用了 Open，导致连弹两次。")
 
 

@@ -11,7 +11,8 @@ from pmem.core.config import find_root
 
 INSTRUCTIONS = (
     "项目研发记忆：按模块（category.Module）沉淀根因、排除项、决定与风险。"
-    "改代码前用 search_memory 按文件路径或模块查一次；得出值得留存的结论后用 record_memory 记一条。"
+    "改代码前用 search_memory 按文件路径或模块查一次；排除了某个方向、确认了根因、发现看代码看不出的约束或风险时，"
+    "用 record_memory 记一条。"
 )
 
 
@@ -76,15 +77,17 @@ def build_server(root: Path | None) -> MCPServer:
         query: str = "",
         limit: int = 5,
         as_of: str = "",
+        full: bool = False,
         source_conversation: str = "",
     ) -> str:
         """检索项目研发记忆。改代码前先查：传 path（要改的文件路径）或 module（category.Module）；
         entity 为模块内议题（如 Reward、Config），可省略；query 为关键词或问题描述，会按项目同义词表自动展开。
         都不确定时只传 query 做全局检索。as_of（YYYY-MM-DD）只看那天有效的记忆，用于回答“当时的结论”。
         返回按相关度排序的记忆；stale=true 表示写下（或上次核对）后关联代码改过或已删除，用前先核对。
+        seen=true 的条目本对话已返回过全文，只给标题；上下文里找不到原文时带 full=true 重查。
         source_conversation 由系统自动填写，无需传。"""
         return call(lambda s: s.search(module or None, path or None, entity or None, query or None, limit,
-                                       source_conversation or None, as_of or None))
+                                       source_conversation or None, as_of or None, full=bool(full)))
 
     @server.tool()
     def record_memory(
@@ -95,19 +98,28 @@ def build_server(root: Path | None) -> MCPServer:
         supersedes: list[str] | None = None,
         anchors: list[str] | None = None,
         aliases: list[str] | None = None,
+        summary: str = "",
+        verify: str = "",
+        scope: str = "",
         draft_id: str = "",
         source_conversation: str = "",
     ) -> str:
-        """记录一条研发记忆。只在三个时机写：根因确认、方向被排除或方案确定、改完并验证通过。
+        """记录一条研发记忆。只记看代码看不出、又会让下一个人走弯路的东西：排除的方向、根因、约束与风险、方案取舍；
+        照常实现、没有教训的改动不写。
         module：category.Module；entity：模块内议题；kind：conclusion / exclusion / correction / risk / decision；
         content：自包含的结论（为什么、证据、影响范围），不要写“改了哪个方法”这类版本库已有的信息。
+        summary：一句话标题（60 字以内，说清结论），摘要和去重后的检索只显示它；不填时取正文第一句。
+        verify：怎么确认问题已解决或结论仍成立（命令、测试名、现象），结论和更正建议填写。
+        scope：project 表示全项目都会踩的坑（编码、环境、跨模块约定），任何模块的摘要都会带上；默认只属于本模块。
         aliases：现象和关键术语的其他常用叫法（如 ["闪退", "崩溃", "crash"]），以后换个说法也能搜到。
         推翻旧结论时在 supersedes 写旧记忆 id；anchors 写相关代码位置（相对路径#符号），不填时系统按本次对话改过的该模块文件补上。
-        同一任务对同一模块再次写入时，带上次返回的 draft_id 覆盖，避免重复；覆盖时没填的 supersedes / anchors / aliases 沿用原值。
+        同一任务对同一模块再次写入时，带上次返回的 draft_id 覆盖，避免重复；覆盖时没填的 supersedes / anchors / aliases /
+        summary / verify / scope 沿用原值。
         返回的 similar 是同模块最相近的已有记忆：重复或被推翻时带 draft_id 重写并填 supersedes；hints 是写作提示。"""
         # 模型常给可选数组顺手填 []，且 draft_id 可能是闸门补的：空列表按“没传”处理，覆盖时沿用原值
         return call(lambda s: s.record(module, entity, kind, content, supersedes or None, anchors or None,
-                                       draft_id or None, source_conversation or None, aliases or None))
+                                       draft_id or None, source_conversation or None, aliases or None,
+                                       summary=summary or None, scope=scope or None, verify=verify or None))
 
     @server.tool()
     def confirm_memory(ids: list[str], source_conversation: str = "") -> str:

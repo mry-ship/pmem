@@ -10,8 +10,9 @@ from pathlib import Path
 
 from wcmatch import glob as wglob
 
+from pmem.core import seen
 from pmem.core.config import Config
-from pmem.core.entry import KIND_LABELS, Entry
+from pmem.core.entry import KIND_LABELS, PITFALL_KINDS, Entry
 from pmem.core.ids import ULID_PATTERN
 from pmem.core.registry import ModuleRegistry, RegistryError
 from pmem.hooks.payload import (
@@ -33,7 +34,7 @@ from pmem.hooks.shell import (  # noqa: F401
 )
 from pmem.hooks.state import SessionState
 from pmem.index.anchors import ANCHOR_CACHE, STALE_LABEL, AnchorChecker
-from pmem.index.graph import current_entries, digest, preview
+from pmem.index.graph import current_entries, digest, project_pitfalls
 from pmem.metrics.events import log_event
 
 WRITE_TOOLS = {"write", "strreplace", "edit", "multiedit", "editnotebook", "delete", "search_replace"}
@@ -47,8 +48,8 @@ ALLOW = {"permission": "allow"}
 PMEM_TOOLS = ("record_memory", "search_memory", "memory_graph")
 MAX_AUTO_ANCHORS = 5
 MAX_REVIEW_MODULES = 3
-DIGEST_PREVIEW = 100
-PITFALL_KINDS = ("exclusion", "risk", "correction")
+MAX_PROJECT_PITFALLS = 3
+_PROJECT_SCOPE = re.compile(r"^scope:\s*['\"]?project", re.MULTILINE)
 MAX_GUARD_PITFALLS = 5
 MAX_PENDING_SNAPSHOTS = 8
 MAX_GLOB_TARGETS = 200
@@ -239,6 +240,48 @@ class Gate:
         self._entries[module] = entries
         return entries
 
+    def project_entries(self) -> list[Entry]:
+        """所有模块里 scope: project 的记忆。先按文本筛掉绝大多数文件，只解析带这个字段的。"""
+        if "\x00project" in self._entries:
+            return self._entries["\x00project"]
+        entries = []
+        for path in sorted(self.config.entries_dir.glob("*/*.md")) if self.config.entries_dir.is_dir() else []:
+            try:
+                text = path.read_text(encoding="utf-8-sig")
+                if not _PROJECT_SCOPE.search(text):
+                    continue
+                entry = Entry.from_markdown(text)
+            except Exception:  # noqa: BLE001, S112
+                continue
+            entries.append(entry)
+            self._files[entry.id] = path
+        self._entries["\x00project"] = entries
+        return entries
+
+    def take_project_pitfalls(self, module: str | None, skip: set[str] = frozenset()) -> list[Entry]:
+        """本对话还没给过的全项目级坑（最多 3 条），取出即记为已给过。
+        要扫描全部记忆文件，所以都给过（或根本没有）之后记下 project_done，本对话不再扫描。"""
+        if self.state is None or self.state.data["project_done"]:
+            return []
+        pool = [e for e in project_pitfalls(self.project_entries(), limit=100)
+                if not self.state.has("project_shown", e.id)]
+        own = (module or "").lower()
+        fresh = [e for e in pool if e.id not in skip and e.module.lower() != own][:MAX_PROJECT_PITFALLS]
+        for e in fresh:
+            self.state.add("project_shown", e.id)
+        if len(fresh) == len(pool):
+            self.state.data["project_done"] = True
+        if fresh or not pool:
+            self.save()
+        return fresh
+
+    def lines_with_project(self, entries: list[Entry], project: list[Entry]) -> list[str]:
+        """模块记忆和全项目级坑一起出行，只附一次“需核实”说明。"""
+        lines = self.memory_lines([*entries, *project])
+        if project:
+            lines.insert(len(entries), "全项目通用的坑（不限本模块）：")
+        return lines
+
     def vcs(self):
         # 只有核对过期、终端命令前后比对才用到版本库，按需导入以缩短钩子启动
         from pmem.vcs.detect import detect_vcs
@@ -267,8 +310,9 @@ class Gate:
         lines = []
         for e in entries:
             seed = "（种子，待确认）" if e.status == "seed" else ""
-            lines.append(f"- {KIND_LABELS.get(e.kind, e.kind)}{seed}｜{e.entity}｜{e.note_date}{marks.get(e.id, '')}："
-                         f"{preview(e.content, DIGEST_PREVIEW)}")
+            where = f"{e.module}/" if e.project_wide else ""
+            lines.append(f"- {KIND_LABELS.get(e.kind, e.kind)}{seed}｜{where}{e.entity}｜{e.note_date}"
+                         f"{marks.get(e.id, '')}：{e.title}")
         if footer:
             lines.append(footer)
         return lines
@@ -349,16 +393,21 @@ class Gate:
             return None
         entries = self.module_entries(module)
         picked = digest(entries, path=rel)
-        if not picked:
+        project = self.take_project_pitfalls(module)
+        if not picked and not project:
             return None
-        self.state.add("reviewed", module)
+        if picked:
+            self.state.add("reviewed", module)
         self.save()
-        self.log("digest", module=module, ids=[e.id for e in picked])
-        intro_line = (
-            f"[pmem] {intro}，该模块有 {len(current_entries(entries))} 条现行研发记忆。回答或修改前先看这些结论"
-            f"（摘要；要全文或更多请调用 search_memory(module=\"{module}\", query=\"<问题要点>\")）："
-        )
-        return "\n".join([intro_line, *self.memory_lines(picked)])
+        self.log("digest", module=module, ids=[e.id for e in picked], project=[e.id for e in project] or None)
+        if picked:
+            intro_line = (
+                f"[pmem] {intro}，该模块有 {len(current_entries(entries))} 条现行研发记忆。回答或修改前先看这些结论"
+                f"（只列标题；要全文或更多请调用 search_memory(module=\"{module}\", query=\"<问题要点>\")）："
+            )
+        else:
+            intro_line = f"[pmem] {intro}，该模块还没有研发记忆。改动前先看全项目通用的坑："
+        return "\n".join([intro_line, *self.lines_with_project(picked, project)])
 
     def _skip_notice(self, module: str | None) -> dict:
         """本对话因“跳过记忆”关闭了检查时，第一次碰到有记忆的模块就告诉 Agent，误判也能被发现。"""
@@ -503,11 +552,14 @@ class Gate:
         """检索按关键词排序，可能漏掉与这次修改相关的坑；排除项、风险、更正直接列出来，按这个顺序。"""
         pitfalls = sorted((e for e in current_entries(self.module_entries(module)) if e.kind in PITFALL_KINDS),
                           key=lambda e: PITFALL_KINDS.index(e.kind))
-        if not pitfalls:
-            return "", 0
         shown = pitfalls[:MAX_GUARD_PITFALLS]
+        project = self.take_project_pitfalls(module, skip={e.id for e in shown})
+        if not shown and not project:
+            return "", 0
+        self.save()
         more = f"（另有 {len(pitfalls) - len(shown)} 条，检索时可见）" if len(pitfalls) > len(shown) else ""
-        text = "\n该模块已知的排除项、风险和更正，改之前先对照" + more + "：\n" + "\n".join(self.memory_lines(shown))
+        head = "\n该模块已知的排除项、风险和更正，改之前先对照" + more + "：\n" if shown else "\n"
+        text = head + "\n".join(self.lines_with_project(shown, project))
         return text, len(pitfalls)
 
     def on_pre_tool(self) -> dict:
@@ -555,6 +607,10 @@ class Gate:
                     pending[_command_key(command)] = calls
                     self.state.data[field] = dict(list(pending.items())[-MAX_PENDING_SNAPSHOTS:])
             self.save()
+        modules = [self.module_from_args(args) for args in cli_args(command, "search")]
+        for module in modules:
+            # 命令行检索拿不到对话 id，先登记，让它按模块认领，好做对话内去重
+            seen.note_handoff(self.config.cache_dir, self.conversation, [module] if module else [])
         return {m for m in map(self.module_from_args, searches) if m}
 
     def _pop_cli_pending(self, field: str, command: str, has_calls: bool) -> list[dict] | None:
@@ -861,10 +917,12 @@ class Gate:
 
     def on_compact(self) -> dict:
         if self.state is not None:
-            # 压缩后之前看过的记忆可能已不在上下文里
-            for key in ("searched", "warned", "reviewed"):
+            # 压缩后之前看过的记忆可能已不在上下文里：检索也要重新给全文
+            for key in ("searched", "warned", "reviewed", "project_shown"):
                 self.state.data[key] = []
+            self.state.data["project_done"] = False
             self.save()
+            seen.clear(self.config.cache_dir, self.conversation)
         return {}
 
     def _written(self) -> set[str]:
@@ -905,6 +963,7 @@ class Gate:
         if self.state is None:
             return {}
         self.state.cleanup_old()
+        seen.cleanup_old(self.config.cache_dir)
         status = self.payload.get("status")
         # 中断或出错结束的回合、用户说了“跳过记忆”的对话都不提醒；由提醒触发的续跑回合
         # （Cursor 的 loop_count、Claude Code 的 stop_hook_active）也不再追加，留到下一个回合
@@ -949,9 +1008,11 @@ class Gate:
             )
         if pending:
             messages.append(
-                f"[pmem] 本轮修改了 {'、'.join(pending)}，但还没有写研发记忆。请直接用 record_memory "
-                "为每个模块写一条：为什么这样改、影响范围、潜在风险（已有记忆说的就是这件事时，用 supersedes "
-                "更新它）。不要询问用户，写完用一句话说明记了什么。"
+                f"[pmem] 本轮修改了 {'、'.join(pending)}，还没有写研发记忆。回顾本轮，逐项看有没有："
+                "1) 试过不行、被排除的方向（exclusion）；2) 确认的根因或踩到的坑（conclusion / correction）；"
+                "3) 看代码看不出的约束或风险（risk）；4) 为什么选这个方案而不是别的（decision）。"
+                "有就用 record_memory 每个模块写一条，summary 写一句结论（已有记忆说的就是这件事时用 supersedes 更新它）；"
+                "只是照常实现、没有以上内容，就回复“无新教训”，不要为了记录而写“改了什么”。不要询问用户。"
             )
         if consulted_pending:
             messages.append(

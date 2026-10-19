@@ -19,6 +19,7 @@ aliases:
 - 归档人
 - archived_by
 - 记忆文件格式
+verified: '2026-10-19'
 ---
 决定：记忆文件的 YAML 头新增可选字段 archived: {on: YYYY-MM-DD, from: 归档前状态, by: 归档人}，对应 Entry.archived_on / archived_from / archived_by，只在归档时写入（by 取当前用户，即 PMEM_AUTHOR 或版本库用户名），恢复和接受时三者一并删除。
 满足 Issue #3“记录归档人和日期”的验收要求。

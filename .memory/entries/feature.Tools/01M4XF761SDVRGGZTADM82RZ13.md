@@ -12,6 +12,7 @@ anchors:
 revision: git:a0936e7
 author: 1002378395@qq.com
 note_date: '2026-10-14'
+verified: '2026-10-19'
 ---
 决定：写入质量问题只提示、不拦截。record 返回 hints，记录照常写入，可带 draft_id 改写覆盖（终端版用 --draft-id）。硬拦截会让 Agent 反复重试，甚至干脆不写。
 

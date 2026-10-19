@@ -29,13 +29,15 @@ def _median(values: list[float]) -> float | None:
 
 
 def _link_cli_searches(events: list[dict]) -> None:
-    """Agent 在终端里跑 pmem search 时，检索事件本身不知道对话 id，按紧邻的 search_call 补上。"""
-    calls = [e for e in events if e["type"] == "search_call" and e.get("via") == "cli" and e.get("conv")]
+    """Agent 在终端里跑 pmem search 时，检索事件本身不知道对话 id，按时间最近的 search_call 补上。
+    闸门在命令执行完才记 search_call（旧版在执行前记），所以前后都要找。"""
+    calls = [e for e in events if e["type"] in ("search_call", "search_call_unseen")
+             and e.get("via") == "cli" and e.get("conv")]
     for e in events:
         if e["type"] == "search" and not e.get("conv"):
-            match = next((c for c in reversed(calls) if 0 <= e["ts"] - c["ts"] <= CLI_LINK_SECONDS), None)
-            if match is not None:
-                e["conv"] = match["conv"]
+            near = [c for c in calls if abs(e["ts"] - c["ts"]) <= CLI_LINK_SECONDS]
+            if near:
+                e["conv"] = min(near, key=lambda c: abs(e["ts"] - c["ts"]))["conv"]
 
 
 def _conversations(events: list[dict]) -> dict[str, dict]:

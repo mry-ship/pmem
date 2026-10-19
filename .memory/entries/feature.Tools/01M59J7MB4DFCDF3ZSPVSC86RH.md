@@ -19,6 +19,7 @@ aliases:
 - 配置写错 MCP 起不来
 - 锚点大小写
 - 绝对路径锚点
+verified: '2026-10-19'
 source:
   conversation: 7e7aeed7-103b-4d87-bb8d-18765c815bd5
 ---

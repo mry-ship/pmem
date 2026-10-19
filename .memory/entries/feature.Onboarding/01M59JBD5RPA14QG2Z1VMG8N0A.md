@@ -6,7 +6,7 @@ kind: correction
 status: active
 supersedes: []
 anchors:
-- src/pmem/scan/lite.py#_git_commits
+- src/pmem/vcs/git.py#commits_since
 - src/pmem/generate/templates.py#CONSOLIDATE_SKILL
 revision: git:df9b06c
 author: 1002378395@qq.com
@@ -16,6 +16,7 @@ aliases:
 - 子目录项目
 - monorepo
 - 提交历史取不到
+verified: '2026-10-19'
 source:
   conversation: 7e7aeed7-103b-4d87-bb8d-18765c815bd5
 ---

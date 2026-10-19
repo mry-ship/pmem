@@ -15,6 +15,7 @@ aliases:
 - 补锚点
 - 跳过目录
 - 种子候选
+verified: '2026-10-19'
 ---
 决定：pmem anchors 遍历文件时的跳过目录改为复用 scan/lite.py 的 skip_dir()（依赖、构建产物、点开头目录、*.egg-info），另外仍跳过 Unity 的 Packages、com.* 内嵌包和第三方目录名单；
 pmem seed --plan 不再列出已废弃的模块。

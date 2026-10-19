@@ -15,6 +15,7 @@ aliases:
 - 覆盖手写文档
 - wiki 输出目录
 - 生成标记
+verified: '2026-10-19'
 source:
   conversation: 7e7aeed7-103b-4d87-bb8d-18765c815bd5
 ---

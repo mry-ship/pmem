@@ -21,6 +21,7 @@ aliases:
 - 只读
 - deprecated
 - deprecate
+verified: '2026-10-19'
 ---
 决定：模块废弃用 modules.yaml 里的 status: deprecated 表示（Module.deprecated），由 pmem migrate deprecate <模块> [--undo] 写入，默认预览、--apply 执行；
 只接受登记模块的正式名，重复废弃或撤销未废弃的模块会拒绝。

@@ -191,3 +191,19 @@ def test_cli_search_is_linked_to_conversation(project, monkeypatch):
     log_event(cache, "stop", conv="c9", status="completed", input_tokens=10, output_tokens=1)
     report = build_report(project, days=7, heat=False)
     assert report["compare"]["hit"]["n"] == 1, other_id
+
+
+def test_cli_search_logged_after_the_command_is_linked(project, monkeypatch):
+    record_as(project, monkeypatch, "alice", "risk", MEMORY)
+    cache = Config.load(project).cache_dir
+    monkeypatch.setenv("PMEM_AUTHOR", "me")
+    service = MemoryService(project)
+    try:
+        service.search(module="gameplay.Jigsaw")
+    finally:
+        service.close()
+    log_event(cache, "search_call", conv="c9", module="gameplay.Jigsaw", via="cli")
+    log_event(cache, "edit", conv="c9", module="gameplay.Jigsaw", file="src/Jigsaw/A.cs")
+    log_event(cache, "stop", conv="c9", status="completed", input_tokens=10, output_tokens=1)
+    report = build_report(project, days=7, heat=False)
+    assert report["compare"]["hit"]["n"] == 1

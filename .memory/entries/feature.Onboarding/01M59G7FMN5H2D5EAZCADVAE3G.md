@@ -6,7 +6,7 @@ kind: decision
 status: active
 supersedes: []
 anchors:
-- src/pmem/cli/init_cmd.py#_write_skills
+- src/pmem/generate/integrations.py#_write_skills
 revision: git:1e8fc87
 author: 1002378395@qq.com
 note_date: '2026-10-19'

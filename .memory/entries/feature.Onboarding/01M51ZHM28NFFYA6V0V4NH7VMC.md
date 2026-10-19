@@ -7,7 +7,7 @@ status: active
 supersedes: []
 anchors:
 - src/pmem/generate/templates.py
-- src/pmem/cli/init_cmd.py#write_hook_wrappers
+- src/pmem/generate/integrations.py#write_hook_wrappers
 revision: git:4479338
 author: 1002378395@qq.com
 note_date: '2026-10-16'

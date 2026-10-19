@@ -7,7 +7,7 @@ status: active
 supersedes:
 - 01M51R6108Z66X6CVCGJVREX3N
 anchors:
-- src/pmem/cli/init_cmd.py#merge_hooks
+- src/pmem/generate/integrations.py#merge_hooks
 - src/pmem/cli/doctor_cmd.py
 - src/pmem/generate/templates.py
 revision: git:4479338

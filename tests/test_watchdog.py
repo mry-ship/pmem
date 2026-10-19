@@ -65,7 +65,9 @@ def dog(tmp_path, monkeypatch):
         watchdog.timeout = watchdog.current_timeout = 1.5
 
     def handshake():
-        pid = call(1, "initialize", protocolVersion="2025-06-18")["result"]["pid"]
+        reply = call(1, "initialize", protocolVersion="2025-06-18")
+        assert "result" in reply, (reply, restarts)
+        pid = reply["result"]["pid"]
         send(None, "notifications/initialized")
         return pid
 

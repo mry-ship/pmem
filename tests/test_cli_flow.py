@@ -98,6 +98,8 @@ def test_init_wires_claude_and_codex_without_touching_their_other_settings(tmp_p
     assert settings["hooks"]["PreToolUse"][0]["matcher"].startswith("^(Write|Edit")
     assert json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["pmem"]["args"] == ["serve"]
     assert (claude / "skills" / "pmem-normalize" / "SKILL.md").exists()
+    consolidate = (claude / "skills" / "pmem-consolidate" / "SKILL.md").read_text(encoding="utf-8")
+    assert consolidate.startswith("---\nname: pmem-consolidate") and "pmem migrate split" in consolidate
 
     toml = (codex / "config.toml").read_text(encoding="utf-8")
     assert toml.startswith('model = "gpt-5"\n') and toml.count("[mcp_servers.pmem]") == 1

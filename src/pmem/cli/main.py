@@ -29,6 +29,10 @@ def build_parser():
     p.add_argument("--root", default=".")
     p.add_argument("--depth", type=int, default=4)
 
+    p = sub.add_parser("sync", help="重新扫描代码目录：列出新模块候选、要追加的路径、第三方目录和冷候选转正（默认只预览）")
+    p.add_argument("--apply", action="store_true", help="写入 modules.yaml（只追加，不改已有模块名）")
+    p.add_argument("--root", default=".")
+
     p = sub.add_parser("doctor", help="自检：配置、模块覆盖率、Cursor 接入状态")
     p.add_argument("--root", default=".")
 
@@ -115,11 +119,12 @@ def build_parser():
     p.add_argument("--json", action="store_true")
     p.add_argument("--root", default=".")
 
-    p = sub.add_parser("migrate", help="模块改名、合并、废弃，并把记忆搬到新模块下（默认只预览）")
+    p = sub.add_parser("migrate", help="模块改名、合并、拆分、废弃，并把记忆搬到新模块下（默认只预览）")
     msub = p.add_subparsers(dest="action", required=True)
     for name, help_text, args in (
         ("rename", "改名：旧名成为别名", ("old", "new")),
         ("merge", "合并：source 并入 target（source 可以是未登记模块）", ("source", "target")),
+        ("split", "拆分：把模块的部分路径或议题分给新模块（或已有模块），记忆按关联代码或议题跟着走", ("module",)),
         ("deprecate", "废弃：旧记忆照常可查，拒绝新写入", ("module",)),
         ("tidy", "把还在旧模块名下的记忆搬到新名下", ()),
     ):
@@ -128,6 +133,12 @@ def build_parser():
             mp.add_argument(arg)
         if name == "deprecate":
             mp.add_argument("--undo", action="store_true", help="撤销废弃")
+        if name == "split":
+            mp.add_argument("--to", action="append", default=[], required=True, metavar="模块=路径或议题[,...]",
+                            help="分出去的部分，可写多次，如 --to activity.MergeEvent=Assets/Merge/Event/**")
+            mp.add_argument("--by", choices=("path", "entity"), default="path", help="按路径（默认）还是按议题拆")
+            mp.add_argument("--assign", action="append", default=[], metavar="记忆id=模块",
+                            help="手动指定某条记忆的去向，可写多次")
         mp.add_argument("--apply", action="store_true", help="执行；不加只预览")
         mp.add_argument("--root", default=".")
 
@@ -244,6 +255,12 @@ def _scan(args) -> int:
     return run_scan(Path(args.root), args.depth)
 
 
+def _sync(args) -> int:
+    from pmem.cli.sync_cmd import run_sync
+
+    return run_sync(_project_root(args.root), args.apply)
+
+
 def _doctor(args) -> int:
     from pmem.cli.doctor_cmd import run_doctor
 
@@ -323,7 +340,8 @@ def _migrate(args) -> int:
     first = getattr(args, "old", None) or getattr(args, "source", None) or getattr(args, "module", None)
     second = getattr(args, "new", None) or getattr(args, "target", None)
     return run_migrate(_project_root(args.root), args.action, first, second, args.apply,
-                       undo=getattr(args, "undo", False))
+                       undo=getattr(args, "undo", False), targets=getattr(args, "to", None),
+                       by=getattr(args, "by", "path"), assigns=getattr(args, "assign", None))
 
 
 def _health(args) -> int:
@@ -337,6 +355,7 @@ COMMANDS = {
     "serve": _serve,
     "init": _init,
     "scan": _scan,
+    "sync": _sync,
     "doctor": _doctor,
     "import": _import,
     "compact": _compact,

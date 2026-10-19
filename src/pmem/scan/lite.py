@@ -44,50 +44,66 @@ def iter_code_files(root: Path):
                 yield Path(dirpath, name).relative_to(root).as_posix()
 
 
-def _git_heat(root: Path) -> Counter:
-    since = (date.today() - timedelta(days=HEAT_DAYS)).isoformat()
+def _git_commits(root: Path, since: str) -> list[tuple[str, list[str]]]:
     proc = subprocess.run(
-        ["git", "-c", "core.quotepath=off", "log", f"--since={since}", "--name-only", "--pretty=format:@@"],
+        ["git", "-c", "core.quotepath=off", "log", f"--since={since}", "--name-only", "--pretty=format:@@%ci"],
         cwd=root, capture_output=True, check=False,
     )
-    heat: Counter = Counter()
     if proc.returncode != 0:
-        return heat
-    for block in proc.stdout.decode("utf-8", errors="replace").split("@@"):
-        files = [f.strip() for f in block.splitlines() if f.strip()]
-        if 0 < len(files) <= BULK_COMMIT:
-            heat.update(files)
-    return heat
+        return []
+    commits = []
+    for block in proc.stdout.decode("utf-8", errors="replace").split("@@")[1:]:
+        lines = [f.strip() for f in block.splitlines() if f.strip()]
+        if lines:
+            commits.append((lines[0][:10], lines[1:]))
+    return commits
 
 
-def _svn_heat(root: Path) -> Counter:
-    heat: Counter = Counter()
+def _svn_commits(root: Path, since: str) -> list[tuple[str, list[str]]]:
     info = subprocess.run(["svn", "info", "--xml", str(root)], capture_output=True, check=False)
     if info.returncode != 0:
-        return heat
+        return []
     rel = ET.fromstring(info.stdout).findtext("./entry/relative-url") or "^/"
     prefix = rel[1:].rstrip("/") + "/" if rel.startswith("^") else "/"
-    since = (date.today() - timedelta(days=HEAT_DAYS)).isoformat()
     proc = subprocess.run(
         ["svn", "log", "-v", "--xml", "-l", "2000", "-r", f"HEAD:{{{since}}}", str(root)],
         capture_output=True, check=False,
     )
     if proc.returncode != 0:
-        return heat
+        return []
+    commits = []
     for entry in ET.fromstring(proc.stdout).iter("logentry"):
         paths = [p.text or "" for p in entry.iter("path") if p.get("kind") != "dir" and not p.get("copyfrom-path")]
-        if 0 < len(paths) <= BULK_COMMIT:
-            heat.update(p[len(prefix):] for p in paths if p.startswith(prefix))
-    return heat
+        commits.append(((entry.findtext("date") or "")[:10], [p[len(prefix):] for p in paths if p.startswith(prefix)]))
+    return commits
 
 
-def file_heat(root: Path) -> tuple[str, Counter]:
+def file_heat_windows(root: Path, *windows: int) -> tuple[str, list[Counter]]:
+    """一次读取提交历史，分别统计近 N 天各文件的改动次数（排除超过 BULK_COMMIT 个文件的大提交）。"""
+    windows = windows or (HEAT_DAYS,)
+    today = date.today()
+    cutoffs = [(today - timedelta(days=days)).isoformat() for days in windows]
+    vcs, commits = "none", []
     for candidate in (root, *root.parents):
         if (candidate / ".git").exists():
-            return "git", _git_heat(root)
+            vcs, commits = "git", _git_commits(root, min(cutoffs))
+            break
         if (candidate / ".svn").is_dir():
-            return "svn", _svn_heat(root)
-    return "none", Counter()
+            vcs, commits = "svn", _svn_commits(root, min(cutoffs))
+            break
+    heats = [Counter() for _ in windows]
+    for day, files in commits:
+        if not 0 < len(files) <= BULK_COMMIT:
+            continue
+        for heat, cutoff in zip(heats, cutoffs):
+            if day >= cutoff:
+                heat.update(files)
+    return vcs, heats
+
+
+def file_heat(root: Path, days: int = HEAT_DAYS) -> tuple[str, Counter]:
+    vcs, (heat,) = file_heat_windows(root, days)
+    return vcs, heat
 
 
 def summarize(root: Path, depth: int = 4) -> str:

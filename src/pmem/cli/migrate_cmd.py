@@ -1,4 +1,4 @@
-"""pmem migrate：模块改名、合并、废弃，并把记忆文件搬到新模块下（默认只预览，--apply 才写入）。"""
+"""pmem migrate：模块改名、合并、拆分、废弃，并把记忆文件搬到新模块下（默认只预览，--apply 才写入）。"""
 from __future__ import annotations
 
 import copy
@@ -83,9 +83,8 @@ def _free_bare_name(registry: ModuleRegistry, old_id: str, new_id: str) -> list[
     return [bare] if owner == old_id else []
 
 
-def plan_rename(data: dict, registry: ModuleRegistry, old: str, new: str) -> tuple[dict, list[str]]:
-    old_id = _module_key(data, registry, old)
-    new_id = new.strip()
+def _check_new_name(registry: ModuleRegistry, new_id: str, own: str | None, merge_hint: str) -> None:
+    """新模块名合法、大类存在、完整名和短名都没被别的模块占用（own 是允许占着短名的模块，如改名前的自己）。"""
     if not _NAME_RE.match(new_id):
         raise MigrateError(f"新名字 {new_id!r} 不合法，格式为 category.Name（大类小写，模块名字母开头）")
     if new_id.split(".", 1)[0] not in registry.categories:
@@ -97,14 +96,20 @@ def plan_rename(data: dict, registry: ModuleRegistry, old: str, new: str) -> tup
     if taken is not None and taken.known:
         raise MigrateError(f"{new_id} 已经是模块 {taken.id} 的名字或别名")
     if taken is not None and taken.candidate:
-        raise MigrateError(f"{new_id} 是冷候选模块，请改用 pmem migrate merge {new_id} {old_id}")
+        raise MigrateError(f"{new_id} 是冷候选模块，{merge_hint}")
     bare = new_id.split(".", 1)[1]
     try:
         owner = registry.resolve_module(bare).id
     except RegistryError:
         owner = None
-    if owner is not None and owner != old_id:
-        raise MigrateError(f"短名 {bare} 已是模块 {owner} 的名字或别名，改名后会有歧义")
+    if owner is not None and owner != own:
+        raise MigrateError(f"短名 {bare} 已是模块 {owner} 的名字或别名，会有歧义")
+
+
+def plan_rename(data: dict, registry: ModuleRegistry, old: str, new: str) -> tuple[dict, list[str]]:
+    old_id = _module_key(data, registry, old)
+    new_id = new.strip()
+    _check_new_name(registry, new_id, old_id, f"请改用 pmem migrate merge {new_id} {old_id}")
 
     out = copy.deepcopy(data)
     modules: dict = {}
@@ -192,6 +197,190 @@ def plan_deprecate(data: dict, registry: ModuleRegistry, module: str, undo: bool
     return out, notes
 
 
+@dataclass
+class SplitPlan:
+    data: dict
+    notes: list[str]
+    moves: list[Move]
+    cross: list[tuple[str, list[str]]]
+    unplaced: list[str]
+
+
+def _parse_targets(targets: list[str]) -> list[tuple[str, list[str]]]:
+    parsed = []
+    for raw in targets:
+        name, sep, specs = raw.partition("=")
+        items = [s.strip() for s in specs.split(",") if s.strip()]
+        if not sep or not name.strip() or not items:
+            raise MigrateError(f"--to {raw!r} 格式不对，应为 新模块=路径或议题[,路径或议题...]")
+        parsed.append((name.strip(), items))
+    return parsed
+
+
+def _module_list(data: dict, mid: str, key: str) -> list:
+    return list(((data.get("modules") or {}).get(mid) or {}).get(key) or [])
+
+
+def _anchor_path(anchor: str) -> str:
+    return anchor.split("#", 1)[0].strip()
+
+
+def plan_split(data: dict, registry: ModuleRegistry, storage: FilesStorage, source: str, targets: list[str],
+               by: str = "path", assigns: list[str] | None = None) -> SplitPlan:
+    """把 source 的一部分路径（--by path）或议题（--by entity）分给新模块或已有模块，并按同样的规则分配记忆。
+
+    记忆归属：--assign 指定的优先；按路径拆时看关联代码在新目录里归谁，关联代码横跨多个模块的不复制、留在原模块；
+    没有关联代码的跟着同议题的其他记忆走，同议题的去向不一致时留在原模块。按议题拆时直接看 entity。
+    """
+    from pmem.scan.lite import iter_code_files
+
+    src_id = _module_key(data, registry, source)
+    if by not in ("path", "entity"):
+        raise MigrateError("--by 只能是 path 或 entity")
+    parsed = _parse_targets(targets)
+    if not parsed:
+        raise MigrateError("至少要给一个 --to 新模块=路径或议题")
+    out = copy.deepcopy(data)
+    modules = out["modules"]
+    src = dict(modules[src_id] or {})
+    notes: list[str] = []
+    target_ids: list[str] = []
+    claimed: dict[str, str] = {}
+    entity_owner: dict[str, str] = {}
+    for raw_name, specs in parsed:
+        resolved = None
+        try:
+            resolved = registry.resolve_module(raw_name)
+        except RegistryError:
+            pass
+        if resolved is not None and resolved.known:
+            tid = _module_key(data, registry, raw_name)
+            if tid == src_id:
+                raise MigrateError("不能把模块拆给它自己")
+            if registry.modules[tid].deprecated:
+                notes.append(f"注意：{tid} 已废弃，分过去的记忆同样只读")
+            body = dict(modules[tid] or {})
+        else:
+            tid = raw_name
+            _check_new_name(registry, tid, None, f"请先 pmem migrate merge {tid} <正式模块> 或换个名字")
+            if tid in target_ids:
+                raise MigrateError(f"{tid} 重复出现，请把它的路径或议题写在同一个 --to 里")
+            body = {}
+        target_ids.append(tid)
+        for spec in specs:
+            key = spec.replace("\\", "/").lower()
+            if key in claimed:
+                raise MigrateError(f"{spec} 同时分给了 {claimed[key]} 和 {tid}")
+            claimed[key] = tid
+        if by == "entity":
+            lists = {k: list(src.get(k) or []) for k in ("entities", "components", "variants")}
+            for spec in specs:
+                entity_owner[spec.lower()] = tid
+                for k, values in lists.items():
+                    src[k] = [v for v in values if str(v).lower() != spec.lower()]
+                    lists[k] = src[k]
+            _merge_list(body, "entities", specs)
+            notes.append(f"{tid} ← 议题 {'、'.join(specs)}")
+        else:
+            src_paths = list(src.get("paths") or [])
+            for spec in specs:
+                exact = [p for p in src_paths if str(p).replace("\\", "/").lower() == spec.replace("\\", "/").lower()]
+                src_paths = [p for p in src_paths if p not in exact]
+            src["paths"] = src_paths
+            _merge_list(body, "paths", specs)
+            notes.append(f"{tid} ← 路径 {'、'.join(specs)}")
+        modules[tid] = body
+    for key in ("entities", "components", "variants", "paths"):
+        if key in src and not src[key]:
+            del src[key]
+    modules[src_id] = src
+    try:
+        new_registry = ModuleRegistry(out)
+    except RegistryError as exc:
+        raise MigrateError(str(exc)) from exc
+
+    if by == "path":
+        moved: set[str] = set()
+        for rel in iter_code_files(storage.root):
+            try:
+                before = registry.module_for_path(rel)
+                after = new_registry.module_for_path(rel)
+            except RegistryError as exc:
+                raise MigrateError(str(exc)) from exc
+            if after is None or after.module_id not in target_ids:
+                continue
+            was = before.module_id if before else None
+            if was == src_id:
+                moved.add(after.module_id)
+            elif was not in (None, after.module_id):
+                raise MigrateError(f"{rel} 原本属于 {was}，不在 {src_id} 里，不能分给 {after.module_id}")
+        empty = [t for t in target_ids if t not in moved]
+        if empty:
+            raise MigrateError(f"{'、'.join(empty)} 分到的路径下没有 {src_id} 的代码文件，检查路径写法（如 src/Foo/**）")
+
+    manual: dict[str, str] = {}
+    for raw in assigns or []:
+        entry_id, sep, mid = raw.partition("=")
+        if not sep or mid.strip() not in (src_id, *target_ids):
+            raise MigrateError(f"--assign {raw!r} 格式不对，应为 记忆id=模块，模块只能是 {src_id} 或拆出的模块")
+        manual[entry_id.strip()] = mid.strip()
+
+    entries = [(path, e) for path, e in storage.iter_all() if e.module == src_id]
+    if by == "entity":
+        known = {str(v).lower() for k in ("entities", "components", "variants") for v in _module_list(data, src_id, k)}
+        known |= {e.entity.lower() for _, e in entries}
+        missing = [spec for spec in entity_owner if spec not in known]
+        if missing:
+            raise MigrateError(f"{src_id} 里没有议题 {'、'.join(missing)}（modules.yaml 的 entities 和记忆里都没有），检查拼写")
+    unknown = set(manual) - {e.id for _, e in entries}
+    if unknown:
+        raise MigrateError(f"--assign 里的记忆不在 {src_id} 下：{'、'.join(sorted(unknown))}")
+    dest: dict[str, str] = {}
+    cross: list[tuple[str, list[str]]] = []
+    pending: list[tuple[Path, object]] = []
+    for path, entry in entries:
+        if entry.id in manual:
+            dest[entry.id] = manual[entry.id]
+        elif by == "entity":
+            dest[entry.id] = entity_owner.get(entry.entity.lower(), src_id)
+        else:
+            owners = set()
+            for anchor in entry.anchors:
+                try:
+                    match = new_registry.module_for_path(_anchor_path(anchor))
+                except RegistryError:
+                    match = None
+                if match:
+                    owners.add(match.module_id)
+            if not owners:
+                pending.append((path, entry))
+            elif len(owners) == 1:
+                only = next(iter(owners))
+                dest[entry.id] = only if only in target_ids else src_id
+            else:
+                dest[entry.id] = src_id
+                if owners & set(target_ids):
+                    cross.append((entry.id, sorted(owners)))
+    cross_ids = {entry_id for entry_id, _ in cross}
+    unplaced: list[str] = []
+    by_entity: dict[str, set[str]] = {}
+    for _, entry in entries:
+        if entry.id in dest and entry.id not in cross_ids:
+            by_entity.setdefault(entry.entity.lower(), set()).add(dest[entry.id])
+    for _, entry in pending:
+        follow = by_entity.get(entry.entity.lower(), set())
+        if len(follow) == 1:
+            dest[entry.id] = next(iter(follow))
+        else:
+            dest[entry.id] = src_id
+            unplaced.append(entry.id)
+    moves = [Move(path, e.id, src_id, dest[e.id]) for path, e in entries if dest.get(e.id, src_id) != src_id]
+    counts = {t: sum(1 for m in moves if m.target == t) for t in target_ids}
+    notes.append(f"{src_id} 的记忆 {len(entries)} 条：" + "，".join(f"分给 {t} {n} 条" for t, n in counts.items())
+                 + f"，留在 {src_id} {len(entries) - len(moves)} 条")
+    return SplitPlan(out, notes, moves, cross, unplaced)
+
+
 def stray_moves(storage: FilesStorage, registry: ModuleRegistry) -> list[Move]:
     """记忆文件里的模块名已改名或并入别的模块时，需要搬到的位置。"""
     moves = []
@@ -223,7 +412,8 @@ def apply_moves(storage: FilesStorage, moves: list[Move]) -> None:
 
 
 def run_migrate(root: Path, action: str, first: str | None, second: str | None, apply: bool,
-                undo: bool = False) -> int:
+                undo: bool = False, targets: list[str] | None = None, by: str = "path",
+                assigns: list[str] | None = None) -> int:
     config = Config.load(root)
     path = config.modules_path
     if not path.exists():
@@ -234,25 +424,36 @@ def run_migrate(root: Path, action: str, first: str | None, second: str | None, 
     import yaml
 
     data = yaml.safe_load(body) or {}
+    split = None
     try:
         registry = ModuleRegistry.load(path)
+        storage = FilesStorage(config.root, detect_vcs(config.root, config.get("vcs")))
         if action == "rename":
             new_data, notes = plan_rename(data, registry, first or "", second or "")
         elif action == "merge":
             new_data, notes = plan_merge(data, registry, first or "", second or "")
         elif action == "deprecate":
             new_data, notes = plan_deprecate(data, registry, first or "", undo)
+        elif action == "split":
+            split = plan_split(data, registry, storage, first or "", targets or [], by, assigns)
+            new_data, notes = split.data, split.notes
         else:
             new_data, notes = data, []
         new_registry = ModuleRegistry(new_data)
-        storage = FilesStorage(config.root, detect_vcs(config.root, config.get("vcs")))
-        moves = stray_moves(storage, new_registry)
+        moves = (split.moves if split else []) + stray_moves(storage, new_registry)
     except (MigrateError, RegistryError) as exc:
         print(f"无法迁移：{exc}")
         return 1
 
     for note in notes:
         print(note)
+    if split and split.cross:
+        print(f"关联代码横跨多个模块、留在原模块的记忆 {len(split.cross)} 条（不复制；要分走就加 --assign <id>=<模块>）：")
+        for entry_id, owners in split.cross[:MAX_LISTED]:
+            print(f"  {entry_id}：{' / '.join(owners)}")
+    if split and split.unplaced:
+        print(f"没有关联代码、同议题去向也不一致、留在原模块的记忆 {len(split.unplaced)} 条（需要时用 --assign 指定）：")
+        print("  " + "、".join(split.unplaced[:MAX_LISTED]) + (" ……" if len(split.unplaced) > MAX_LISTED else ""))
     if moves:
         print(f"要搬动的记忆文件 {len(moves)} 个（文件里的模块名一并改为新名，id 和替代关系不变）：")
         for move in moves[:MAX_LISTED]:

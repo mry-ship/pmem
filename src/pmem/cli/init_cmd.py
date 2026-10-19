@@ -18,6 +18,7 @@ from pmem.generate.templates import (
     CODEX_MCP_TOML,
     COMPACT_SKILL,
     CONFIG_TEMPLATE,
+    CONSOLIDATE_SKILL,
     GENERATED,
     HOOK_EVENTS,
     HOOK_WRAPPER,
@@ -162,7 +163,8 @@ def _write_text(path: Path, text: str) -> None:
 
 def _write_skills(folder: Path) -> None:
     for name, body in (("pmem-bootstrap", BOOTSTRAP_SKILL), ("pmem-compact", COMPACT_SKILL),
-                       ("pmem-normalize", NORMALIZE_SKILL), ("pmem-seed", SEED_SKILL)):
+                       ("pmem-consolidate", CONSOLIDATE_SKILL), ("pmem-normalize", NORMALIZE_SKILL),
+                       ("pmem-seed", SEED_SKILL)):
         _write_text(folder / name / "SKILL.md", body.format(generated=GENERATED))
 
 

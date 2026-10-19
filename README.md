@@ -68,12 +68,13 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 | 这次对话不用记忆 | 对 AI 说“跳过记忆”；说“恢复记忆”撤销 |
 | 记忆多了，合并零碎记忆 | 对 AI 说“按 pmem-compact 技能合并记忆” |
 | 换个说法搜不到 | 对 AI 说“按 pmem-normalize 技能整理同义词”（如“闪退 / 崩溃”） |
-| 新增了业务模块 | 在 `.memory/modules.yaml` 里加模块和它的路径 |
+| 新增了业务模块 | `pmem sync` 对照代码目录列出新模块、要追加的路径和新的第三方目录（默认预览，加 `--apply` 只追加、不改已有模块名）；也可以直接在 `.memory/modules.yaml` 里加 |
 | 模块改名、合并 | `pmem migrate rename <旧> <新>` / `pmem migrate merge <被并入> <保留>`，记忆随之搬家（默认预览，加 `--apply` 执行）；队友之后写到旧名下的，`pmem migrate tidy --apply` |
+| 一个模块管得太宽，要拆开 | `pmem migrate split <模块> --to <新模块>=<路径>`（按议题拆加 `--by entity`）：记忆按关联代码分到新模块，判断不了的列出来，用 `--assign <id>=<模块>` 指定 |
 | 业务下线、模块不再维护 | `pmem migrate deprecate <模块> --apply`：旧记忆照常可查，拒绝新写入；`--undo` 撤销 |
 | 去掉过时的记忆 | `pmem archive <id>`：不再出现在检索里，文件保留可追溯；`--restore` 恢复到归档前的状态 |
 | 体检 | `pmem doctor`：提示没提交的记忆、可以合并的议题 |
-| 定期收口（模块负责人） | `pmem health`：未登记和疑似重复的模块、没有归属模块的代码目录、反复查不到的问题、可能过时的记忆、被拒绝的写入、待确认的种子 |
+| 定期收口（模块负责人） | 对 AI 说“按 pmem-consolidate 技能整理记忆库”，它按 `pmem health` 逐节处理：疑似互相矛盾的记忆、可能过时的记忆、零碎记忆、反复查不到的问题、待确认的种子、未登记或重复的模块 |
 | 看收益 | `pmem report`：命中率、避坑次数、跨人复用 |
 | 通读全部结论 | 打开 `.memory/wiki/index.md`，每个模块一页，写入记忆后自动更新 |
 | 升级 | `uv tool upgrade pmem`，再在项目里运行一次 `pmem init`（不会覆盖已有配置） |
@@ -170,6 +171,7 @@ pmem health                            # 健康报告（负责人收口用）
 pmem seed                              # 待确认的种子记忆；--accept / --reject 处理
 pmem archive <id>                      # 归档过时记忆；--restore 撤销
 pmem migrate tidy                      # 把还在旧模块名下的记忆搬到新名下（加 --apply 执行）
+pmem sync                              # 对照代码目录列出新模块、要追加的路径（加 --apply 执行）
 pmem wiki                              # 生成浏览用的模块 Wiki
 pmem format --apply                    # 把旧记忆里一整行的长正文断行（新写入的会自动整理）
 ```

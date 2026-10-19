@@ -9,10 +9,15 @@ from pathlib import Path
 
 from pmem.core.quality import similar_entity_pairs
 from pmem.core.registry import RegistryError
+from pmem.index.graph import KIND_LABELS
+from pmem.index.tokenize import tokenize
 from pmem.metrics.events import read_events
 from pmem.service import COMPACT_MIN_GROUP, MemoryService
 
 TOP = 10
+NEGATIVE_KINDS = ("exclusion", "correction")
+# 词集合的 Jaccard 相似度；长正文天然偏低，实测同议题无关的一正一反记忆在 0.11 以下
+CONTRADICTION_OVERLAP = 0.15
 MIN_SEARCHES_FOR_IDLE = 20
 SEARCH_EVENTS = ("search", "mcp_search", "search_call")
 # 按顺序匹配拒绝原因；“上限”的提示里也提到 draft_id，所以排在前面
@@ -70,6 +75,34 @@ def _misses(searches: list[dict]) -> list[tuple[str, str, int]]:
     return [(m, what, n) for (m, what), n in counter.most_common(TOP)]
 
 
+def _contradictions(visible: list) -> list[dict]:
+    """同模块同议题、都还现行、正文高度相似但一条肯定一条否定（结论/决定 对 排除/更正）的记忆对。
+    较早那条在较晚那条写下之后被核对过，视为负责人已看过，不再提示。"""
+    groups: dict[tuple[str, str], list] = defaultdict(list)
+    for e in visible:
+        if e.kind != "risk":
+            groups[(e.module, e.entity)].append(e)
+    pairs = []
+    for (module, entity), items in groups.items():
+        tokens = {e.id: set(tokenize(e.content)) for e in items}
+        for i, a in enumerate(items):
+            for b in items[i + 1:]:
+                if (a.kind in NEGATIVE_KINDS) == (b.kind in NEGATIVE_KINDS):
+                    continue
+                if a.id in b.supersedes or b.id in a.supersedes:
+                    continue
+                old, new = sorted((a, b), key=lambda e: (e.note_date, e.id))
+                if old.checked_date >= new.note_date and old.verified:
+                    continue
+                union = tokens[a.id] | tokens[b.id]
+                score = len(tokens[a.id] & tokens[b.id]) / len(union) if union else 0.0
+                if score >= CONTRADICTION_OVERLAP:
+                    pairs.append({"module": module, "entity": entity, "old": old.id, "old_kind": old.kind,
+                                  "new": new.id, "new_kind": new.kind, "overlap": round(score, 2)})
+    pairs.sort(key=lambda p: -p["overlap"])
+    return pairs[:TOP]
+
+
 def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
     from pmem.cli.doctor_cmd import coverage_report
     from pmem.cli.migrate_cmd import stray_moves
@@ -124,6 +157,7 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
         "misses": _misses(searches),
         "stale": {"total": len(stale), "by_module": stale_by_module.most_common(TOP),
                   "ids": sorted(stale)[:TOP]},
+        "contradictions": _contradictions(visible),
         "idle_modules": idle,
         "rejected": {"total": len(rejected),
                      "by_reason": Counter(reject_reason(e.get("error") or "") for e in rejected).most_common(),
@@ -164,6 +198,12 @@ def render(h: dict) -> str:
     s = h["stale"]
     section(f"可能过时的记忆（{s['total']} 条）", [f"{m}：{n} 条" for m, n in s["by_module"]],
             "打开关联代码核对：仍成立 pmem confirm <id>，不成立写 correction 替代；过时又没有替代结论的 pmem archive <id>")
+    section("疑似互相矛盾的记忆", [
+        f"{c['module']} / {c['entity']}：{c['old']}（{KIND_LABELS.get(c['old_kind'], c['old_kind'])}）"
+        f" 与 {c['new']}（{KIND_LABELS.get(c['new_kind'], c['new_kind'])}），正文相似度 {c['overlap']}"
+        for c in h["contradictions"]
+    ], "打开两条对照：确实冲突就写 correction 替代过时的那条（supersedes 填它的 id）；"
+       "只是互补就 pmem confirm <较早那条的 id>，之后不再提示")
     if h["idle_modules"]:
         section(f"统计期内本机没检索过的模块（{len(h['idle_modules'])} 个）", ["、".join(h["idle_modules"][:20])],
                 "可能是没人改这些模块，也可能是路径没登记全导致闸门没提醒；对照 pmem doctor 的覆盖率看")

@@ -39,7 +39,7 @@ modules:
     entities: [Record, Search, Secrets]
   feature.ModuleCatalog:
     description: modules.yaml 的解析、别名归一与路径映射
-    paths: [src/pmem/core/registry.py, src/pmem/cli/migrate_cmd.py, tests/core/test_registry_*.py, tests/core/conftest.py, tests/test_migrate.py]
+    paths: [src/pmem/core/registry.py, src/pmem/cli/migrate_cmd.py, src/pmem/cli/sync_cmd.py, tests/core/test_registry_*.py, tests/core/conftest.py, tests/test_migrate.py, tests/test_migrate_split.py, tests/test_sync.py]
     aliases: [Registry]
   feature.Storage:
     description: 记忆文件存储与 Git/SVN 适配

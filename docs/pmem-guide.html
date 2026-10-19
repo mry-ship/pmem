@@ -176,14 +176,15 @@ pmem doctor</code></pre>
     <tr><th>什么时候</th><th>做什么</th></tr>
     <tr><td>日常开发</td><td>什么都不用做；记忆由 AI 自动写；不想被打扰时写“跳过记忆”</td></tr>
     <tr><td>提交代码时</td><td>把 <code>.memory/</code> 新增的记忆一起提交，<code>pmem doctor</code> 会提示还有几条没提交</td></tr>
-    <tr><td>新增业务模块</td><td>在 <code>.memory/modules.yaml</code> 里加模块和路径</td></tr>
+    <tr><td>新增业务模块</td><td><code>pmem sync</code> 预览新模块和要追加的路径，<code>--apply</code> 写入（只追加）；也可直接在 <code>.memory/modules.yaml</code> 里加</td></tr>
     <tr><td>同一议题记忆变多</td><td>对 AI 说“按 pmem-compact 技能合并记忆”</td></tr>
     <tr><td>换个说法搜不到</td><td>对 AI 说“按 pmem-normalize 技能整理同义词”</td></tr>
     <tr><td>刚接入、记忆库还空</td><td>对 AI 说“按 pmem-seed 技能提炼种子记忆”，负责人用 <code>pmem seed</code> 过目后转正</td></tr>
     <tr><td>模块改名、合并</td><td><code>pmem migrate rename</code> / <code>merge</code>，记忆随之搬家（默认预览，<code>--apply</code> 执行）</td></tr>
+    <tr><td>一个模块管得太宽，要拆开</td><td><code>pmem migrate split &lt;模块&gt; --to &lt;新模块&gt;=&lt;路径&gt;</code>，记忆按关联代码分过去</td></tr>
     <tr><td>某条记忆已过时、又没有替代结论</td><td><code>pmem archive &lt;id&gt;</code>，<code>--restore</code> 撤销</td></tr>
     <tr><td>业务下线、模块不再维护</td><td><code>pmem migrate deprecate &lt;模块&gt; --apply</code>，<code>--undo</code> 撤销</td></tr>
-    <tr><td>定期收口（模块负责人）</td><td><code>pmem health</code></td></tr>
+    <tr><td>定期收口（模块负责人）</td><td>对 AI 说“按 pmem-consolidate 技能整理记忆库”（按 <code>pmem health</code> 逐节处理）</td></tr>
     <tr><td>想看效果</td><td><code>pmem report</code></td></tr>
     <tr><td>想通读全部结论</td><td>打开 <code>.memory/wiki/index.md</code>（写入记忆后自动更新，过期的标“需核实”）</td></tr>
     <tr><td>升级 pmem</td><td><code>uv tool upgrade pmem</code></td></tr>
@@ -422,6 +423,7 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td>按 pmem-compact 技能合并记忆</td><td>把同一议题的零碎记忆合并成一两条现状</td></tr>
     <tr><td>按 pmem-normalize 技能整理同义词</td><td>找出同一件事的不同叫法，登记同义词组</td></tr>
     <tr><td>按 pmem-seed 技能提炼种子记忆</td><td>为常改的模块从提交说明、文档里提炼一批待确认的结论</td></tr>
+    <tr><td>按 pmem-consolidate 技能整理记忆库</td><td>按健康报告逐节收口：矛盾的结论写更正或确认、过时的核对或归档、零碎的合并、种子过目、模块目录整理</td></tr>
   </table>
 </section>
 
@@ -486,8 +488,9 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem confirm &lt;id&gt;...</code></td><td>核对后确认仍然成立</td></tr>
     <tr><td><code>pmem seed</code></td><td>列出待确认的种子记忆；<code>--plan</code> 看候选模块；<code>--accept</code>（给 id、<code>--module</code> 或 <code>--all</code>）转正；<code>--reject &lt;id&gt;</code> 退回（归档）</td></tr>
     <tr><td><code>pmem archive &lt;id&gt;...</code></td><td>归档：不再出现在检索里，文件保留；<code>--restore</code> 恢复到归档前的状态</td></tr>
-    <tr><td><code>pmem migrate rename|merge|deprecate|tidy</code></td><td>模块改名、合并，把记忆文件搬到新模块名下；<code>deprecate</code> 把模块标为只读（<code>--undo</code> 撤销）；<code>tidy</code> 只搬还在旧名下的记忆。默认预览，<code>--apply</code> 执行；<code>--root</code>、<code>--apply</code> 写在子命令之后</td></tr>
-    <tr><td><code>pmem health [--days 60]</code></td><td>健康报告：未登记和疑似重复的模块、还在旧模块名下的记忆、无归属的代码目录、检索落空热点、可能过时的记忆、没人检索的模块、被拒绝的写入、待确认的种子</td></tr>
+    <tr><td><code>pmem migrate rename|merge|split|deprecate|tidy</code></td><td>模块改名、合并、拆分，把记忆文件搬到新模块名下；<code>split A --to 新模块=路径[,路径]</code> 可写多次，<code>--by entity</code> 按议题拆，<code>--assign id=模块</code> 指定个别记忆的去向；<code>deprecate</code> 把模块标为只读（<code>--undo</code> 撤销）；<code>tidy</code> 只搬还在旧名下的记忆。默认预览，<code>--apply</code> 执行；<code>--root</code>、<code>--apply</code> 写在子命令之后</td></tr>
+    <tr><td><code>pmem sync</code></td><td>对照代码目录列出新模块、新冷候选、要给已有模块追加的路径、新的第三方目录和可转正的冷候选；默认预览，<code>--apply</code> 只追加、不改已有模块名</td></tr>
+    <tr><td><code>pmem health [--days 60]</code></td><td>健康报告：未登记和疑似重复的模块、还在旧模块名下的记忆、无归属的代码目录、检索落空热点、可能过时的记忆、疑似互相矛盾的记忆、没人检索的模块、被拒绝的写入、待确认的种子</td></tr>
     <tr><td><code>pmem graph --module X</code></td><td>模块全貌，或某议题的时间线</td></tr>
     <tr><td><code>pmem wiki [--out 目录]</code></td><td>生成每模块一页的 Markdown Wiki（默认 <code>.memory/wiki/</code>）：议题、现行结论、历史、相关模块、代码链接，过期的标“需核实”；只覆盖它自己生成的页面。写入或确认记忆后会自动运行（<code>wiki.auto</code>）</td></tr>
     <tr><td><code>pmem list</code></td><td>模块与记忆数量</td></tr>
@@ -630,10 +633,16 @@ embedding:
     <div class="card">
       <h4>模块改名与合并（pmem migrate）</h4>
       <p><code>rename A B</code>：旧名登记为别名，读写自动转到新名。<code>merge A B</code>：A 的路径、别名、议题并入 B，A 标为 <code>merged_into</code>；A 是写入时自动新建的未登记模块或冷候选时，登记为 B 的别名。两者都会把记忆文件搬到新模块下（索引按文件里的模块名过滤，不搬就查不到）。队友迁移前写到旧名下的记忆，拉取后运行 <code>pmem migrate tidy --apply</code>。重写 <code>modules.yaml</code> 只保留文件开头的注释，预览时会提示丢失几行。<code>deprecate A</code>：业务下线时用，A 标为 <code>status: deprecated</code>，旧记忆照常可查，新写入被拒绝，改完 A 的代码也不再提醒写记忆；A 的路径仍归它，改代码前照样要先查。</p>
+      <p><code>split A --to B=路径</code>：拆分。路径必须真的分走 A 的代码文件，不能抢别的模块的文件；A 里原样写着的路径直接移给 B。记忆按关联代码在新目录里的归属分配：都落在 B 就搬到 B，落在 A 或别的模块就留在 A；横跨 A 和 B 的、没写关联代码且同议题去向不一致的留在 A 并列出来，用 <code>--assign</code> 指定。<code>--by entity</code> 时把这些议题从 A 移到 B，对应记忆跟着走。</p>
+    </div>
+    <div class="card">
+      <h4>目录同步（pmem sync）</h4>
+      <p>项目里新增了目录时运行。没被任何模块覆盖的代码按“第一个完全没有已覆盖文件的上级目录”分组：和已有模块同名、或是已有模块的又一个变体目录（同一父目录下它已有两个以上路径）的追加到那个模块；3 个文件以上且近 180 天有改动的成为新模块，否则成为冷候选；第三方目录追加到 <code>third_party</code>。冷候选有了记忆或改动 5 次以上时转正。近 90 天没改动也没记忆的模块只提示，不自动降级。</p>
     </div>
     <div class="card">
       <h4>健康报告（pmem health）</h4>
-      <p>给模块负责人定期收口用，只列有问题的段落并附处理办法。检索、拒绝等数据只来自本机事件日志；“没人检索的模块”在本机检索少于 20 次时不统计。</p>
+      <p>给模块负责人定期收口用，只列有问题的段落并附处理办法；按 pmem-consolidate 技能可以让 Agent 逐节处理。检索、拒绝等数据只来自本机事件日志；“没人检索的模块”在本机检索少于 20 次时不统计。</p>
+      <p>“疑似互相矛盾的记忆”：同模块同议题、都还现行、一条是结论或决定而另一条是排除项或更正、正文用词高度相似（不比较风险类）。确实冲突就写更正替代过时的那条；两条都成立就 <code>pmem confirm</code> 较早那条，之后不再提示。</p>
     </div>
   </div>
 </section>

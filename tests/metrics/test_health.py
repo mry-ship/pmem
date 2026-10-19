@@ -85,6 +85,43 @@ def test_health_counts_watchdog_restarts_but_not_reloads(project):
     assert "MCP 服务被看门狗重启（2 次）" in render(h)
 
 
+def test_health_flags_conflicting_memories_until_confirmed(project):
+    decided = "决定：奖励发放改为服务端校验，客户端只负责展示结果，配置缺字段时直接报错而不是回退默认奖励。"
+    excluded = "排除：奖励发放改为服务端校验行不通，客户端只负责展示结果会让离线模式没法发奖励，配置缺字段时仍回退默认奖励。"
+    service = MemoryService(project)
+    try:
+        old = service.record("gameplay.Jigsaw", "Reward", "decision", decided)["id"]
+        new = service.record("gameplay.Jigsaw", "Reward", "exclusion", excluded)["id"]
+        assert service.record("gameplay.Jigsaw", "Reward", "risk", excluded + "风险。")["ok"]
+        assert service.record("gameplay.Jigsaw", "Flow", "exclusion", excluded)["ok"]
+        assert service.record("gameplay.Jigsaw", "Reward", "conclusion", "拼图块吸附阈值过小导致拖动时频繁误判吸附，已调到半格并验证通过。")["ok"]
+    finally:
+        service.close()
+
+    pairs = build_health(project)["contradictions"]
+    assert [(p["old"], p["new"]) for p in pairs] == [(old, new)]
+    assert "疑似互相矛盾的记忆" in render(build_health(project))
+
+    service = MemoryService(project)
+    try:
+        service.confirm([old])
+    finally:
+        service.close()
+    assert build_health(project)["contradictions"] == []
+
+
+def test_health_skips_pairs_already_resolved_by_supersedes(project):
+    text = "决定：奖励发放改为服务端校验，客户端只负责展示结果，配置缺字段时直接报错。"
+    service = MemoryService(project)
+    try:
+        old = service.record("gameplay.Jigsaw", "Reward", "decision", text)["id"]
+        assert service.record("gameplay.Jigsaw", "Reward", "correction", "更正：" + text + "离线时仍回退。",
+                              supersedes=[old])["ok"]
+    finally:
+        service.close()
+    assert build_health(project)["contradictions"] == []
+
+
 def test_health_is_quiet_when_nothing_to_do(tmp_path, monkeypatch):
     monkeypatch.setenv("PMEM_AUTHOR", "alice")
     root = tmp_path / "proj"

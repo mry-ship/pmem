@@ -341,7 +341,8 @@ pmem --version</code></pre>
       <pre><code>cd D:\Work\MyGame
 pmem init --type game                     <span class="c"># 项目类型：game / app / backend / generic，决定默认模块大类</span>
 pmem init --agents cursor,claude,codex    <span class="c"># 指定接入哪些工具；默认 auto</span>
-pmem init --gate warn                     <span class="c"># 闸门力度：block（默认）/ warn / off</span></code></pre>
+pmem init --gate warn                     <span class="c"># 闸门力度：block（默认）/ warn / off，只在首次生成 config.yaml 时生效</span></code></pre>
+      <p>重复运行 <code>pmem init</code>（如升级后）只更新它生成的规则、技能、Hook 和 MCP 配置，不覆盖 <code>config.yaml</code>、<code>modules.yaml</code>。这时再给 <code>--gate</code>、<code>--type</code> 不会生效，输出里会单独列出，改闸门力度、项目类型请直接改 <code>config.yaml</code>。</p>
       <p><code>auto</code> 总会接入 Cursor；项目里已有 <code>.claude/</code> 或 <code>CLAUDE.md</code> 时接入 Claude Code，已有 <code>.codex/</code> 或 <code>AGENTS.md</code> 时接入 Codex。已有配置只合并不覆盖。</p>
       <table>
         <tr><th>工具</th><th>生成的文件</th></tr>
@@ -405,7 +406,7 @@ git commit -m "接入 pmem"</code></pre>
     <div class="arrow">→</div>
     <div class="node"><b>3. 只在三个时机写</b>根因确认；方向被排除或方案确定；改完并验证通过。</div>
     <div class="arrow">→</div>
-    <div class="node"><b>4. 结束提醒</b>改了模块却没写记忆，回合结束时自动追问一次，AI 直接补写，不需要你回复。</div>
+    <div class="node"><b>4. 结束提醒</b>改了模块却没写记忆，回合结束时自动追问一次，AI 直接补写，不需要你回复。Cursor 会把它显示成一条用户消息，首行写着“以下是 pmem 自动发给 AI 的提醒，由 AI 处理，你无需操作”。</div>
   </div>
 
   <h3>写记忆的约定</h3>
@@ -446,7 +447,7 @@ git commit -m "接入 pmem"</code></pre>
     <li>别的记忆服务也叫 <code>search_memory</code> 时，它的结果不算“查过 pmem”。</li>
     <li>拦截提示里直接列出该模块现行的排除项、风险和更正（最多 5 条），即使 AI 检索时关键词没对上，也能先看到这些坑。</li>
     <li>“查过”的判定：MCP 的 <code>search_memory</code>，或终端里运行 <code>pmem search --module &lt;模块&gt;</code>。MCP 不可用时用终端也行，不会把 Agent 卡死。</li>
-    <li>结束提醒：改了模块却没写记忆，提醒一次；整个对话只查了记忆、没改也没写，也提醒一次（<code>gate.analysis_reminder</code> 可关）。中断结束的回合和说了“跳过记忆”的对话不提醒。</li>
+    <li>结束提醒：改了模块却没写记忆，提醒一次；整个对话只查了记忆、没改也没写，也提醒一次（<code>gate.analysis_reminder</code> 可关）。中断结束的回合和说了“跳过记忆”的对话不提醒。提醒以“[pmem] 以下是 pmem 自动发给 AI 的提醒”开头，用户不用处理；Claude Code、Codex 下以 Hook 反馈的形式出现（各版本都支持）。</li>
     <li>记忆审查（不改代码也生效，每个模块每个对话一次）：
       <ul>
         <li>读代码时，附上该文件所属模块的现行结论摘要（排除项、风险优先，最多 6 条；关联代码之后改过的标“需核实”），<code>gate.read_digest</code> 可关。</li>
@@ -558,9 +559,9 @@ embedding:
 %LOCALAPPDATA%\pmem\                 <span class="c"># 本机缓存，可用环境变量 PMEM_CACHE_DIR 修改</span>
   models/                            <span class="c"># 语义模型，所有项目共享</span>
   &lt;项目名&gt;-&lt;路径哈希&gt;/
-    vectors.db                       <span class="c"># 向量缓存（SQLite），删掉可重建</span>
+    vectors.db                       <span class="c"># 向量缓存（SQLite），用到语义检索才创建，删掉可重建</span>
     sessions/&lt;对话&gt;.json             <span class="c"># 闸门状态，7 天过期</span>
-    events.jsonl  cites.json         <span class="c"># 收益统计，超过 20 MB 轮转</span>
+    events.jsonl  cites.json         <span class="c"># 收益统计，超过 20 MB 轮转；events.lock 是并发写入时的锁</span>
     hooks.log  hook-errors.log</code></pre>
 
   <div class="callout ok">
@@ -706,6 +707,8 @@ pmem reindex</code></pre>
   <p>检索总是返回得分最高的几条，由 Agent 读正文判断是否相关。真实数据上相关和不相关的得分区间重叠，设阈值会把真命中也挡掉，所以没加。把常用叫法写全比阈值更管用。</p>
   <h3>用 SVN 可以吗？</h3>
   <p>可以。作者和版本号取自 SVN，新记忆会自动 <code>svn add</code>，终端命令的事后比对也支持。按函数判断“需核实”目前只支持 Git。</p>
+  <h3>对话里出现一条“[pmem] 以下是 pmem 自动发给 AI 的提醒”，要我处理吗？</h3>
+  <p>不用。这是回合结束时 pmem 自动发给 AI 的提醒（比如改了代码还没写记忆），Cursor 把它显示成一条用户消息。AI 会直接补写记忆或说明“已核对，无新结论”，写什么由 AI 根据本轮的改动自己总结，不需要你提供原因。</p>
   <h3>Hook 出错会卡住我吗？</h3>
   <p>不会。任何异常都直接放行，错误记在本机日志里；随后 AI 会在回复里提醒你一次“那次没做记忆检查”，用 <code>pmem doctor</code> 看原因。</p>
   <h3>队友没装 pmem 会怎样？</h3>

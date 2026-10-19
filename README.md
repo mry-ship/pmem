@@ -36,7 +36,7 @@
 - **改前先查**：AI 要改某个文件，pmem 找到它所属的业务模块（如 `gameplay.Jigsaw`），把以前的根因、排除过的方向和风险交给 AI。
 - **问答也查**：AI 读到某个模块的代码时，自动附上该模块现行结论的摘要。
 - **改后记录**：确认根因、排除某个方向、改完验证通过时，AI 自动按模块写一条记忆。
-- **自动兜底**：AI 忘了查就去改，会被拦下直到查过为止；改了代码却没记，回合结束时提醒一次。
+- **自动兜底**：AI 忘了查就去改，会被拦下直到查过为止；改了代码却没记，回合结束时提醒一次。这条提醒以“[pmem] 以下是 pmem 自动发给 AI 的提醒”开头，由 AI 自己补写，你不用回复。
 - **不用过期结论**：记忆关联的代码后来改过或被删了，会自动标出“需核实”。
 
 ![一次对话的流程：接手 → ①改前查 → 改代码 → ②写结论 → ③提交共享](docs/images/pmem-flow.svg)
@@ -69,7 +69,7 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 | 记忆多了，合并零碎记忆 | 对 AI 说“按 pmem-compact 技能合并记忆” |
 | 换个说法搜不到 | 对 AI 说“按 pmem-normalize 技能整理同义词”（如“闪退 / 崩溃”） |
 | 新增了业务模块 | `pmem sync` 对照代码目录列出新模块、要追加的路径和新的第三方目录（默认预览，加 `--apply` 只追加、不改已有模块名）；也可以直接在 `.memory/modules.yaml` 里加 |
-| 模块改名、合并 | `pmem migrate rename <旧> <新>` / `pmem migrate merge <被并入> <保留>`，记忆随之搬家（默认预览，加 `--apply` 执行）；队友之后写到旧名下的，`pmem migrate tidy --apply` |
+| 模块改名、合并 | `pmem migrate rename <旧> <新>` / `pmem migrate merge <被并入> <保留>`，记忆随之搬家（默认预览，加 `--apply` 执行）。合并写错的模块名时默认不把它登记为别名，以后还会这样叫才加 `--alias`；队友之后写到旧名下的，`pmem migrate tidy --apply`；搬到一半失败时按提示运行列出的命令补完 |
 | 一个模块管得太宽，要拆开 | `pmem migrate split <模块> --to <新模块>=<路径>`（按议题拆加 `--by entity`）：记忆按关联代码分到新模块，判断不了的列出来，用 `--assign <id>=<模块>` 指定 |
 | 个别记忆写错了模块 | `pmem migrate move <id> ... --to <模块>`：id、替代关系和关联代码都不变（默认预览，加 `--apply` 执行） |
 | 代码文件改名、搬家后记忆都标“需核实” | `pmem anchors --rename <旧路径>=<新路径>`：改写所有记忆的关联代码，文件、目录或 `路径#函数名` 都行（默认预览） |
@@ -79,7 +79,7 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 | 定期收口（模块负责人） | 对 AI 说“按 pmem-consolidate 技能整理记忆库”，它按 `pmem health` 逐节处理：疑似互相矛盾的记忆、可能过时的记忆、零碎记忆、反复查不到的问题、待确认的种子、未登记或重复的模块 |
 | 看收益 | `pmem report`：命中率、避坑次数、跨人复用 |
 | 通读全部结论 | 打开 `.memory/wiki/index.md`，每个模块一页，写入记忆后自动更新 |
-| 升级 | `uv tool upgrade pmem`，再在项目里运行一次 `pmem init`（不会覆盖已有配置） |
+| 升级 | `uv tool upgrade pmem`，再在项目里运行一次 `pmem init`（不会覆盖已有配置；这时给的 `--gate`、`--type` 不生效，会单独提示，直接改 `.memory/config.yaml`） |
 
 <details>
 <summary><b>一条记忆长什么样</b></summary>

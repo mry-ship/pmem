@@ -151,7 +151,7 @@
       <h4>核心特点</h4>
       <ul>
         <li><strong>挂载式</strong>：不改代码，也不改工作方式</li>
-        <li><strong>自动触发</strong>：Hook 改前拦截、结束提醒；出错直接放行，不卡开发</li>
+        <li><strong>自动触发</strong>：Hook 改前拦截、结束提醒；出错直接放行并提醒一次，不卡开发</li>
         <li><strong>按模块寻址</strong>：改哪个文件就查哪个业务模块</li>
         <li><strong>本地 + 团队共享</strong>：记忆在仓库里，Git / SVN 均可</li>
         <li><strong>不用过期结论</strong>：关联代码变了标“需核实”，新结论替代旧结论</li>
@@ -200,7 +200,7 @@ pmem doctor</code></pre>
   <ul>
     <li><strong>不需要服务器和数据库</strong>：记忆就是仓库里的文件；检索索引只是本机缓存，删了能重建。</li>
     <li><strong>按模块寻址</strong>：改哪个文件，就自动查那个文件所属模块的记忆。</li>
-    <li><strong>Agent 主动 + Hooks 兜底</strong>：规则告诉 AI 何时查、何时写；它漏了，Hooks（工具调用前后的拦截脚本）会提醒，任何异常都直接放行，不会卡住开发。</li>
+    <li><strong>Agent 主动 + Hooks 兜底</strong>：规则告诉 AI 何时查、何时写；它漏了，Hooks（工具调用前后的拦截脚本）会提醒，任何异常都直接放行（随后提醒一次），不会卡住开发。</li>
     <li><strong>问答也审查</strong>：读到哪个模块的代码，就附上该模块现行结论的摘要；问题提到的模块本轮没查过，回合结束时要求 AI 查过再核对回答。</li>
     <li><strong>收益可量化</strong>：<code>pmem report</code> 统计命中率、避坑次数、跨人复用；<code>pmem bench</code> 做有记忆 / 无记忆对照实验。</li>
   </ul>
@@ -706,7 +706,7 @@ pmem reindex</code></pre>
   <h3>用 SVN 可以吗？</h3>
   <p>可以。作者和版本号取自 SVN，新记忆会自动 <code>svn add</code>，终端命令的事后比对也支持。按函数判断“需核实”目前只支持 Git。</p>
   <h3>Hook 出错会卡住我吗？</h3>
-  <p>不会。任何异常都直接放行，错误记在本机日志里。</p>
+  <p>不会。任何异常都直接放行，错误记在本机日志里；随后 AI 会在回复里提醒你一次“那次没做记忆检查”，用 <code>pmem doctor</code> 看原因。</p>
   <h3>队友没装 pmem 会怎样？</h3>
   <p>不会卡住，但闸门和审查都不生效。新对话开始时 AI 会收到提示，告诉他先安装；<code>pmem doctor</code> 也会检查。项目接入较早、没有 <code>.memory/bin/pmem-hook</code> 的，重新运行一次 <code>pmem init</code>。</p>
   <h3>多个项目会互相影响吗？</h3>

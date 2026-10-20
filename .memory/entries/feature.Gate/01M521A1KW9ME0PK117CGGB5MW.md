@@ -6,7 +6,7 @@ kind: decision
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/gate.py#_inject
+- src/pmem/hooks/mcp.py#_inject
 revision: git:4479338
 author: 1002378395@qq.com
 note_date: '2026-10-16'

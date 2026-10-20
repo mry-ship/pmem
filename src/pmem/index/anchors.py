@@ -4,13 +4,16 @@
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
 import re
 import time
+import warnings
 from datetime import date, datetime
 from datetime import time as dt_time
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -27,6 +30,8 @@ MAX_CACHED = 512
 STATE_CACHE_SECONDS = 600.0
 ANCHOR_CACHE = "anchors.json"
 SAME_WORK_DAYS = 7
+# 合并进来的旧提交逐个比对函数，超过这么多次就只按文件判断
+MAX_MERGED_COMMITS = 10
 STALE_LABEL = "需核实"
 _DEF_KEYWORDS = r"(?:def|class|function|func|fn|struct|interface|enum|record)"
 _NOT_DEF_PREFIX = re.compile(r"^\s*(?:return|if|else|while|for|foreach|switch|case|await|new|throw|yield)\b")
@@ -77,18 +82,78 @@ def _member(symbol: str) -> str:
     return re.split(r"\.|::", symbol.strip())[-1]
 
 
+def _python_code(line: str) -> str:
+    """去掉行尾注释和字符串内容，只留判断括号、冒号用的代码。"""
+    out, quote, escaped = [], "", False
+    for char in line:
+        if quote:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = ""
+            continue
+        if char in "'\"":
+            quote = char
+        elif char == "#":
+            break
+        else:
+            out.append(char)
+    return "".join(out).rstrip()
+
+
 def symbol_block(text: str, symbol: str) -> str | None:
     """文件里某个符号（函数、类、方法）的完整代码块，找不到返回 None。
     “类名.成员”先找到类，再在类里找成员，免得落到别的类的同名方法（close、__init__）；找不到类时按成员找。"""
     parts = [p for p in re.split(r"\.|::", symbol.strip()) if p]
     if not parts:
         return None
+    found = _python_block(text, tuple(parts))
+    if found is not None:
+        return found
     scope, scoped = text, False
     for owner in parts[:-1]:
         block = _block(scope, owner, scoped)
         if block is not None:
             scope, scoped = block, True
     return _block(scope, parts[-1], scoped)
+
+
+@lru_cache(maxsize=32)
+def _python_tree(text: str) -> ast.Module | None:
+    # 用户代码里的 "\d" 这类无效转义会触发 SyntaxWarning 打到 stderr，污染 --brief 输出和 Hook 的 stderr
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            return ast.parse(text)
+        except (SyntaxError, ValueError, RecursionError, MemoryError):
+            return None
+
+
+def _python_block(text: str, parts: tuple[str, ...]) -> str | None:
+    """能按 Python 解析的文件用语法树取起止行（含装饰器）：按缩进截取会被顶格的多行字符串截断，
+    多行参数的装饰器也合并不进来。解析不了或找不到符号时返回 None，交给按文本截取。"""
+    if not re.search(r"^\s*(?:async\s+)?(?:def|class)\s", text, re.MULTILINE):
+        return None
+    tree = _python_tree(text)
+    if tree is None:
+        return None
+    defs = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+
+    def first(scope: ast.AST, name: str) -> ast.AST | None:
+        hits = [n for n in ast.walk(scope) if isinstance(n, defs) and n.name == name and n is not scope]
+        return min(hits, key=lambda n: n.lineno, default=None)
+
+    scope: ast.AST = tree
+    for owner in parts[:-1]:
+        scope = first(scope, owner) or scope
+    node = first(scope, parts[-1])
+    if node is None or node.end_lineno is None:
+        return None
+    start = min([node.lineno, *(d.lineno for d in node.decorator_list)]) - 1
+    lines = text.splitlines()[start:node.end_lineno]
+    return "\n".join(line.rstrip() for line in lines).rstrip()
 
 
 def _block(text: str, name: str, inside: bool) -> str | None:
@@ -102,16 +167,22 @@ def _block(text: str, name: str, inside: bool) -> str | None:
     head = lines[start]
     indent = len(head) - len(head.lstrip())
     if re.match(r"\s*(?:async\s+)?(?:def|class)\b", head):
-        # 签名可能跨多行：括号配平且以冒号结尾的那一行之后才是函数体
+        # 签名可能跨多行：括号配平且以冒号结尾的那一行之后才是函数体；冒号后还有代码是单行定义
         end, balance = start, 0
         while end < len(lines):
-            balance += lines[end].count("(") - lines[end].count(")")
-            if balance <= 0 and lines[end].endswith(":"):
+            code = _python_code(lines[end])
+            balance += code.count("(") - code.count(")")
+            if balance <= 0 and ":" in code:
                 break
             end += 1
+        one_line = end < len(lines) and not _python_code(lines[end]).endswith(":")
         end += 1
-        while end < len(lines) and (not lines[end].strip() or len(lines[end]) - len(lines[end].lstrip()) > indent):
+        while not one_line and end < len(lines) and (
+                not lines[end].strip() or len(lines[end]) - len(lines[end].lstrip()) > indent):
             end += 1
+        while start > offset and lines[start - 1].strip().startswith("@") and \
+                len(lines[start - 1]) - len(lines[start - 1].lstrip()) == indent:
+            start -= 1
         return "\n".join(lines[start:end]).rstrip()
     depth, opened = 0, False
     for end in range(start, len(lines)):
@@ -215,7 +286,8 @@ class AnchorChecker:
             dirty = self.vcs.dirty_files() if self.vcs.cheap_dirty_files else None
             if dirty is not None:
                 parts = [self.vcs.revision(), date.today().isoformat()]
-                for rel in sorted(p for p in dirty if not p.startswith(f"{MEMORY_DIR}/")):
+                # 只排除记忆文件本身（每次写入都会变）；config.yaml、modules.yaml 也可能是锚点
+                for rel in sorted(p for p in dirty if not p.startswith(f"{MEMORY_DIR}/entries/")):
                     try:
                         stat = (self.root / rel).stat()
                         parts.append(f"{rel}:{stat.st_mtime_ns}:{stat.st_size}")
@@ -292,7 +364,42 @@ class AnchorChecker:
                         _add(problems, entry.id, f"{rel} 于 {_day(moment)} 改过")
                     elif problem:
                         _add(problems, entry.id, problem)
+            self._check_merged_in(alive, problems)
         return problems
+
+    def _check_merged_in(self, alive: dict[str, list[tuple[Entry, str]]], problems: dict[str, list[str]]) -> None:
+        """写入时本地还没有、之后拉取或合并进来的提交：提交时间早于写入，按时间比较看不到。
+        确认过的记忆跳过：确认时看到的已是合并后的代码，确认时的版本没有记下来。"""
+        prefix = f"{self.vcs.name}:"
+        groups: dict[str, list[tuple[Entry, str, str]]] = {}
+        for rel, pairs in alive.items():
+            for entry, symbol in pairs:
+                if entry.id not in problems and not entry.verified and entry.revision.startswith(prefix):
+                    groups.setdefault(entry.revision[len(prefix):], []).append((entry, rel, symbol))
+        for revision, items in groups.items():
+            try:
+                commits = self.vcs.commits_after(revision, sorted({rel for _, rel, _ in items}))
+            except Exception:  # noqa: BLE001, S112
+                continue
+            for entry, rel, symbol in items:
+                # 写入之后的提交由时间规则判断（含记忆连同代码一起提交的那次）；留一分钟余量，与 _baselines 一致
+                older = [(c, t) for c, t in commits.get(rel, []) if t < written_at(entry) - 60]
+                problem = self._merged_problem(rel, symbol, older) if older else None
+                if problem:
+                    _add(problems, entry.id, problem)
+
+    def _merged_problem(self, rel: str, symbol: str, commits: list[tuple[str, float]]) -> str | None:
+        note = "（写入时本地还没有这次提交，之后拉取或合并进来）"
+        if not symbol:
+            return f"{rel} 于 {_day(commits[0][1])} 改过{note}"
+        for commit, moment in commits[:MAX_MERGED_COMMITS]:
+            before = self.vcs.file_in_commit(f"{commit}^", rel) or ""
+            after = self.vcs.file_in_commit(commit, rel) or ""
+            if symbol_block(before, symbol) != symbol_block(after, symbol):
+                return f"{rel} 中 {symbol} 于 {_day(moment)} 改过{note}"
+        if len(commits) > MAX_MERGED_COMMITS:
+            return f"{rel} 于 {_day(commits[0][1])} 改过{note}"
+        return None
 
 
 def _day(moment: float) -> str:

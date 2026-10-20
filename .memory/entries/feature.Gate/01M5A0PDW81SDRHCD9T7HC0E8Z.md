@@ -7,8 +7,8 @@ status: active
 supersedes: []
 anchors:
 - src/pmem/hooks/gate.py#handle
-- src/pmem/hooks/gate.py#fill_stale
-- src/pmem/hooks/gate.py#memory_lines
+- src/pmem/hooks/memories.py#fill_stale
+- src/pmem/hooks/memories.py#memory_lines
 revision: git:4e8ab24
 author: 1002378395@qq.com
 note_date: '2026-10-19'

@@ -11,7 +11,7 @@ anchors:
 - src/pmem/catalog/migrate.py#plan_merge
 - src/pmem/core/registry.py#deprecated
 - src/pmem/service/record.py#_record
-- src/pmem/hooks/gate.py#_deprecated
+- src/pmem/hooks/reminders.py#_deprecated
 revision: git:2f0f6f6
 author: 1002378395@qq.com
 note_date: '2026-10-16'
@@ -22,7 +22,7 @@ aliases:
 - deprecated
 - deprecate
 verified: '2026-10-20'
-verified_at: '2026-10-20T18:57:28.399+08:00'
+verified_at: '2026-10-20T19:48:17.753+08:00'
 ---
 决定：模块废弃用 modules.yaml 里的 status: deprecated 表示（Module.deprecated），由 pmem migrate deprecate <模块> [--undo] 写入，默认预览、--apply 执行；
 只接受登记模块的正式名，重复废弃或撤销未废弃的模块会拒绝。

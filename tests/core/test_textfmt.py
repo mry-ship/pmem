@@ -34,6 +34,11 @@ def test_does_not_break_inside_brackets():
     assert format_content("检索不受影响（换行只是空白；\n句号本来就打断二元组）。") == "检索不受影响（换行只是空白；句号本来就打断二元组）。"
 
 
+def test_line_breaks_written_inside_brackets_are_kept():
+    text = "调用 foo(a,\n    b) 时会重复计数。"
+    assert format_content(text) == text
+
+
 def test_unbalanced_bracket_does_not_swallow_following_lines():
     text = "取值区间为 (0, 1]，超出会被截断。\n原因：配置没校验。\n风险：旧存档里的 0 值 :( 会报错。"
     assert format_content(text) == text

@@ -6,9 +6,9 @@ kind: conclusion
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/gate.py#_guard
-- src/pmem/hooks/gate.py#_target_modules
-- src/pmem/hooks/gate.py#_confirm_cli_calls
+- src/pmem/hooks/guard.py#_guard
+- src/pmem/hooks/memories.py#_target_modules
+- src/pmem/hooks/mcp.py#_confirm_cli_calls
 - src/pmem/hooks/shell.py#cli_args
 - src/pmem/hooks/shell.py#_nested
 revision: git:43a477e

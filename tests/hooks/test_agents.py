@@ -60,9 +60,12 @@ def test_claude_edit_is_denied_until_module_searched(root):
     assert output["permissionDecision"] == "deny"
     assert 'search_memory(module="gameplay.Jigsaw")' in output["permissionDecisionReason"]
 
-    search = {"session_id": "s1", "tool_name": "mcp__pmem__search_memory", "tool_input": {"module": "gameplay.Jigsaw"}}
+    search = {"session_id": "s1", "tool_name": "mcp__pmem__search_memory",
+              "tool_input": {"module": "gameplay.Jigsaw", "query": "奖励"}}
     marked = run("claude", "pre-tool", search, root)
-    assert marked["hookSpecificOutput"]["updatedInput"]["source_conversation"] == "s1"
+    # Claude Code 的 updatedInput 整体替换原参数，必须带上原有字段
+    assert marked["hookSpecificOutput"]["updatedInput"] == {"module": "gameplay.Jigsaw", "query": "奖励",
+                                                            "source_conversation": "s1"}
     assert run("claude", "pre-tool", claude_edit(root, "src/Jigsaw/Board.cs"), root)  # 还没返回结果
     result = {"content": [{"type": "text", "text": json.dumps({"ok": True, "module": "gameplay.Jigsaw", "items": []})}]}
     run("claude", "post-tool", {**search, "tool_response": result}, root)

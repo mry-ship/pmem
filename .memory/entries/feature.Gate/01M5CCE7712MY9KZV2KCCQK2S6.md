@@ -6,8 +6,8 @@ kind: conclusion
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/gate.py#_pop_cli_pending
-- src/pmem/hooks/gate.py#_confirm_cli_calls
+- src/pmem/hooks/mcp.py#_pop_cli_pending
+- src/pmem/hooks/mcp.py#_confirm_cli_calls
 revision: git:030bbcb
 author: 1002378395@qq.com
 note_date: '2026-10-20'

@@ -7,7 +7,7 @@ status: active
 supersedes:
 - 01M4ZD0C7VYS755CHE1TKQ82M9
 anchors:
-- src/pmem/hooks/gate.py#on_stop
+- src/pmem/hooks/reminders.py#on_stop
 - src/pmem/generate/templates.py
 revision: git:6d89f59
 author: 1002378395@qq.com

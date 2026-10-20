@@ -7,7 +7,7 @@ status: active
 supersedes: []
 anchors:
 - src/pmem/hooks/shell.py#may_change_unseen
-- src/pmem/hooks/gate.py#Gate._dirty_snapshot
+- src/pmem/hooks/snapshot.py#_dirty_snapshot
 revision: git:f778c1a
 author: 1002378395@qq.com
 note_date: '2026-10-16'
@@ -16,7 +16,8 @@ aliases:
 - 快照慢
 - svn 只读命令
 - 终端卡顿
-verified: '2026-10-19'
+verified: '2026-10-20'
+verified_at: '2026-10-20T19:41:56.467+08:00'
 ---
 结论：SVN 工作副本上终端命令的执行前后比对有两处多余开销，已去掉。
 

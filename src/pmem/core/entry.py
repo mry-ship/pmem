@@ -47,6 +47,18 @@ def _text(value) -> str | None:
     return text or None
 
 
+def _str_list(meta: dict, key: str) -> list[str]:
+    """手改的 YAML 头里列表字段常写成单个值（supersedes: 01JA…）：按一项处理；写成字典等其他类型报 ValueError。"""
+    value = meta.get(key)
+    if value is None or value == "":
+        return []
+    if isinstance(value, (str, int, float)):
+        return [str(value)]
+    if isinstance(value, list):
+        return [str(x) for x in value if x is not None and not isinstance(x, (dict, list))]
+    raise ValueError(f"YAML 头的 {key} 应是列表")
+
+
 @dataclass
 class Entry:
     id: str
@@ -160,8 +172,16 @@ class Entry:
             raise ValueError("记忆文件缺少 YAML 头（以 --- 开始和结束）")
         import yaml
 
-        meta = yaml.safe_load(match.group(1)) or {}
-        source = meta.get("source") or {}
+        try:
+            meta = yaml.safe_load(match.group(1)) or {}
+        except yaml.YAMLError as exc:
+            raise ValueError(f"YAML 头写错了：{exc}") from exc
+        if not isinstance(meta, dict):
+            raise ValueError("YAML 头不是键值对")  # noqa: TRY004  调用方按 ValueError 统一处理文件格式错误
+        missing = [k for k in ("id", "module", "entity", "kind", "note_date") if not meta.get(k)]
+        if missing:
+            raise ValueError(f"YAML 头缺少 {'、'.join(missing)}")
+        source = meta.get("source") if isinstance(meta.get("source"), dict) else {}
         archived = meta.get("archived") if isinstance(meta.get("archived"), dict) else {}
         restored = str(archived.get("from") or "")
         reverted = meta.get("reverted") if isinstance(meta.get("reverted"), dict) else {}
@@ -175,10 +195,10 @@ class Entry:
             author=str(meta.get("author") or ""),
             revision=str(meta.get("revision") or "none"),
             status=str(meta.get("status") or "active"),
-            supersedes=[str(x) for x in meta.get("supersedes") or []],
-            anchors=[str(x) for x in meta.get("anchors") or []],
+            supersedes=_str_list(meta, "supersedes"),
+            anchors=_str_list(meta, "anchors"),
             source_conversation=source.get("conversation"),
-            aliases=[str(x) for x in meta.get("aliases") or []],
+            aliases=_str_list(meta, "aliases"),
             verified=str(meta["verified"]) if meta.get("verified") else None,
             verified_at=str(meta["verified_at"]) if meta.get("verified_at") else None,
             archived_on=str(archived["on"]) if archived.get("on") else None,

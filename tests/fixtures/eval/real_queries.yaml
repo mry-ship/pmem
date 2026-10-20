@@ -1,0 +1,716 @@
+# 由 scripts/eval_real_queries.py build 生成：本仓库真实检索，答案是同一对话里 Agent 回复确实用到的记忆。
+# 重新生成会覆盖；ts 是检索时刻，评测时按那天的记忆库状态（as_of）重放，并去掉检索之后才写下的记忆。
+queries:
+- module: feature.Gate
+  q: beforeSubmitPrompt sessionStart 注入上下文 additional_context 自动检索
+  ts: 1792052100.072
+  as_of: '2026-10-15'
+  expect:
+  - 01M4X3ZQA22N8G9AAYGGK4VPNS
+- module: feature.Gate
+  q: draft_id 自动覆盖 同模块 不同议题
+  ts: 1792051761.59
+  as_of: '2026-10-15'
+  expect:
+  - 01M4X3ZQA22N8G9AAYGGK4VPNS
+  - 01M4X40AZ2F8MM7Q8T6DQGT5BD
+- module: feature.Gate
+  q: hook 适配 输出格式
+  ts: 1792055877.209
+  as_of: '2026-10-15'
+  expect:
+  - 01M4X41PDY5RKYFMJFP30P5TS2
+  - 01M4X40AZ2F8MM7Q8T6DQGT5BD
+- module: feature.Gate
+  q: search_memory 注入 updated_input 其他服务
+  ts: 1792064493.386
+  as_of: '2026-10-15'
+  expect:
+  - 01M4X41PDY5RKYFMJFP30P5TS2
+  - 01M4X3ZQA22N8G9AAYGGK4VPNS
+- module: feature.Gate
+  q: 强制模式 block 默认 结束提醒 查过没写
+  ts: 1792054936.408
+  as_of: '2026-10-15'
+  expect:
+  - 01M4X3ZQA22N8G9AAYGGK4VPNS
+- module: feature.Onboarding
+  q: init 模板 配置 默认 gate
+  ts: 1792054937.815
+  as_of: '2026-10-15'
+  expect:
+  - 01M4X3ZRBXFCR3NE89YMGKNY3S
+- module: feature.Onboarding
+  q: init 生成 配置
+  ts: 1792055878.639
+  as_of: '2026-10-15'
+  expect:
+  - 01M4X3ZRBXFCR3NE89YMGKNY3S
+- module: feature.Retrieval
+  q: stale 关联代码 同义
+  ts: 1792055881.524
+  as_of: '2026-10-15'
+  expect:
+  - 01M4X40BBTRXTJT8KJS5DJ3AB0
+- module: feature.Retrieval
+  q: stale 核对 改动日期 误报
+  ts: 1792058128.131
+  as_of: '2026-10-15'
+  expect:
+  - 01M4X40BBTRXTJT8KJS5DJ3AB0
+- module: feature.Retrieval
+  q: 提交日 基准 stale 7 天
+  ts: 1792064572.679
+  as_of: '2026-10-15'
+  expect:
+  - 01M4X40BBTRXTJT8KJS5DJ3AB0
+- module: feature.Tools
+  q: record 字段 MCP 工具
+  ts: 1792055880.179
+  as_of: '2026-10-15'
+  expect:
+  - 01M4X3ZQVT896027Z2P2Z9VN9G
+- module: feature.Tools
+  q: 写入提示 缺原因
+  ts: 1792050246.707
+  as_of: '2026-10-15'
+  expect:
+  - 01M4X3ZQVT896027Z2P2Z9VN9G
+- module: feature.Curation
+  q: 归档 恢复 archived
+  ts: 1792161178.928
+  as_of: '2026-10-16'
+  expect:
+  - 01M4Z58VYP1ZT8X81SW5TTQXCB
+- module: feature.Gate
+  q: cd 切换目录 相对路径 终端写文件 绕过
+  ts: 1792140905.481
+  as_of: '2026-10-16'
+  expect:
+  - 01M51VMZYT0266DSKQ153E41QQ
+  - 01M4ZNZNHMR37EZ75K1T55BPQS
+  - 01M4X3ZQA22N8G9AAYGGK4VPNS
+- module: feature.Gate
+  q: postToolUse 读文件 提醒
+  ts: 1792130724.585
+  as_of: '2026-10-16'
+  expect:
+  - 01M4ZFGA60PXFPYPF65R9ZTGV9
+  - 01M4Z5DGNT04KV06074JS5CYY6
+- module: feature.Gate
+  q: record 注入 draft_id 锚点
+  ts: 1792143480.259
+  as_of: '2026-10-16'
+  expect:
+  - 01M4ZNZNHMR37EZ75K1T55BPQS
+  - 01M4X40AZ2F8MM7Q8T6DQGT5BD
+- module: feature.Gate
+  q: shell 快照 慢 svn 只读命令
+  ts: 1792148240.835
+  as_of: '2026-10-16'
+  expect:
+  - 01M4X3ZQA22N8G9AAYGGK4VPNS
+  - 01M4X40AZ2F8MM7Q8T6DQGT5BD
+- module: feature.Gate
+  q: 会话状态 并发 锁 已查过 判定 终端 写文件 识别
+  ts: 1792137290.701
+  as_of: '2026-10-16'
+  expect:
+  - 01M4Z5DGNT04KV06074JS5CYY6
+  - 01M4ZFGA60PXFPYPF65R9ZTGV9
+  - 01M4X7MV5T0RF0ZQYDDGJ1J768
+- module: feature.Gate
+  q: 别家记忆服务 同名工具 search_memory 参数注入 tool_name
+  ts: 1792140903.504
+  as_of: '2026-10-16'
+  expect:
+  - 01M4ZNZNHMR37EZ75K1T55BPQS
+  - 01M4X3ZQA22N8G9AAYGGK4VPNS
+  - 01M4X41PDY5RKYFMJFP30P5TS2
+- module: feature.Gate
+  q: 快照 只读命令 svn
+  ts: 1792148196.738
+  as_of: '2026-10-16'
+  expect:
+  - 01M4X40AZ2F8MM7Q8T6DQGT5BD
+- module: feature.Gate
+  q: 执行前后快照 dirty_files 耗时 tool_name MCP 前缀
+  ts: 1792141451.161
+  as_of: '2026-10-16'
+  expect:
+  - 01M4X3ZQA22N8G9AAYGGK4VPNS
+  - 01M4ZNZNHMR37EZ75K1T55BPQS
+  - 01M4X40AZ2F8MM7Q8T6DQGT5BD
+- module: feature.Gate
+  q: 放行 绕过 不拦截 漏查
+  ts: 1792133433.436
+  as_of: '2026-10-16'
+  expect:
+  - 01M4ZFGA60PXFPYPF65R9ZTGV9
+- module: feature.Gate
+  q: 结束提醒 无需记录 stop followup
+  ts: 1792131732.459
+  as_of: '2026-10-16'
+  expect:
+  - 01M4X3ZQA22N8G9AAYGGK4VPNS
+- module: feature.Gate
+  q: 耗时 缓存 轻量
+  ts: 1792138337.86
+  as_of: '2026-10-16'
+  expect:
+  - 01M4Z5DGNT04KV06074JS5CYY6
+- module: feature.Gate
+  q: 跳过记忆 提示
+  ts: 1792133097.021
+  as_of: '2026-10-16'
+  expect:
+  - 01M4Z5DGNT04KV06074JS5CYY6
+- module: feature.ModuleCatalog
+  q: migrate 改名 合并 搬动记忆文件
+  ts: 1792159474.055
+  as_of: '2026-10-16'
+  expect:
+  - 01M4X6ETSPH4CHRHE76VRX9404
+- module: feature.ModuleCatalog
+  q: modules.yaml 改写 迁移 别名
+  ts: 1792158823.539
+  as_of: '2026-10-16'
+  expect:
+  - 01M4X6ETSPH4CHRHE76VRX9404
+- module: feature.ModuleCatalog
+  q: 模块名 匹配 别名 词边界
+  ts: 1792131669.117
+  as_of: '2026-10-16'
+  expect:
+  - 01M4X6ETSPH4CHRHE76VRX9404
+- module: feature.ModuleCatalog
+  q: 模块表 加载
+  ts: 1792138596.797
+  as_of: '2026-10-16'
+  expect:
+  - 01M4X6ETSPH4CHRHE76VRX9404
+- module: feature.ModuleCatalog
+  q: 耗时 缓存 轻量
+  ts: 1792138341.185
+  as_of: '2026-10-16'
+  expect:
+  - 01M4X6ETSPH4CHRHE76VRX9404
+- module: feature.Onboarding
+  q: Hook 配置 spike 录制脚本 hooks.json 开销
+  ts: 1792134691.182
+  as_of: '2026-10-16'
+  expect:
+  - 01M51R6108Z66X6CVCGJVREX3N
+- module: feature.Onboarding
+  q: Hooks 模板 postToolUse matcher 旧版
+  ts: 1792137293.647
+  as_of: '2026-10-16'
+  expect:
+  - 01M51R6108Z66X6CVCGJVREX3N
+- module: feature.Onboarding
+  q: hooks.json 命令 Windows 找不到 pmem 包装脚本 未安装
+  ts: 1792141452.872
+  as_of: '2026-10-16'
+  expect:
+  - 01M51WPMA9NWRCQJ9MQTRV19D0
+  - 01M51VN7Y3RVS2A3Q5TZ9FJC7B
+- module: feature.Onboarding
+  q: 命令行 record 测试
+  ts: 1792143545.939
+  as_of: '2026-10-16'
+  expect:
+  - 01M51VN7Y3RVS2A3Q5TZ9FJC7B
+  - 01M51WPMA9NWRCQJ9MQTRV19D0
+- module: feature.Retrieval
+  q: 过期核对 指纹 缓存 dirty_files
+  ts: 1792148242.755
+  as_of: '2026-10-16'
+  expect:
+  - 01M51PJKCPP62KWN7YTWYRD2KJ
+- module: feature.Retrieval
+  q: 过期核对 缓存 指纹 SVN
+  ts: 1792148192.444
+  as_of: '2026-10-16'
+  expect:
+  - 01M51PJKCPP62KWN7YTWYRD2KJ
+- module: feature.Storage
+  q: dirty_files SVN
+  ts: 1792148194.647
+  as_of: '2026-10-16'
+  expect:
+  - 01M4XFGPBBEE838VGRFE9V7WWG
+  - 01M51WPVG6P4VR20F8R50MNWY4
+  - 01M51QHCXMVN0NXWBM7T9FGJ5H
+- module: feature.Storage
+  q: dirty_files svn
+  ts: 1792148244.878
+  as_of: '2026-10-16'
+  expect:
+  - 01M4XFGPBBEE838VGRFE9V7WWG
+  - 01M51QHCXMVN0NXWBM7T9FGJ5H
+  - 01M51WPVG6P4VR20F8R50MNWY4
+- module: feature.Storage
+  q: draft_id 覆盖 未提交 路径 changed_after 并发
+  ts: 1792135153.731
+  as_of: '2026-10-16'
+  expect:
+  - 01M51QHCXMVN0NXWBM7T9FGJ5H
+- module: feature.Storage
+  q: draft_id 覆盖 校验
+  ts: 1792137292.194
+  as_of: '2026-10-16'
+  expect:
+  - 01M51QHCXMVN0NXWBM7T9FGJ5H
+- module: feature.Storage
+  q: 写入记忆文件 FilesStorage
+  ts: 1792152692.093
+  as_of: '2026-10-16'
+  expect:
+  - 01M51VN6PNEY4WZXDSR558EPB3
+  - 01M4XFGPBBEE838VGRFE9V7WWG
+  - 01M51QHCXMVN0NXWBM7T9FGJ5H
+- module: feature.Storage
+  q: 测试 缓存目录
+  ts: 1792138638.26
+  as_of: '2026-10-16'
+  expect:
+  - 01M51QHCXMVN0NXWBM7T9FGJ5H
+- module: feature.Storage
+  q: 耗时 缓存 轻量
+  ts: 1792138346.59
+  as_of: '2026-10-16'
+  expect:
+  - 01M51QHCXMVN0NXWBM7T9FGJ5H
+- module: feature.Storage
+  q: 草稿覆盖 未提交 draft_id 作者 不可变
+  ts: 1792140988.445
+  as_of: '2026-10-16'
+  expect:
+  - 01M51VN6PNEY4WZXDSR558EPB3
+  - 01M4XFGPBBEE838VGRFE9V7WWG
+  - 01M51QHCXMVN0NXWBM7T9FGJ5H
+  - 01M51WPVG6P4VR20F8R50MNWY4
+- module: feature.Tools
+  q: MCP 返回格式 _dump 字段 token
+  ts: 1792141863.269
+  as_of: '2026-10-16'
+  expect:
+  - 01M51QHKGAWTNB7K76E4PPF8BS
+- module: feature.Tools
+  q: memory_graph 图谱
+  ts: 1792130726.04
+  as_of: '2026-10-16'
+  expect:
+  - 01M4ZFGJPJQB3B8JDX14CRT84V
+- module: feature.Tools
+  q: record 写入 正文 格式 字数上限
+  ts: 1792152749.613
+  as_of: '2026-10-16'
+  expect:
+  - 01M51QHKGAWTNB7K76E4PPF8BS
+- module: infra.Model
+  q: Entry 归档 archived
+  ts: 1792161191.595
+  as_of: '2026-10-16'
+  expect:
+  - 01M51PJWSRY2S5AJE1KWR9ZEK0
+  - 01M51NZ4APGK08SQ9RBKHVG36J
+- module: infra.Model
+  q: ULID 校验 格式
+  ts: 1792137289.002
+  as_of: '2026-10-16'
+  expect:
+  - 01M51NZ4APGK08SQ9RBKHVG36J
+- module: infra.Model
+  q: 耗时 缓存 轻量
+  ts: 1792138342.921
+  as_of: '2026-10-16'
+  expect:
+  - 01M51NZ4APGK08SQ9RBKHVG36J
+- module: infra.Model
+  q: 记忆文件格式 正文 序列化 Entry
+  ts: 1792152687.744
+  as_of: '2026-10-16'
+  expect:
+  - 01M51WPKCSBNTXFWYJT8T8RXGX
+  - 01M51NZ4APGK08SQ9RBKHVG36J
+- module: infra.Model
+  q: 配置 读取 缓存 yaml
+  ts: 1792138258.451
+  as_of: '2026-10-16'
+  expect:
+  - 01M51NZ4APGK08SQ9RBKHVG36J
+- module: feature.Curation
+  q: compact 合并 类型名
+  ts: 1792395049.441
+  as_of: '2026-10-19'
+  expect:
+  - 01M4Z58VYP1ZT8X81SW5TTQXCB
+- module: feature.Curation
+  q: seed 热度排序
+  ts: 1792397142.601
+  as_of: '2026-10-19'
+  expect:
+  - 01M4Z58VYP1ZT8X81SW5TTQXCB
+- module: feature.Curation
+  q: 跳过目录 skip_dir Unity
+  ts: 1792404542.188
+  as_of: '2026-10-19'
+  expect:
+  - 01M52HVPEXSNK7NTFNB9Y89B48
+- module: feature.Gate
+  q: Hook 延迟 每次启动 扫描文件 性能
+  ts: 1792424025.962
+  as_of: '2026-10-19'
+  expect:
+  - 01M51WPMA9NWRCQJ9MQTRV19D0
+  - 01M59TCE7RFN0JR2XH5P5ZJ7RM
+- module: feature.Gate
+  q: 项目级坑
+  ts: 1792423852.2
+  as_of: '2026-10-19'
+  expect:
+  - 01M59TCE7RFN0JR2XH5P5ZJ7RM
+- module: feature.Metrics
+  q: 健康报告
+  ts: 1792399938.715
+  as_of: '2026-10-19'
+  expect:
+  - 01M59JBB0KQFARQZPTG3GNAPA1
+- module: feature.ModuleCatalog
+  q: migrate split sync candidates
+  ts: 1792393114.787
+  as_of: '2026-10-19'
+  expect:
+  - 01M4X6ETSPH4CHRHE76VRX9404
+- module: feature.ModuleCatalog
+  q: sync split 拆分
+  ts: 1792393470.845
+  as_of: '2026-10-19'
+  expect:
+  - 01M4X6ETSPH4CHRHE76VRX9404
+- module: feature.Onboarding
+  q: config.yaml 模板 MCP 服务 配置
+  ts: 1792391348.605
+  as_of: '2026-10-19'
+  expect:
+  - 01M51VN7Y3RVS2A3Q5TZ9FJC7B
+  - 01M4X3ZRBXFCR3NE89YMGKNY3S
+  - 01M51ZHM28NFFYA6V0V4NH7VMC
+- module: feature.Onboarding
+  q: init 合并 hooks.json mcp.json integrations
+  ts: 1792410971.218
+  as_of: '2026-10-19'
+  expect:
+  - 01M51VN7Y3RVS2A3Q5TZ9FJC7B
+  - 01M59KHDFWMBSWCAMYQTTPTKF3
+- module: feature.Onboarding
+  q: skill 模板 热度
+  ts: 1792393474.547
+  as_of: '2026-10-19'
+  expect:
+  - 01M51WPMA9NWRCQJ9MQTRV19D0
+  - 01M51VN7Y3RVS2A3Q5TZ9FJC7B
+- module: feature.Onboarding
+  q: 扫描 热度 提交历史 HOOK_EVENTS
+  ts: 1792397141.402
+  as_of: '2026-10-19'
+  expect:
+  - 01M4X3ZRBXFCR3NE89YMGKNY3S
+  - 01M51VN7Y3RVS2A3Q5TZ9FJC7B
+- module: feature.Onboarding
+  q: 热度 git log 子目录 relative 扫描
+  ts: 1792395707.836
+  as_of: '2026-10-19'
+  expect:
+  - 01M51ZHM28NFFYA6V0V4NH7VMC
+  - 01M4X3ZRBXFCR3NE89YMGKNY3S
+- module: feature.Onboarding
+  q: 生成 接入 模板 拆分
+  ts: 1792411192.359
+  as_of: '2026-10-19'
+  expect:
+  - 01M59JBD5RPA14QG2Z1VMG8N0A
+  - 01M51VN7Y3RVS2A3Q5TZ9FJC7B
+  - 01M59KHDFWMBSWCAMYQTTPTKF3
+  - 01M59G7FMN5H2D5EAZCADVAE3G
+- module: feature.Tools
+  q: archive restore 恢复 返回 status
+  ts: 1792408725.959
+  as_of: '2026-10-19'
+  expect:
+  - 01M52J02DJ260P2N4BHMNZK4DW
+- module: feature.Tools
+  q: record_memory 写入校验 返回格式 source_conversation 字段
+  ts: 1792423169.371
+  as_of: '2026-10-19'
+  expect:
+  - 01M59YEFJ6ZJ1S9KJYG33JVPNH
+  - 01M59KGYQAWMJW3QGTA5J5BQKQ
+- module: infra.Common
+  q: init --gate --type seed 参数
+  ts: 1792408779.802
+  as_of: '2026-10-19'
+  expect:
+  - 01M59J9C0FFHN1CMZ9PD2M4PB5
+  - 01M59G7GPJG7QF430R6429J4GG
+- module: infra.Common
+  q: 测试 交接 去重
+  ts: 1792423797.819
+  as_of: '2026-10-19'
+  expect:
+  - 01M5A8NCEC7G3F9ZVWG0MZHVJV
+  - 01M52GTB9Y9ZEE2G2PBTDNV8XV
+  - 01M5A1JBRA5SB1MWP4Y3Q7DS7A
+- module: infra.Common
+  q: 缓存目录 文件 分层 core
+  ts: 1792423348.727
+  as_of: '2026-10-19'
+  expect:
+  - 01M5A1JBRA5SB1MWP4Y3Q7DS7A
+  - 01M5A8NCEC7G3F9ZVWG0MZHVJV
+- module: infra.Model
+  q: config.yaml 解析失败 配置校验 secret_patterns 正则
+  ts: 1792395449.973
+  as_of: '2026-10-19'
+  expect:
+  - 01M51NZ4APGK08SQ9RBKHVG36J
+- module: feature.Curation
+  q: Merge Seed Anchors WriteHints
+  ts: 1792493997.21
+  as_of: '2026-10-20'
+  expect:
+  - 01M5A8NFH6H7HCM2FHJJ0Q0RAD
+- module: feature.Curation
+  q: compact undo
+  ts: 1792490516.517
+  as_of: '2026-10-20'
+  expect:
+  - 01M5A8NFH6H7HCM2FHJJ0Q0RAD
+- module: feature.Curation
+  q: 功能记录 写作提示
+  ts: 1792489479.949
+  as_of: '2026-10-20'
+  expect:
+  - 01M59J79G56HDC9K5N03Z7GK22
+- module: feature.Gate
+  q: Claude Code Codex hooks 事件 输出格式 适配
+  ts: 1792493509.16
+  as_of: '2026-10-20'
+  expect:
+  - 01M59TCE7RFN0JR2XH5P5ZJ7RM
+  - 01M59KGHXJSZG6ZPT1GRAXPZAN
+- module: feature.Gate
+  q: Codex additionalContext PowerShell Claude 适配
+  ts: 1792493622.4
+  as_of: '2026-10-20'
+  expect:
+  - 01M59TCE7RFN0JR2XH5P5ZJ7RM
+  - 01M59KGHXJSZG6ZPT1GRAXPZAN
+  - 01M51NT6KBHR112A1Y5EWTMQGF
+  - 01M4X40AZ2F8MM7Q8T6DQGT5BD
+- module: feature.Gate
+  q: cli pending search registration parallel
+  ts: 1792490515.557
+  as_of: '2026-10-20'
+  expect:
+  - 01M59KGHXJSZG6ZPT1GRAXPZAN
+- module: feature.Gate
+  q: cli pending shell search
+  ts: 1792490015.405
+  as_of: '2026-10-20'
+  expect:
+  - 01M59KGHXJSZG6ZPT1GRAXPZAN
+- module: feature.Gate
+  q: gate.py 拆分 模块结构 导入耗时 hook 启动
+  ts: 1792496329.652
+  as_of: '2026-10-20'
+  expect:
+  - 01M5CF95TGB794Z9Z2XKNBMTEM
+- module: feature.Gate
+  q: sudo env 前缀 绕过闸门
+  ts: 1792494140.662
+  as_of: '2026-10-20'
+  expect:
+  - 01M59KGHXJSZG6ZPT1GRAXPZAN
+- module: feature.Gate
+  q: 结束提醒 功能记录
+  ts: 1792489177.119
+  as_of: '2026-10-20'
+  expect:
+  - 01M59TCE7RFN0JR2XH5P5ZJ7RM
+- module: feature.Import
+  q: LanceDB 导入
+  ts: 1792494011.659
+  as_of: '2026-10-20'
+  expect:
+  - 01M5A1KDQ5SPRR50DHRTZEG4T6
+- module: feature.Metrics
+  q: Events Report Quality Health
+  ts: 1792493999.969
+  as_of: '2026-10-20'
+  expect:
+  - 01M4XF770TCRKHWCK45QAKNC1V
+- module: feature.Metrics
+  q: health 健康报告 替代关系
+  ts: 1792496688.39
+  as_of: '2026-10-20'
+  expect:
+  - 01M5CFJKZZKE2DD8Y2Q3KS85WT
+- module: feature.Onboarding
+  q: Claude Codex 接入 hooks skills init doctor
+  ts: 1792493621.886
+  as_of: '2026-10-20'
+  expect:
+  - 01M5A0PEWG6WSEJXC1SNZFGPD0
+  - 01M51VN7Y3RVS2A3Q5TZ9FJC7B
+  - 01M52G7P3FMY0VYA8HHKYWF9WX
+  - 01M51ZHM28NFFYA6V0V4NH7VMC
+- module: feature.Onboarding
+  q: Codex Claude Code 适配 hooks 规则 AGENTS.md CLAUDE.md MCP 配置
+  ts: 1792493503.72
+  as_of: '2026-10-20'
+  expect:
+  - 01M5A0PEWG6WSEJXC1SNZFGPD0
+  - 01M51VN7Y3RVS2A3Q5TZ9FJC7B
+  - 01M51ZHM28NFFYA6V0V4NH7VMC
+  - 01M52G7P3FMY0VYA8HHKYWF9WX
+- module: feature.Onboarding
+  q: doctor
+  ts: 1792490015.278
+  as_of: '2026-10-20'
+  expect:
+  - 01M51QHH4KWDAX349Z1M37XC37
+  - 01M5A0PEWG6WSEJXC1SNZFGPD0
+  - 01M52G7P3FMY0VYA8HHKYWF9WX
+- module: feature.Onboarding
+  q: doctor 扫描 文件索引
+  ts: 1792489943.129
+  as_of: '2026-10-20'
+  expect:
+  - 01M59JBD5RPA14QG2Z1VMG8N0A
+  - 01M51QHH4KWDAX349Z1M37XC37
+  - 01M5A0PEWG6WSEJXC1SNZFGPD0
+- module: feature.Onboarding
+  q: doctor 现行记忆统计
+  ts: 1792489974.072
+  as_of: '2026-10-20'
+  expect:
+  - 01M51QHH4KWDAX349Z1M37XC37
+  - 01M52G7P3FMY0VYA8HHKYWF9WX
+  - 01M59JBD5RPA14QG2Z1VMG8N0A
+  - 01M51VN7Y3RVS2A3Q5TZ9FJC7B
+- module: feature.Onboarding
+  q: file index scan mentions
+  ts: 1792490376.649
+  as_of: '2026-10-20'
+  expect:
+  - 01M59KHDFWMBSWCAMYQTTPTKF3
+  - 01M5A0PEWG6WSEJXC1SNZFGPD0
+- module: feature.Onboarding
+  q: 替代 归档 合并 回滚 记忆图 清理 健康报告
+  ts: 1792489918.946
+  as_of: '2026-10-20'
+  expect:
+  - 01M52G7P3FMY0VYA8HHKYWF9WX
+  - 01M59G7FMN5H2D5EAZCADVAE3G
+  - 01M51QHH4KWDAX349Z1M37XC37
+  - 01M5A0PEWG6WSEJXC1SNZFGPD0
+  - 01M59JBD5RPA14QG2Z1VMG8N0A
+- module: feature.Retrieval
+  q: supersede archived replaces
+  ts: 1792490517.586
+  as_of: '2026-10-20'
+  expect:
+  - 01M52HVD0GXQP9MYEJSGF23EG7
+  - 01M5AA7DVGMZW6HHYKKVEF7Q09
+- module: feature.Retrieval
+  q: 替代 归档 回看
+  ts: 1792489942.751
+  as_of: '2026-10-20'
+  expect:
+  - 01M52HVD0GXQP9MYEJSGF23EG7
+  - 01M5AA7DVGMZW6HHYKKVEF7Q09
+- module: feature.Tools
+  q: change_status archive restore
+  ts: 1792490045.318
+  as_of: '2026-10-20'
+  expect:
+  - 01M59YEFJ6ZJ1S9KJYG33JVPNH
+  - 01M59KGYQAWMJW3QGTA5J5BQKQ
+  - 01M59R05JVPBPEWZMB0MZYCB2P
+- module: feature.Tools
+  q: change_status 归档 恢复
+  ts: 1792489943.265
+  as_of: '2026-10-20'
+  expect:
+  - 01M59YEFJ6ZJ1S9KJYG33JVPNH
+  - 01M59KGYQAWMJW3QGTA5J5BQKQ
+- module: feature.Tools
+  q: revert archive restore
+  ts: 1792490516.246
+  as_of: '2026-10-20'
+  expect:
+  - 01M59YEFJ6ZJ1S9KJYG33JVPNH
+  - 01M59R05JVPBPEWZMB0MZYCB2P
+- module: feature.Tools
+  q: 替代 归档 合并 回滚 记忆图 清理 健康报告
+  ts: 1792489917.009
+  as_of: '2026-10-20'
+  expect:
+  - 01M59YEFJ6ZJ1S9KJYG33JVPNH
+  - 01M59R05JVPBPEWZMB0MZYCB2P
+  - 01M59KGYQAWMJW3QGTA5J5BQKQ
+- module: feature.Tools
+  q: 每日上限 替代 豁免 search.limit 默认条数
+  ts: 1792495706.996
+  as_of: '2026-10-20'
+  expect:
+  - 01M5ACNAPSVJZG4Y3F08N2YW89
+- module: infra.Common
+  q: CLI ContentFile Docs
+  ts: 1792493998.542
+  as_of: '2026-10-20'
+  expect:
+  - 01M5A8NCEC7G3F9ZVWG0MZHVJV
+  - 01M5A2WHCTTDB55NXFYAVDR2P8
+  - 01M52GTB9Y9ZEE2G2PBTDNV8XV
+- module: infra.Common
+  q: tests map cli
+  ts: 1792490486.185
+  as_of: '2026-10-20'
+  expect:
+  - 01M5A1JBRA5SB1MWP4Y3Q7DS7A
+  - 01M5A2WHCTTDB55NXFYAVDR2P8
+  - 01M5A2X278E033B7PHC34M2EME
+- module: infra.Common
+  q: 测试 health 报告
+  ts: 1792496687.249
+  as_of: '2026-10-20'
+  expect:
+  - 01M5A1JBRA5SB1MWP4Y3Q7DS7A
+- module: infra.Common
+  q: 测试 闸门 功能记录
+  ts: 1792489448.636
+  as_of: '2026-10-20'
+  expect:
+  - 01M5A1JBRA5SB1MWP4Y3Q7DS7A
+- module: infra.Model
+  q: reverted supersedes archived
+  ts: 1792490516.867
+  as_of: '2026-10-20'
+  expect:
+  - 01M5A966BYC9VJRG07ZT8QNRKW
+- module: infra.Model
+  q: 撤销合并 替代 归档
+  ts: 1792489942.974
+  as_of: '2026-10-20'
+  expect:
+  - 01M59J8Y2TQ3GZTSZSAYZNTGRT
+- module: infra.Model
+  q: 新增记忆类型 字段 兼容
+  ts: 1792488467.444
+  as_of: '2026-10-20'
+  expect:
+  - 01M5A966BYC9VJRG07ZT8QNRKW
+  - 01M59J8Y2TQ3GZTSZSAYZNTGRT

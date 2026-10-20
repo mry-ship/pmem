@@ -9,7 +9,7 @@ supersedes:
 anchors:
 - src/pmem/core/config.py#DEFAULTS
 - src/pmem/generate/templates.py#CURSOR_HOOKS
-- src/pmem/hooks/gate.py#_reviews_on
+- src/pmem/hooks/review.py#_reviews_on
 revision: git:7c086e5
 author: 1002378395@qq.com
 note_date: '2026-10-20'

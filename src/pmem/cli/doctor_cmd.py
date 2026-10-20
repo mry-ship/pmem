@@ -10,7 +10,7 @@ from collections import Counter
 from pathlib import Path
 
 from pmem.catalog.coverage import coverage_report
-from pmem.core.config import Config
+from pmem.core.config import Config, ConfigError
 from pmem.core.entry import VISIBLE_STATUSES
 from pmem.core.quality import similar_entity_pairs
 from pmem.core.registry import ModuleRegistry, RegistryError
@@ -43,15 +43,21 @@ def _recent_errors(path: Path, now: float | None = None) -> list[str]:
 
 
 def run_doctor(root: Path) -> int:
-    problems = 0
+    problems = warnings = 0
 
     def line(mark: str, text: str) -> None:
-        nonlocal problems
+        nonlocal problems, warnings
         problems += mark == BAD
+        warnings += mark == WARN
         print(f"  {mark} {text}")
 
     print(f"pmem 自检：{root}")
-    config = Config.load(root)
+    try:
+        config = Config.load(root)
+    except ConfigError as exc:
+        line(BAD, f"配置读不出：{exc}")
+        print("自检中止：先改好 .memory/config.yaml")
+        return 1
     vcs = detect_vcs(root, config.get("vcs"))
     line(OK, f"配置可读；版本控制 {vcs.name}；作者 {vcs.current_user()}；闸门 {config.get('gate.mode')}")
 
@@ -177,7 +183,7 @@ def run_doctor(root: Path) -> int:
         except Exception:  # noqa: BLE001, S110
             pass
 
-    print("自检完成" + ("，有需要处理的问题" if problems else "，一切正常"))
+    print("自检完成" + ("，有需要处理的问题" if problems else f"，有 {warnings} 项提醒" if warnings else "，一切正常"))
     return 1 if problems else 0
 
 

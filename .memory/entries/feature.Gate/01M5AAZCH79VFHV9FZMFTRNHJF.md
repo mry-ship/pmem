@@ -7,7 +7,7 @@ status: active
 supersedes: []
 anchors:
 - src/pmem/index/graph.py#digest
-- src/pmem/hooks/gate.py#_offer_digest
+- src/pmem/hooks/review.py#_offer_digest
 revision: git:8e4415f
 author: 1002378395@qq.com
 note_date: '2026-10-19'

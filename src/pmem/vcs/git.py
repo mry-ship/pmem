@@ -43,8 +43,34 @@ class GitVCS(VCS):
         proc = run_tool(["git", "show", f"{rev}:./{rel}"], self.root)
         return proc.stdout.decode("utf-8", errors="replace") if proc.returncode == 0 else None
 
-    def is_committed(self, path: Path) -> bool:
-        return bool(self._git("log", "-1", "--format=%h", "--", str(path)))
+    def commits_after(self, revision: str, paths: list[str]) -> dict[str, list[tuple[str, float]]]:
+        found: dict[str, list[tuple[str, float]]] = {}
+        for batch in path_batches(paths):
+            out = self._git("log", f"{revision}..HEAD", "--format=@%H %ct", "--name-only", "--relative", "--", *batch)
+            if out is None:
+                return {}
+            commit, moment = "", 0.0
+            for line in out.splitlines():
+                if line.startswith("@"):
+                    commit, _, stamp = line[1:].partition(" ")
+                    moment = float(stamp or 0)
+                elif line.strip():
+                    found.setdefault(line.strip(), []).append((commit, moment))
+        wanted = {p.replace("\\", "/") for p in paths}
+        return {k: v for k, v in found.items() if k in wanted}
+
+    def file_in_commit(self, commit: str, rel: str) -> str | None:
+        proc = run_tool(["git", "show", f"{commit}:./{rel}"], self.root)
+        return proc.stdout.decode("utf-8", errors="replace") if proc.returncode == 0 else None
+
+    def is_committed(self, path: Path) -> bool | None:
+        out = self._git("log", "-1", "--format=%h", "--", str(path))
+        if out is not None:
+            return bool(out)
+        # 还没有任何提交的新仓库里 git log 也会失败，这时确实没提交过
+        if self._git("rev-parse", "--git-dir") is not None and self._git("rev-parse", "--verify", "-q", "HEAD") is None:
+            return False
+        return None
 
     def commit_times(self, paths: list[str], since: float) -> dict[str, list[float]]:
         found: dict[str, list[float]] = {}

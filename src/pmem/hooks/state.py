@@ -27,6 +27,8 @@ _DEFAULTS = {
     # 已在摘要或拦截提示里给过的全项目级记忆，同一对话不再重复
     "project_shown": [],
     "project_done": False,
+    # 摘要里“需核实”的处理说明本对话已经给过
+    "stale_explained": False,
 }
 
 
@@ -88,7 +90,15 @@ class SessionState:
     @contextmanager
     def locked(self) -> Iterator[SessionState]:
         """同一对话的 Hook 会并行执行（Cursor 并行发出的工具调用各起一个进程），读、改、写必须串行，
-        否则后写的会覆盖先写的。等锁超时就不加锁继续，宁可偶尔丢一次更新，也不卡住开发。"""
+        否则后写的会覆盖先写的。等锁超时就不加锁继续，宁可偶尔丢一次更新，也不卡住开发。
+        可重入：已在锁内时直接沿用，不重新读盘（重读会丢掉外层还没保存的改动，Windows 上还会空等到超时）。"""
+        if getattr(self, "_depth", 0):
+            self._depth += 1
+            try:
+                yield self
+            finally:
+                self._depth -= 1
+            return
         self.dir.mkdir(parents=True, exist_ok=True)
         lock_path = self.path.with_suffix(".lock")
         with open(lock_path, "a+b") as fh:
@@ -103,10 +113,12 @@ class SessionState:
                     os.utime(lock_path)
                 except OSError:
                     pass
+            self._depth = 1
             try:
                 self.data = self._load()
                 yield self
             finally:
+                self._depth = 0
                 if held:
                     _unlock(fh)
 

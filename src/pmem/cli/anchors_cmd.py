@@ -72,7 +72,7 @@ def run_rename(root: Path, raw: list[str], apply: bool) -> int:
         print(exc)
         return 1
     config = Config.load(root)
-    storage = FilesStorage(root, detect_vcs(root, config.get("vcs")))
+    storage = FilesStorage(root, detect_vcs(root, config.get("vcs")), bool(config.get("svn_auto_add")))
     changes: list[tuple[Path, object, list[str]]] = []
     missing: list[str] = []
     for path, entry in storage.iter_all():
@@ -120,7 +120,7 @@ def run_anchors(root: Path, module: str | None, apply: bool) -> int:
         except RegistryError as exc:
             print(exc)
             return 1
-    storage = FilesStorage(root, detect_vcs(root, config.get("vcs")))
+    storage = FilesStorage(root, detect_vcs(root, config.get("vcs")), bool(config.get("svn_auto_add")))
     print("扫描仓库文件…", flush=True)
     files = FileIndex(root, registry)
     scanned = changed = total = 0

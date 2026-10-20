@@ -66,9 +66,12 @@ class SvnVCS(VCS):
         item = self._item_status(path)
         return item is None or item in _UNCOMMITTED
 
-    def is_committed(self, path: Path) -> bool:
+    def is_committed(self, path: Path) -> bool | None:
         item = self._item_status(path)
-        return item is not None and item not in ("unversioned", "added")
+        if item is None:
+            # svn 命令出错：查不出，由调用方按“无法确认”处理（草稿不允许覆盖）
+            return None
+        return item not in ("unversioned", "added")
 
     def uncommitted_count(self, folder: Path, suffix: str = ".md") -> int | None:
         if not folder.is_dir():

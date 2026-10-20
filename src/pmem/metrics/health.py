@@ -41,6 +41,8 @@ REJECT_CODES = {
     "status_invalid": "状态不对",
     "scope_invalid": "适用范围不对",
     "supersede_cycle": "替代关系成环",
+    "supersede_cross_module": "替代了别的模块的记忆",
+    "entity_invalid": "议题名不对（多行或过长）",
 }
 # 没有错误码的旧事件按提示文字归类，按顺序匹配；“上限”的提示里也提到 draft_id，所以排在前面
 REJECT_REASONS = (
@@ -155,6 +157,15 @@ def _repeat_corrections(entries: list, since: float) -> list[tuple[str, str, int
     return sorted(rows, key=lambda r: (-r[2], r[0], r[1]))[:TOP]
 
 
+def _cross_module_supersedes(entries: list, visible: set[str]) -> list[dict]:
+    """现行记忆替代了别的模块的记忆：被替代的那条从原模块的检索里消失，查原模块看不到新结论。
+    写入时已经拒绝，这里列出规则之前写下的，以及之后被 migrate move 搬到别处的。"""
+    by_id = {e.id: e for e in entries}
+    return [{"id": e.id, "module": e.module, "replaced": s, "replaced_module": by_id[s].module}
+            for e in entries if e.id in visible
+            for s in e.supersedes if s in by_id and by_id[s].module != e.module]
+
+
 def _skipped(events: list[dict], entries: list, user: str, since: float) -> list[tuple[str, int]]:
     """改了代码却没写功能记录（含回复“无需记录”）的模块，按对话数排；需要记录的模块以 stop 事件的 required 为准。"""
     mine = [e for e in entries if e.author == user and ulid_ms(e.id) / 1000 >= since]
@@ -229,6 +240,7 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
                   "ids": sorted(stale)[:TOP]},
         "contradictions": _contradictions(visible),
         "repeat_corrections": _repeat_corrections(all_entries, since),
+        "cross_supersedes": _cross_module_supersedes(all_entries, {e.id for e in visible}),
         "skipped_records": _skipped(events, all_entries, user, since),
         "cleanup": cleanup,
         "idle_modules": idle,
@@ -282,6 +294,11 @@ def render(h: dict) -> str:
             [f"{m} / {e}：{n} 条更正" for m, e, n in h.get("repeat_corrections") or []],
             "用 pmem graph --module <模块> --entity <议题> 看演变：缺排除项或风险就补一条（全项目都会踩的加 scope: project），"
             "零碎的按 pmem-compact 合并成一条现状")
+    section("替代了别的模块的记忆（原模块查不到新结论）",
+            [f"{c['module']} 的 {c['id']} 替代了 {c['replaced_module']} 的 {c['replaced']}"
+             for c in h.get("cross_supersedes") or []][:TOP],
+            "被替代的那条本来就归错了模块：pmem migrate move <被替代的 id> --to <新结论所在模块> --apply；"
+            "确实属于原模块：在原模块补一条 correction 替代它，正文说明新结论在哪个模块")
     section("改了代码却没写功能记录（含回复“无需记录”的）",
             [f"{m}：{n} 次对话" for m, n in h.get("skipped_records") or []],
             "抽查这些对话：是用户要求的行为就补一条 feature（需求来源、必须保持的行为），免得以后被当冗余改回去；"
@@ -300,7 +317,7 @@ def render(h: dict) -> str:
                 "可能是没人改这些模块，也可能是路径没登记全导致闸门没提醒；对照 pmem doctor 的覆盖率看")
     section("召回偏低（记忆多、常被检索，但大部分教训从没被返回过）", [render_recall(r) for r in h.get("recall") or []],
             "用 pmem search --module <模块> --entity <议题> 看从没返回的议题：常问却查不到的给记忆补 aliases、"
-            "按 pmem-normalize 登记同义词；模块管得太宽就 pmem migrate split <模块> --by entity 拆开；已过时的按清理候选处理")
+            "按 pmem-normalize 登记同义词；模块管得太宽就 pmem migrate split <模块> --by entity --to <新模块>=<议题> 拆开；已过时的按清理候选处理")
     r = h["rejected"]
     section(f"被拒绝的写入（{r['total']} 次）", [f"{label}：{n} 次" for label, n in r["by_reason"]]
             + ([f"集中在：{'、'.join(f'{m} {n} 次' for m, n in r['by_module'])}"] if r["by_module"] else []),

@@ -6,7 +6,7 @@ kind: correction
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/gate.py#_inject
+- src/pmem/hooks/mcp.py#_inject
 - src/pmem/hooks/payload.py#_extract
 revision: git:4672c28
 author: 1002378395@qq.com

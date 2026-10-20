@@ -6,8 +6,8 @@ kind: decision
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/gate.py#FOLLOWUP_HEADER
-- src/pmem/hooks/gate.py#on_stop
+- src/pmem/hooks/reminders.py#FOLLOWUP_HEADER
+- src/pmem/hooks/reminders.py#on_stop
 revision: git:a92221a
 author: 1002378395@qq.com
 note_date: '2026-10-19'
@@ -17,7 +17,7 @@ aliases:
 - 自动提醒像用户消息
 - followup
 verified: '2026-10-20'
-verified_at: '2026-10-20T18:57:28.399+08:00'
+verified_at: '2026-10-20T19:41:56.467+08:00'
 source:
   conversation: 6b540a20-0fb2-45fe-9ffb-9ce5b287b508
 ---

@@ -264,6 +264,38 @@ def test_draft_overwrite_is_exempt_from_daily_cap(svc):
     assert again["ok"] is True
 
 
+def test_draft_of_another_entity_does_not_skip_daily_cap(svc):
+    record(svc)
+    record(svc, content=LONG + "补充一")
+    other = record(svc, entity="Config")
+    moved = record(svc, content=LONG + "补充二", draft_id=other["id"])
+    assert moved["ok"] is False and moved["code"] == "daily_cap"
+
+
+def test_overlong_summary_and_entity_are_rejected(svc):
+    result = record(svc, summary="很长的标题" * 50)
+    assert result["ok"] is False and result["code"] == "content_length"
+    result = record(svc, entity="Reward\n第二行")
+    assert result["ok"] is False and result["code"] == "entity_invalid"
+    result = record(svc, entity="E" * 61)
+    assert result["ok"] is False and result["code"] == "entity_invalid"
+
+
+def test_secret_in_anchors_is_rejected(svc):
+    result = record(svc, anchors=["src/AKIAABCDEFGHIJKLMNOP.cs"])
+    assert result["ok"] is False and result["code"] == "secret"
+
+
+def test_draft_overwrite_keeps_unknown_front_matter_fields(svc):
+    first = record(svc)
+    path = svc.storage.path_for(svc.index.find(first["id"]))
+    text = path.read_text(encoding="utf-8").replace("\n---\n", "\nreviewer: 张三\n---\n", 1)
+    path.write_text(text, encoding="utf-8")
+    svc.index.refresh(force=True)
+    record(svc, content=LONG + "更新", draft_id=first["id"])
+    assert "reviewer: 张三" in path.read_text(encoding="utf-8")
+
+
 def test_supersedes_hides_old(svc):
     old = record(svc)
     new = record(svc, kind="correction", content="更正：" + LONG, supersedes=[old["id"]])
@@ -285,6 +317,39 @@ def test_superseding_an_already_superseded_entry_does_not_skip_daily_cap(svc):
     record(svc, content=LONG + "补充一", supersedes=[old["id"]])
     third = record(svc, content=LONG + "补充二", supersedes=[old["id"]])
     assert third["ok"] is False and third["code"] == "daily_cap"
+
+
+def test_superseding_an_archived_entry_does_not_skip_daily_cap(svc):
+    old = record(svc, entity="Config")
+    svc.change_status([old["id"]], "archive")
+    record(svc, entity="Config", content=LONG + "补充一")
+    third = record(svc, entity="Config", content=LONG + "补充二", supersedes=[old["id"]])
+    assert third["ok"] is False and third["code"] == "daily_cap"
+
+
+def test_superseding_another_modules_entry_is_rejected(svc):
+    """跨模块替代会让旧结论从原模块的检索里消失，查原模块的人却看不到新结论。"""
+    other = record(svc, module="economy.Shop", entity="Config")
+    result = record(svc, entity="Config", supersedes=[other["id"]])
+    assert result["ok"] is False and result["code"] == "supersede_cross_module"
+    assert "economy.Shop" in result["error"] and "pmem migrate move" in result["error"]
+    assert svc.search("economy.Shop", None, None, None)["items"][0]["id"] == other["id"]
+    draft = record(svc, entity="Config")
+    again = record(svc, entity="Config", draft_id=draft["id"], supersedes=[other["id"]])
+    assert again["ok"] is False and again["code"] == "supersede_cross_module"
+
+
+def test_write_rules_see_changes_made_by_another_process_just_now(svc, project):
+    """常驻 MCP 服务的索引有节流；终端刚归档的草稿不能被立刻覆盖回现行。"""
+    draft = record(svc)
+    svc.search("gameplay.Jigsaw", None, None, None)
+    cli = MemoryService(project)
+    try:
+        assert cli.change_status([draft["id"]], "archive")["ok"] is True
+    finally:
+        cli.close()
+    again = record(svc, content=LONG + "补充", draft_id=draft["id"])
+    assert again["ok"] is False and again["code"] == "draft_forbidden"
 
 
 def test_secret_in_aliases_is_rejected(svc):

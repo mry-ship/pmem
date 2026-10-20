@@ -7,8 +7,8 @@ status: active
 supersedes:
 - 01M51VMYMTTEC3T8HFRCX3ZTDW
 anchors:
-- src/pmem/hooks/gate.py#_note_cli_calls
-- src/pmem/hooks/gate.py#_confirm_cli_calls
+- src/pmem/hooks/mcp.py#_note_cli_calls
+- src/pmem/hooks/mcp.py#_confirm_cli_calls
 - src/pmem/hooks/gate.py#error_notice
 - src/pmem/hooks/shell.py#cli_args
 revision: git:407c1fd

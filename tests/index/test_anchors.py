@@ -1,6 +1,7 @@
 import os
 import subprocess
 import time
+from dataclasses import replace
 from datetime import date, datetime
 from datetime import time as dt_time
 from pathlib import Path
@@ -45,6 +46,39 @@ def test_python_block_spans_multiline_signature_and_blank_lines():
     block = symbol_block(PY, "first")
     assert block.startswith("def first(a,") and block.endswith("return total")
     assert symbol_block(PY, "Box.size") == "    def size(self):\n        return 1"
+
+
+@pytest.mark.parametrize("head", ["def f(): return 1", "def f() -> int: return 1"])
+def test_one_line_python_def_ends_on_its_own_line(head):
+    assert symbol_block(f"{head}\n\ndef g():\n    return 2\n", "f") == head
+
+
+def test_trailing_comment_after_the_colon_still_ends_the_signature():
+    text = "def f(a,  # 第一行\n      b):  # 注释\n    return a\n\ndef g():\n    return 2\n"
+    assert symbol_block(text, "f") == "def f(a,  # 第一行\n      b):  # 注释\n    return a"
+
+
+def test_decorators_belong_to_the_python_block():
+    text = "import x\n\n\n@cache\n@route('/a:b')\ndef f():\n    return 1\n"
+    assert symbol_block(text, "f") == "@cache\n@route('/a:b')\ndef f():\n    return 1"
+
+
+def test_flush_left_multiline_string_does_not_end_the_python_block():
+    text = 'def f():\n    s = """\n:顶格内容\n"""\n    return s\n\n\ndef g():\n    pass\n'
+    assert symbol_block(text, "f") == 'def f():\n    s = """\n:顶格内容\n"""\n    return s'
+
+
+def test_multiline_decorator_belongs_to_the_python_block():
+    text = "@route(\n    '/a',\n)\ndef f():\n    return 1\n"
+    assert symbol_block(text, "f") == text.rstrip()
+
+
+def test_escaped_quote_in_default_does_not_swallow_the_rest_of_the_file():
+    text = 'def f(a="it\\"s:"):\n    return 1\n\n\ndef g():\n    return 2\n'
+    assert symbol_block(text, "f") == 'def f(a="it\\"s:"):\n    return 1'
+    # 语法写错（改到一半）时按文本截取，同样不能吞掉后面的函数
+    broken = text + "def h(:\n"
+    assert symbol_block(broken, "f") == 'def f(a="it\\"s:"):\n    return 1'
 
 
 def test_brace_block_for_csharp_method():
@@ -159,6 +193,51 @@ def test_committed_memory_without_later_commit_is_not_treated_as_draft(git_repo)
     _commit(git_repo, "later change", "2026-09-08")
     problems = AnchorChecker(git_repo, detect_vcs(git_repo)).check([entry], {entry.id: path})
     assert problems[entry.id] == ["calc.py 中 Box.size 在 2026-09-05 之后改过"]
+
+
+def _git(root: Path, *args: str) -> str:
+    return subprocess.run(["git", *args], cwd=root, check=True, capture_output=True, text=True).stdout.strip()
+
+
+def _merged_old_branch(git_repo: Path, side_change: tuple[str, str]) -> tuple[Entry, Path]:
+    """别人在 9 月 2 日的分支上改了代码；我 9 月 5 日在没有这次提交的本地写下记忆，9 月 10 日才合并进来。"""
+    code = git_repo / "calc.py"
+    code.write_text(PY, encoding="utf-8")
+    _commit(git_repo, "calc", "2026-09-01")
+    main = _git(git_repo, "rev-parse", "--abbrev-ref", "HEAD")
+    _git(git_repo, "checkout", "-q", "-b", "side")
+    code.write_text(PY.replace(*side_change), encoding="utf-8")
+    _commit(git_repo, "side change", "2026-09-02")
+    _git(git_repo, "checkout", "-q", main)
+    entry, path = _memory(git_repo, "2026-09-05T10:00:00", "calc.py#Box.size")
+    entry.revision = "git:" + _git(git_repo, "rev-parse", "--short", "HEAD")
+    path.write_text(entry.to_markdown(), encoding="utf-8")
+    _commit(git_repo, "memory", "2026-09-05T11:00:00")
+    env = {**os.environ, "GIT_AUTHOR_DATE": "2026-09-10T12:00:00", "GIT_COMMITTER_DATE": "2026-09-10T12:00:00"}
+    subprocess.run(["git", "merge", "-q", "--no-edit", "side"], cwd=git_repo, check=True, env=env)
+    return entry, path
+
+
+def test_older_commit_merged_in_after_writing_makes_a_memory_stale(git_repo):
+    """按提交时间过滤会漏掉：这次提交早于写入，但写入时本地还没有它。"""
+    entry, path = _merged_old_branch(git_repo, ("return 1", "return 2"))
+    problems = AnchorChecker(git_repo, detect_vcs(git_repo)).check([entry], {entry.id: path})
+    assert problems[entry.id] == ["calc.py 中 Box.size 于 2026-09-02 改过（写入时本地还没有这次提交，之后拉取或合并进来）"]
+    file_level = replace(entry, anchors=["calc.py"])
+    assert AnchorChecker(git_repo, detect_vcs(git_repo)).check([file_level], {entry.id: path})[entry.id] == [
+        "calc.py 于 2026-09-02 改过（写入时本地还没有这次提交，之后拉取或合并进来）"]
+
+
+def test_merged_commit_touching_another_function_is_ignored(git_repo):
+    entry, path = _merged_old_branch(git_repo, ("return total", "return 0"))
+    assert AnchorChecker(git_repo, detect_vcs(git_repo)).check([entry], {entry.id: path}) == {}
+
+
+def test_confirmed_memory_is_not_rechecked_against_its_write_revision(git_repo):
+    """核对时看到的已经是合并后的代码；再按写入时的版本比较，确认之后仍会一直显示需核实。"""
+    entry, path = _merged_old_branch(git_repo, ("return 1", "return 2"))
+    entry.verified, entry.verified_at = "2026-09-11", "2026-09-11T09:00:00"
+    assert AnchorChecker(git_repo, detect_vcs(git_repo)).check([entry], {entry.id: path}) == {}
 
 
 def test_invalid_dates_do_not_silently_disable_the_check(git_repo):

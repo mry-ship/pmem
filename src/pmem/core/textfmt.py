@@ -47,7 +47,9 @@ def _join_bracket_splits(lines: list[str]) -> list[str]:
             in_fence = not in_fence
         elif not in_fence and _unclosed(line):
             merged, j = line, i + 1
-            while j < len(lines) and j - i <= _MAX_BRACKET_LINES and _continues(lines[j]) and _unclosed(merged):
+            # 早期版本只在句末标点后断行；作者自己在括号里换的行（如 foo(a,\n b)）不并
+            while j < len(lines) and j - i <= _MAX_BRACKET_LINES and _continues(lines[j]) and _unclosed(merged) \
+                    and merged.rstrip()[-1:] in "。！？；":
                 merged += lines[j].strip()
                 j += 1
             if j > i + 1 and not _unclosed(merged):

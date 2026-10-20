@@ -45,7 +45,17 @@ class FilesStorage:
         return next(self.entries_dir.glob(f"*/{entry_id}.md"), None)
 
     def read(self, path: Path) -> Entry:
-        return Entry.from_markdown(path.read_text(encoding="utf-8-sig"))
+        try:
+            return Entry.from_markdown(path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError, TypeError) as exc:
+            raise StorageError(f"记忆文件 {path.name} 无法解析：{exc}", "storage_read") from exc
+
+    def rewrite(self, path: Path, entry: Entry) -> None:
+        """改写已有记忆文件（核对、归档）。文件只读（如 SVN needs-lock）时报 StorageError，不抛原始异常。"""
+        try:
+            write_atomic(path, entry.to_markdown())
+        except OSError as exc:
+            raise StorageError(f"写不进记忆文件 {path.name}：{exc}", "storage_write") from exc
 
     def get(self, entry_id: str) -> Entry | None:
         path = self.find_path(entry_id)
@@ -79,7 +89,11 @@ class FilesStorage:
         if old.module != entry.module:
             raise StorageError(f"记忆 {draft_id} 属于 {old.module}，不能改到 {entry.module}；请新建一条",
                                "draft_forbidden")
-        if self.vcs.is_committed(path):
+        committed = self.vcs.is_committed(path)
+        if committed is None:
+            raise StorageError(f"无法确认记忆 {draft_id} 是否已提交（版本库命令出错），不能覆盖；"
+                               f"请新建一条并在 supersedes 中写 {draft_id}", "draft_forbidden")
+        if committed:
             raise StorageError(f"记忆 {draft_id} 已提交到版本库，不能覆盖；请新建一条并在 supersedes 中写 {draft_id}",
                                "draft_forbidden")
         return path
@@ -95,7 +109,7 @@ class FilesStorage:
                 raise StorageError(f"记忆 {entry.id} 已存在")
             overwritten = False
         path.parent.mkdir(parents=True, exist_ok=True)
-        write_atomic(path, entry.to_markdown())
+        self.rewrite(path, entry)
         if not overwritten and self.svn_auto_add and self.vcs.name == "svn":
             self.vcs.add(path)
         return WriteResult(entry, path, overwritten)

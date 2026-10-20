@@ -29,7 +29,7 @@ modules:
     entities: [Encoding, Payload, State, ShellParse, AutoAnchors, PromptReview, HookLatency]
   feature.Retrieval:
     description: 检索：索引与缓存、分词、同义词、嵌入、排序、过期核对（stale）与知识图谱
-    paths: [src/pmem/index/**, src/pmem/cli/reindex_cmd.py, tests/index/**, scripts/eval_retrieval.py, tests/fixtures/eval/**]
+    paths: [src/pmem/index/**, src/pmem/cli/reindex_cmd.py, tests/index/**, scripts/eval_retrieval.py, scripts/eval_real_queries.py, tests/fixtures/eval/**]
     aliases: [Index, Search]
     entities: [Ranking, Embedding, Tokenize, StaleCheck, Supersede]
   feature.Tools:

@@ -1,0 +1,518 @@
+# 由 scripts/eval_real_queries.py build-known 按现行记忆生成（alias），重新生成会覆盖。
+queries:
+- module: feature.Curation
+  q: 格式化记忆
+  expect:
+  - 01M52A5YJF9HXEV1V9XXHDVAFT
+- module: feature.Curation
+  q: 种子记忆
+  expect:
+  - 01M59KHKZWJB4PPHKWARBQSSFH
+- module: feature.Curation
+  q: 跳过目录
+  expect:
+  - 01M59TEXNSS0FEYGWDGA2QGP04
+- module: feature.Curation
+  q: seed 参数被忽略
+  expect:
+  - 01M59YEY70YTTPSRNXRJK2ER2Q
+- module: feature.Curation
+  q: changelog
+  expect:
+  - 01M5ACP014HQZH2ZH33QE6SNG3
+- module: feature.Curation
+  q: 写作提示
+  expect:
+  - 01M5CFHZY2M5N85DEPZN2T8C8B
+- module: feature.Curation
+  q: 锚点改名
+  expect:
+  - 01M5CFJ1FF6961TJQR035Z38R1
+- module: feature.Curation
+  q: 记忆质量
+  expect:
+  - 01M5CFJ2TQMVBP3XV6N1Z41G3Z
+- module: feature.Curation
+  q: 合并记忆
+  expect:
+  - 01M5CFJQCCGNQDE8X37BQ8XZHZ
+- module: feature.Gate
+  q: 误判跳过
+  expect:
+  - 01M51NT866AKQ9RACAJ1E27H8D
+- module: feature.Gate
+  q: 误跳过
+  expect:
+  - 01M51QHETX76ARPANYMTJ3FVP7
+- module: feature.Gate
+  q: 绕过闸门
+  expect:
+  - 01M51R5ZQZM7W3FXGR7PTT3616
+- module: feature.Gate
+  q: 竞态
+  expect:
+  - 01M51S7PF17NJRGAAVR1TRXBT8
+- module: feature.Gate
+  q: 乱码
+  expect:
+  - 01M51VVSNX6BM6YXMKMMW2V3B6
+- module: feature.Gate
+  q: Hook 耗时
+  expect:
+  - 01M51WPMA9NWRCQJ9MQTRV19D0
+- module: feature.Gate
+  q: 绕过
+  expect:
+  - 01M51YSZGCTE8VTY010YN58PMZ
+- module: feature.Gate
+  q: 别家记忆服务
+  expect:
+  - 01M51ZHK4RZQQDB385DDH2C936
+- module: feature.Gate
+  q: hook事件
+  expect:
+  - 01M520CDJWGDWCBKPF9NVYG2D5
+- module: feature.Gate
+  q: 自动补锚点
+  expect:
+  - 01M521A1KW9ME0PK117CGGB5MW
+- module: feature.Gate
+  q: 快照慢
+  expect:
+  - 01M525TY046GFS3XSK6J3QDPDV
+- module: feature.Gate
+  q: 锚点被覆盖
+  expect:
+  - 01M52GBQ2Z2MPW4ZJVEB94S8XE
+- module: feature.Gate
+  q: stop
+  expect:
+  - 01M52HVNEMW34BD1RXZM9WNVR8
+- module: feature.Gate
+  q: 误报
+  expect:
+  - 01M59JGGE104VESC7EX3D0TGNF
+- module: feature.Gate
+  q: 终端检索
+  expect:
+  - 01M59KGHXJSZG6ZPT1GRAXPZAN
+- module: feature.Gate
+  q: 锁等待
+  expect:
+  - 01M5A0PDW81SDRHCD9T7HC0E8Z
+- module: feature.Gate
+  q: pmem record 登记
+  expect:
+  - 01M5A8F9D26J50HDBYMEKPJE56
+- module: feature.Gate
+  q: 读代码摘要
+  expect:
+  - 01M5AAZCH79VFHV9FZMFTRNHJF
+- module: feature.Gate
+  q: 查过还被拦
+  expect:
+  - 01M5CCE7712MY9KZV2KCCQK2S6
+- module: feature.Gate
+  q: Codex 适配
+  expect:
+  - 01M5CF95TGB794Z9Z2XKNBMTEM
+- module: feature.Gate
+  q: 绕过闸门
+  expect:
+  - 01M5CFHVDFEPXVNTTXMCY1FK6H
+- module: feature.Gate
+  q: 问答审查
+  expect:
+  - 01M5CFJW7X2AGE7BKARZRVZ6RW
+- module: feature.Gate
+  q: 踩坑
+  expect:
+  - 01M5CFJXQWXCHW4J833ER9FV1X
+- module: feature.Gate
+  q: glob 误展开
+  expect:
+  - 01M5CGMMZYWV65B76ZD74JHMKC
+- module: feature.Gate
+  q: 拆分 gate
+  expect:
+  - 01M5CHTVZ175BNZEDKPSA9G9C5
+- module: feature.Gate
+  q: 自动补参
+  expect:
+  - 01M5CJ885C1052N2ZASP05RP3G
+- module: feature.Gate
+  q: 查询词损坏
+  expect:
+  - 01M5CJX3ZZSH787WCB8AS5WBCQ
+- module: feature.Gate
+  q: 草稿覆盖
+  expect:
+  - 01M5CK2NYTHD40F6HKACM77AJ7
+- module: feature.Import
+  q: 密钥泄露
+  expect:
+  - 01M59J951N8TDHJQQT1CDHJAQ7
+- module: feature.Metrics
+  q: 提醒后查了
+  expect:
+  - 01M59KNQYHWQ5NEQ2G0YP6GH5A
+- module: feature.Metrics
+  q: 事件日志写坏
+  expect:
+  - 01M59QZP2NJYPJ6GDRZQWKTJSA
+- module: feature.Metrics
+  q: 评测
+  expect:
+  - 01M5A8NDQMTBVC9GH7M5MG0F3V
+- module: feature.Metrics
+  q: 健康报告
+  expect:
+  - 01M5A9637TPSG4YY21HH8PN4JZ
+- module: feature.Metrics
+  q: 归档建议
+  expect:
+  - 01M5CCEGMA5G5D0PFZ2AK40DZA
+- module: feature.Metrics
+  q: 体检
+  expect:
+  - 01M5CFJJJX8PGTZ5YNC9F5BTNK
+- module: feature.Metrics
+  q: token 统计
+  expect:
+  - 01M5CFJZRQ4M5TX0995HDTBR4K
+- module: feature.Metrics
+  q: 建议错误
+  expect:
+  - 01M5CFK17EASJ4YNGJTNPJM71V
+- module: feature.Metrics
+  q: 评测中止
+  expect:
+  - 01M5CHMWGTHSPYD8R6XSD0STCB
+- module: feature.Metrics
+  q: 去重失效
+  expect:
+  - 01M5CJXN5NNXPBW37X52QC9KMS
+- module: feature.ModuleCatalog
+  q: 模块识别
+  expect:
+  - 01M51NZ2Y8SBPH444NYVN46PQE
+- module: feature.ModuleCatalog
+  q: 模块表缓存
+  expect:
+  - 01M51WQ1HAX8QZH4XGKYCJCMRR
+- module: feature.ModuleCatalog
+  q: 分层
+  expect:
+  - 01M59J77JJVJZV0XB1QXW86YW4
+- module: feature.ModuleCatalog
+  q: 覆盖率
+  expect:
+  - 01M59KH4VKZKH9WH11BZ944YNE
+- module: feature.ModuleCatalog
+  q: 错误码
+  expect:
+  - 01M59YEJ1V04ZV6R8QSRZKCNS1
+- module: feature.ModuleCatalog
+  q: 迁移失败
+  expect:
+  - 01M5A0PBG6VWB16K23TWNRFXT0
+- module: feature.ModuleCatalog
+  q: 方括号目录
+  expect:
+  - 01M5A8G3D7FAKAB5SRK3X1A9HX
+- module: feature.ModuleCatalog
+  q: 拆分模块
+  expect:
+  - 01M5CFJNTQXEJB52YR1XTM6ET2
+- module: feature.Onboarding
+  q: 自检
+  expect:
+  - 01M51QHH4KWDAX349Z1M37XC37
+- module: feature.Onboarding
+  q: 旧版Hooks
+  expect:
+  - 01M51VN7Y3RVS2A3Q5TZ9FJC7B
+- module: feature.Onboarding
+  q: 忽略目录
+  expect:
+  - 01M52HS37DKEM2KENXAF8CAJW6
+- module: feature.Onboarding
+  q: 整理记忆库
+  expect:
+  - 01M59G7FMN5H2D5EAZCADVAE3G
+- module: feature.Onboarding
+  q: 子目录项目
+  expect:
+  - 01M59JBD5RPA14QG2Z1VMG8N0A
+- module: feature.Onboarding
+  q: 热度
+  expect:
+  - 01M59KHDFWMBSWCAMYQTTPTKF3
+- module: feature.Onboarding
+  q: 跳过目录
+  expect:
+  - 01M59TCT2K1XB2CMSGPJGR8S52
+- module: feature.Onboarding
+  q: 重复 init
+  expect:
+  - 01M59YER88RFBGZSS50K1ZX6B8
+- module: feature.Onboarding
+  q: init 合并
+  expect:
+  - 01M5A0PEWG6WSEJXC1SNZFGPD0
+- module: feature.Onboarding
+  q: 初始化
+  expect:
+  - 01M5CFJ4KYWXQDJDZDPCD2PW0J
+- module: feature.Onboarding
+  q: 未安装
+  expect:
+  - 01M5CFJ675VP99EGB614E98AGE
+- module: feature.Onboarding
+  q: 上下文占用
+  expect:
+  - 01M5CQ4WGFMQZFHAGJ35P6A6K3
+- module: feature.Retrieval
+  q: 重建索引
+  expect:
+  - 01M51WQ2D7CAYHMHXX53YQJQHT
+- module: feature.Retrieval
+  q: 过期核对缓存
+  expect:
+  - 01M525TV4DF1JDYWBBRR6TT6X8
+- module: feature.Retrieval
+  q: 向量库
+  expect:
+  - 01M5A0PEDG5CFH3ZQVBTD4JB5D
+- module: feature.Retrieval
+  q: 按路径检索
+  expect:
+  - 01M5AAZA1NXHY9DX2T3GHDY79E
+- module: feature.Retrieval
+  q: limit为0
+  expect:
+  - 01M5CAVE8WNP4ESCMD549MGZXS
+- module: feature.Retrieval
+  q: stale
+  expect:
+  - 01M5CEQ7761KCP8GVSQBX9952Q
+- module: feature.Retrieval
+  q: 失效
+  expect:
+  - 01M5CEX09VZKB7KKGVTYXDY75G
+- module: feature.Retrieval
+  q: 无关结果
+  expect:
+  - 01M5CFJ7KZX34KEYGN92ZARYZS
+- module: feature.Retrieval
+  q: 标题检索
+  expect:
+  - 01M5CFK93YEEHZXDZH8M6H1K06
+- module: feature.Retrieval
+  q: 缓存上限
+  expect:
+  - 01M5CFPZ23KMEC39WMDHNS5W5E
+- module: feature.Retrieval
+  q: 需核实
+  expect:
+  - 01M5CHMMPZHPYS3XECV1KC0J4S
+- module: feature.Retrieval
+  q: 评测集
+  expect:
+  - 01M5CJXZ80NA1QYVM3JG82ZQ6R
+- module: feature.Retrieval
+  q: 函数锚点
+  expect:
+  - 01M5CKQ4AGMSE093QEHFG1QM8B
+- module: feature.Storage
+  q: draft_id 校验
+  expect:
+  - 01M51VN6PNEY4WZXDSR558EPB3
+- module: feature.Storage
+  q: 测试缓存
+  expect:
+  - 01M51WPVG6P4VR20F8R50MNWY4
+- module: feature.Storage
+  q: 未提交文件清单
+  expect:
+  - 01M525TWRGYKJEKEQG0JHZC592
+- module: feature.Storage
+  q: 搬家
+  expect:
+  - 01M52G7BZDS5WHBAX1GC192D17
+- module: feature.Storage
+  q: 草稿覆盖
+  expect:
+  - 01M59J7SX8T0AJ998K88W0564D
+- module: feature.Storage
+  q: 错误码
+  expect:
+  - 01M59YEKRB2236BWF1REH0JRRC
+- module: feature.Storage
+  q: 原子写入
+  expect:
+  - 01M5A8G8V805TGCAJGVDC3QQHQ
+- module: feature.Storage
+  q: 热度为 0
+  expect:
+  - 01M5A96G43R63S84C48SYN72GP
+- module: feature.Storage
+  q: 改动日期
+  expect:
+  - 01M5CEQRZ23YJP2106XV5ZRPNQ
+- module: feature.Tools
+  q: 去重
+  expect:
+  - 01M4ZFGJPJQB3B8JDX14CRT84V
+- module: feature.Tools
+  q: 词表不稳定
+  expect:
+  - 01M4ZRSNRDE7FNX5H8X39555AV
+- module: feature.Tools
+  q: 自动生成Wiki
+  expect:
+  - 01M51PJQ94JEJQ0M977FCABXM9
+- module: feature.Tools
+  q: 来源标记
+  expect:
+  - 01M51ZQRJB8WDAJA2EF122AV4T
+- module: feature.Tools
+  q: 覆盖草稿
+  expect:
+  - 01M521A0BBD5N9CE3TEE03VW36
+- module: feature.Tools
+  q: 线程安全
+  expect:
+  - 01M59J7MB4DFCDF3ZSPVSC86RH
+- module: feature.Tools
+  q: service 拆分
+  expect:
+  - 01M59KGYQAWMJW3QGTA5J5BQKQ
+- module: feature.Tools
+  q: 按路径检索没结果
+  expect:
+  - 01M59R05JVPBPEWZMB0MZYCB2P
+- module: feature.Tools
+  q: 敏感信息
+  expect:
+  - 01M5A8N9P3NSJD0G91ZX0TCX4J
+- module: feature.Tools
+  q: 热加载
+  expect:
+  - 01M5A96BCE6G9929YMVCMW0J7Q
+- module: feature.Tools
+  q: 重复返回
+  expect:
+  - 01M5ACNAPSVJZG4Y3F08N2YW89
+- module: feature.Tools
+  q: 写入慢
+  expect:
+  - 01M5CFJAYP6254TXPNE10M4X8W
+- module: feature.Tools
+  q: 转正
+  expect:
+  - 01M5CFJCC6ZS9KJM8YHMBA55NZ
+- module: feature.Tools
+  q: error code
+  expect:
+  - 01M5CFK7KH5RK5WD3NSZ9Y15MY
+- module: feature.Tools
+  q: daily cap
+  expect:
+  - 01M5CHMVWJRHPPSMSRSYVJFFCE
+- module: feature.Tools
+  q: 替代别的模块
+  expect:
+  - 01M5CJ63HHKP7WPZBQBTPN35PS
+- module: feature.Wiki
+  q: 知识图谱
+  expect:
+  - 01M51PJS4Z9M2WF1ZVCR5Y07ZC
+- module: feature.Wiki
+  q: 覆盖手写文档
+  expect:
+  - 01M59J8HNBSXB4P8BZ2GTTDN1Q
+- module: infra.Common
+  q: 编码损坏
+  expect:
+  - 01M4ZRSQKWJM852QYD2FDKZM08
+- module: infra.Common
+  q: 流程图
+  expect:
+  - 01M59N3GDHK9VRVH2RYC9GW9S6
+- module: infra.Common
+  q: 模块化
+  expect:
+  - 01M5A1JBRA5SB1MWP4Y3Q7DS7A
+- module: infra.Common
+  q: 清空参数
+  expect:
+  - 01M5A2X278E033B7PHC34M2EME
+- module: infra.Common
+  q: 对话id
+  expect:
+  - 01M5ACNJZBAPDYJSHTNF4RH55G
+- module: infra.Common
+  q: 参数截断
+  expect:
+  - 01M5CAW955S71EA3DDAZ8WT5M6
+- module: infra.Common
+  q: brief 参数
+  expect:
+  - 01M5CFHWTQV49R4Y2EXQ7JDFH5
+- module: infra.Common
+  q: 编码
+  expect:
+  - 01M5CFHY7KWGT8BW26CM28C64Q
+- module: infra.Common
+  q: 简要输出
+  expect:
+  - 01M5CFJE42APN2HMMBFCZQV20C
+- module: infra.Common
+  q: 暂缓
+  expect:
+  - 01M5CG4K029FYHTB1R648MV5S1
+- module: infra.Model
+  q: ULID 校验
+  expect:
+  - 01M51VNAC1V5A9K26RHRYPSA6F
+- module: infra.Model
+  q: 配置缓存
+  expect:
+  - 01M51WPKCSBNTXFWYJT8T8RXGX
+- module: infra.Model
+  q: 可读性
+  expect:
+  - 01M52A5XFKT2P2DQQQGDKSZ84C
+- module: infra.Model
+  q: 字段丢失
+  expect:
+  - 01M59TCMS5CS2QYTKRA6WA1041
+- module: infra.Model
+  q: 括号吞行
+  expect:
+  - 01M5A8NBZE5S147NH20GDTWJ8J
+- module: infra.Model
+  q: 默认开关
+  expect:
+  - 01M5CFJFP3T9HDEAH4SZGX78B9
+- module: infra.Model
+  q: 配置校验
+  expect:
+  - 01M5CFK2NSSX4X0ZVR3K3CZW9A
+- module: infra.Model
+  q: 常量重复
+  expect:
+  - 01M5CFK4GCE9ZDNDCCMNPY1GRS
+- module: infra.Model
+  q: 核对时间
+  expect:
+  - 01M5CFK63ZFBHGGNF0ZBAXCS1Y
+- module: infra.Watchdog
+  q: 掉线
+  expect:
+  - 01M59E3Q2YACDS3Q8W6WD7F7ZZ
+- module: infra.Watchdog
+  q: flaky
+  expect:
+  - 01M5A2P74CHG2PSTJX03ESYYKA

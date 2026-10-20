@@ -7,9 +7,9 @@ status: active
 supersedes:
 - 01M51P2FW5SRCZRHV2W02NGE0J
 anchors:
-- src/pmem/hooks/gate.py#on_stop
-- src/pmem/hooks/gate.py#on_after_mcp
-- src/pmem/hooks/gate.py#memory_count
+- src/pmem/hooks/reminders.py#on_stop
+- src/pmem/hooks/mcp.py#on_after_mcp
+- src/pmem/hooks/memories.py#memory_count
 - src/pmem/hooks/shell.py#cli_args
 revision: git:4479338
 author: 1002378395@qq.com

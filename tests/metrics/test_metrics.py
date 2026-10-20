@@ -32,6 +32,11 @@ def test_events_roundtrip_and_since_filter(tmp_path):
     assert list(read_events(tmp_path, since=time.time() + 10)) == []
 
 
+def test_read_events_skips_lines_that_are_json_but_not_objects(tmp_path):
+    (tmp_path / "events.jsonl").write_text('123\n["x"]\n{"ts": 1, "event": "ok"}\n', encoding="utf-8")
+    assert [r["event"] for r in read_events(tmp_path)] == ["ok"]
+
+
 def _log_many(cache_dir: str, worker: int, count: int) -> None:
     for n in range(count):
         log_event(Path(cache_dir), "search", worker=worker, n=n, query="检索" * 3000)

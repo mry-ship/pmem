@@ -2,9 +2,11 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
-from pmem.bench.runner import RunMetrics, dry_run_executor, run_bench
+from pmem.bench.runner import BenchUnavailable, RunMetrics, dry_run_executor, run_bench
+from pmem.cli.main import main
 from tests.conftest import run
 
 CONFIG = "project: { name: demo }\nvcs: none\nembedding: { backend: none }\n"
@@ -80,9 +82,47 @@ def test_one_failing_run_is_recorded_and_the_rest_continue(git_repo):
     assert records[0].metrics.error == "boom" and (out / "summary.md").exists()
 
 
+def test_a_case_whose_workspace_cannot_be_built_is_recorded_and_the_rest_continue(git_repo):
+    cases = make_cases(git_repo)
+    data = yaml.safe_load(cases.read_text(encoding="utf-8"))
+    data["cases"].insert(0, {**data["cases"][0], "id": "typo", "commit": "no-such-commit"})
+    cases.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    records = run_bench(git_repo, cases, git_repo / "out", arms=("off",), repeats=1,
+                        executor=dry_run_executor, log=lambda _: None)
+    assert [(r.case, r.metrics.status) for r in records] == [("typo", "error"), ("reward", "dry_run")]
+    assert "no-such-commit" in records[0].metrics.error
+
+
+def test_missing_sdk_or_api_key_stops_the_whole_bench(git_repo):
+    cases = make_cases(git_repo)
+
+    def unavailable(*_args) -> RunMetrics:
+        raise BenchUnavailable("请先设置环境变量 CURSOR_API_KEY")
+
+    with pytest.raises(BenchUnavailable):
+        run_bench(git_repo, cases, git_repo / "out", repeats=1, executor=unavailable, log=lambda _: None)
+
+
 def test_dry_run_checks_the_starting_commit(git_repo):
     cases = make_cases(git_repo)
     records = run_bench(git_repo, cases, git_repo / "out", arms=("off",), repeats=1,
                         executor=dry_run_executor, log=lambda _: None)
     assert [r.passed for r in records] == [False]
     assert json.loads((git_repo / "out" / "results.jsonl").read_text("utf-8"))["metrics"]["status"] == "dry_run"
+
+
+def test_cli_dry_run_fails_when_a_case_cannot_start(git_repo, capsys):
+    cases = make_cases(git_repo)
+    data = yaml.safe_load(cases.read_text(encoding="utf-8"))
+    data["cases"][0]["commit"] = "no-such-commit"
+    cases.write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    assert main(["bench", "cases.yaml", "--dry-run", "--arms", "off", "--root", str(git_repo)]) == 1
+    assert "没能在起始提交上跑起来" in capsys.readouterr().out
+
+
+def test_cli_bench_rejects_bad_arms_and_missing_cases(git_repo, capsys):
+    make_cases(git_repo)
+    assert main(["bench", "cases.yaml", "--arms", "of", "--root", str(git_repo)]) == 2
+    assert main(["bench", "nope.yaml", "--root", str(git_repo)]) == 2
+    err = capsys.readouterr().err
+    assert "--arms" in err and "找不到用例文件" in err

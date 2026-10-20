@@ -9,7 +9,7 @@ supersedes:
 anchors:
 - src/pmem/metrics/report.py#_pitfall_share
 - src/pmem/core/quality.py#content_hints
-- src/pmem/hooks/gate.py#on_stop
+- src/pmem/hooks/reminders.py#on_stop
 revision: git:7c086e5
 author: 1002378395@qq.com
 note_date: '2026-10-20'

@@ -133,9 +133,13 @@ class ServiceBase:
         """记忆变了就重新生成 Wiki（wiki.auto）；生成失败不影响写入本身，只附一条提醒。"""
         if not self.config.get("wiki.auto"):
             return
-        from pmem.generate.wiki import write_wiki
+        from pmem.generate.wiki import project_wiki_dir, write_wiki
 
         try:
-            write_wiki(self, self.root / str(self.config.get("wiki.dir")))
+            target = project_wiki_dir(self.root, str(self.config.get("wiki.dir")))
+            if target is None:
+                response.setdefault("warnings", []).append("wiki.dir 指向了项目目录以外，已跳过自动生成")
+                return
+            write_wiki(self, target)
         except Exception as exc:  # noqa: BLE001
             response.setdefault("warnings", []).append(f"Wiki 重新生成失败（记忆已写入）：{exc}")

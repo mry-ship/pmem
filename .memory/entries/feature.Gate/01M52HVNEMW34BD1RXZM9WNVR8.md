@@ -6,9 +6,9 @@ kind: decision
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/gate.py#_deprecated
-- src/pmem/hooks/gate.py#_pending_nudges
-- src/pmem/hooks/gate.py#_consulted_only
+- src/pmem/hooks/reminders.py#_deprecated
+- src/pmem/hooks/reminders.py#_pending_nudges
+- src/pmem/hooks/reminders.py#_consulted_only
 revision: git:5003560
 author: 1002378395@qq.com
 note_date: '2026-10-16'

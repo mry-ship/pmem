@@ -7,8 +7,8 @@ status: active
 supersedes:
 - 01M5ACNM7VK664RE3TRYK2SK5N
 anchors:
-- src/pmem/hooks/gate.py#on_stop
-- src/pmem/hooks/gate.py#take_project_pitfalls
+- src/pmem/hooks/reminders.py#on_stop
+- src/pmem/hooks/memories.py#take_project_pitfalls
 revision: git:f340df3
 author: 1002378395@qq.com
 note_date: '2026-10-20'

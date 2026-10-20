@@ -7,7 +7,11 @@ from pathlib import Path
 
 
 def run_tool(args: list[str], cwd: Path, timeout: float = 30) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(args, cwd=cwd, capture_output=True, timeout=timeout, check=False)
+    """git/svn 不在 PATH、工作目录不存在或超时，都当作命令失败（返回码 127），由调用方按“查不出”处理，不抛异常。"""
+    try:
+        return subprocess.run(args, cwd=cwd, capture_output=True, timeout=timeout, check=False)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return subprocess.CompletedProcess(args, 127, b"", str(exc).encode("utf-8", errors="replace"))
 
 
 MAX_ARGS_CHARS = 8000
@@ -55,8 +59,9 @@ class VCS:
     def is_uncommitted(self, path: Path) -> bool:
         return True
 
-    def is_committed(self, path: Path) -> bool:
-        """文件是否已有提交记录；之后在工作区里改过也算（确认、归档会改写已提交的记忆）。"""
+    def is_committed(self, path: Path) -> bool | None:
+        """文件是否已有提交记录；之后在工作区里改过也算（确认、归档会改写已提交的记忆）。
+        版本库命令出错、判断不了时返回 None，调用方按“可能已提交”处理。"""
         return False
 
     def uncommitted_count(self, folder: Path, suffix: str = ".md") -> int | None:
@@ -72,6 +77,15 @@ class VCS:
 
     def file_before(self, rel: str, moment: float) -> str | None:
         """moment（Unix 秒）时已提交的文件内容；不支持或取不到时返回 None。"""
+        return None
+
+    def commits_after(self, revision: str, paths: list[str]) -> dict[str, list[tuple[str, float]]]:
+        """当前版本有、revision（revision() 的返回值去掉 "git:" 这类前缀）没有的提交：文件 → [(提交号, 提交时刻)]。
+        拉取、合并进来的提交可能早于 revision 的时间，按时间比较会漏掉。不支持或 revision 已不存在时返回空。"""
+        return {}
+
+    def file_in_commit(self, commit: str, rel: str) -> str | None:
+        """某次提交里的文件内容；文件不存在或取不到时返回 None。"""
         return None
 
     def dirty_files(self) -> list[str] | None:

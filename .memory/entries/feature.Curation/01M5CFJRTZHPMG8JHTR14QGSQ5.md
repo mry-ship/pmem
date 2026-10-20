@@ -10,7 +10,7 @@ anchors:
 - src/pmem/cli/seed_cmd.py#run_seed
 - src/pmem/cli/seed_cmd.py#seed_plan
 - src/pmem/service/status.py#change_status
-- src/pmem/hooks/gate.py#memory_lines
+- src/pmem/hooks/memories.py#memory_lines
 revision: git:7c086e5
 author: 1002378395@qq.com
 note_date: '2026-10-20'

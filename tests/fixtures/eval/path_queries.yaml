@@ -1,0 +1,663 @@
+# 由 scripts/eval_real_queries.py build-known 按现行记忆生成（path），重新生成会覆盖。
+queries:
+- module: feature.Curation
+  path: src/pmem/cli/anchors_cmd.py
+  expect:
+  - 01M4ZFGGKQN8KXQ48CYP3P5M49
+  - 01M5A8NFH6H7HCM2FHJJ0Q0RAD
+  - 01M5CFJ1FF6961TJQR035Z38R1
+- module: feature.Curation
+  path: src/pmem/cli/compact_cmd.py
+  expect:
+  - 01M5CFJQCCGNQDE8X37BQ8XZHZ
+- module: feature.Curation
+  path: src/pmem/cli/format_cmd.py
+  expect:
+  - 01M52A5YJF9HXEV1V9XXHDVAFT
+  - 01M5A8NFH6H7HCM2FHJJ0Q0RAD
+- module: feature.Curation
+  path: src/pmem/cli/seed_cmd.py
+  expect:
+  - 01M59KHKZWJB4PPHKWARBQSSFH
+  - 01M59YEY70YTTPSRNXRJK2ER2Q
+  - 01M5CFJRTZHPMG8JHTR14QGSQ5
+- module: feature.Curation
+  path: src/pmem/core/quality.py
+  expect:
+  - 01M5ACP014HQZH2ZH33QE6SNG3
+  - 01M5CFHZY2M5N85DEPZN2T8C8B
+  - 01M5CFJ2TQMVBP3XV6N1Z41G3Z
+- module: feature.Curation
+  path: src/pmem/generate/templates.py
+  expect:
+  - 01M5CFJQCCGNQDE8X37BQ8XZHZ
+- module: feature.Curation
+  path: src/pmem/hooks/memories.py
+  expect:
+  - 01M5CFJRTZHPMG8JHTR14QGSQ5
+- module: feature.Curation
+  path: src/pmem/hooks/reminders.py
+  expect:
+  - 01M5CFJ2TQMVBP3XV6N1Z41G3Z
+- module: feature.Curation
+  path: src/pmem/metrics/report.py
+  expect:
+  - 01M5CFJ2TQMVBP3XV6N1Z41G3Z
+- module: feature.Curation
+  path: src/pmem/scan/files.py
+  expect:
+  - 01M59TEXNSS0FEYGWDGA2QGP04
+- module: feature.Curation
+  path: src/pmem/scan/lite.py
+  expect:
+  - 01M59TEXNSS0FEYGWDGA2QGP04
+- module: feature.Curation
+  path: src/pmem/service/curation.py
+  expect:
+  - 01M5CFJQCCGNQDE8X37BQ8XZHZ
+- module: feature.Curation
+  path: src/pmem/service/record.py
+  expect:
+  - 01M5A8NFH6H7HCM2FHJJ0Q0RAD
+  - 01M5CFJQCCGNQDE8X37BQ8XZHZ
+- module: feature.Curation
+  path: src/pmem/service/status.py
+  expect:
+  - 01M5CFJQCCGNQDE8X37BQ8XZHZ
+  - 01M5CFJRTZHPMG8JHTR14QGSQ5
+- module: feature.Gate
+  path: .cursor/hooks.json
+  expect:
+  - 01M51WPMA9NWRCQJ9MQTRV19D0
+- module: feature.Gate
+  path: src/pmem/cli/hook_cmd.py
+  expect:
+  - 01M5CFHVDFEPXVNTTXMCY1FK6H
+- module: feature.Gate
+  path: src/pmem/cli/main.py
+  expect:
+  - 01M520CDJWGDWCBKPF9NVYG2D5
+- module: feature.Gate
+  path: src/pmem/hooks/agents.py
+  expect:
+  - 01M5CF95TGB794Z9Z2XKNBMTEM
+- module: feature.Gate
+  path: src/pmem/hooks/gate.py
+  expect:
+  - 01M4X3ZQA22N8G9AAYGGK4VPNS
+  - 01M4X5ZVWT0R6HN4DQ15XQ4W6J
+  - 01M51NT866AKQ9RACAJ1E27H8D
+  - 01M51QHETX76ARPANYMTJ3FVP7
+  - 01M51R5ZQZM7W3FXGR7PTT3616
+  - 01M51S7PF17NJRGAAVR1TRXBT8
+  - 01M59KGHXJSZG6ZPT1GRAXPZAN
+  - 01M5A0PDW81SDRHCD9T7HC0E8Z
+  - 01M5CGMMZYWV65B76ZD74JHMKC
+  - 01M5CHTVZ175BNZEDKPSA9G9C5
+- module: feature.Gate
+  path: src/pmem/hooks/guard.py
+  expect:
+  - 01M4X41PDY5RKYFMJFP30P5TS2
+  - 01M51QHETX76ARPANYMTJ3FVP7
+  - 01M5A8F9D26J50HDBYMEKPJE56
+  - 01M5CFJXQWXCHW4J833ER9FV1X
+  - 01M5CGMMZYWV65B76ZD74JHMKC
+- module: feature.Gate
+  path: src/pmem/hooks/mcp.py
+  expect:
+  - 01M4ZG5RTJTANBPAV0TKNN4H6M
+  - 01M51ZH2XRQHVQV6HB00BMAXVS
+  - 01M51ZHK4RZQQDB385DDH2C936
+  - 01M521A1KW9ME0PK117CGGB5MW
+  - 01M52GBQ2Z2MPW4ZJVEB94S8XE
+  - 01M59KGHXJSZG6ZPT1GRAXPZAN
+  - 01M5A8F9D26J50HDBYMEKPJE56
+  - 01M5CCE7712MY9KZV2KCCQK2S6
+  - 01M5CJ885C1052N2ZASP05RP3G
+  - 01M5CJX3ZZSH787WCB8AS5WBCQ
+  - 01M5CK2NYTHD40F6HKACM77AJ7
+- module: feature.Gate
+  path: src/pmem/hooks/memories.py
+  expect:
+  - 01M5A0PDW81SDRHCD9T7HC0E8Z
+  - 01M5A8F9D26J50HDBYMEKPJE56
+  - 01M5CAWR4SW0BKCA827YBPT7KV
+  - 01M5CFHVDFEPXVNTTXMCY1FK6H
+- module: feature.Gate
+  path: src/pmem/hooks/payload.py
+  expect:
+  - 01M4X40AZ2F8MM7Q8T6DQGT5BD
+  - 01M51NT866AKQ9RACAJ1E27H8D
+  - 01M51R5ZQZM7W3FXGR7PTT3616
+  - 01M51VVSNX6BM6YXMKMMW2V3B6
+  - 01M52GBQ2Z2MPW4ZJVEB94S8XE
+  - 01M5CJX3ZZSH787WCB8AS5WBCQ
+  - 01M5CK2NYTHD40F6HKACM77AJ7
+- module: feature.Gate
+  path: src/pmem/hooks/reminders.py
+  expect:
+  - 01M52HVNEMW34BD1RXZM9WNVR8
+  - 01M5CAVJFYT5C7R57JGAQ2S0MZ
+  - 01M5CAWR4SW0BKCA827YBPT7KV
+  - 01M5CFJW7X2AGE7BKARZRVZ6RW
+  - 01M5CK9HEY1NDZJHJFYC036Y6X
+- module: feature.Gate
+  path: src/pmem/hooks/review.py
+  expect:
+  - 01M51QHETX76ARPANYMTJ3FVP7
+  - 01M51R5ZQZM7W3FXGR7PTT3616
+  - 01M5AAZCH79VFHV9FZMFTRNHJF
+  - 01M5CFJW7X2AGE7BKARZRVZ6RW
+  - 01M5CK9HEY1NDZJHJFYC036Y6X
+- module: feature.Gate
+  path: src/pmem/hooks/shell.py
+  expect:
+  - 01M51R5ZQZM7W3FXGR7PTT3616
+  - 01M51VVSNX6BM6YXMKMMW2V3B6
+  - 01M51YSZGCTE8VTY010YN58PMZ
+  - 01M51ZH2XRQHVQV6HB00BMAXVS
+  - 01M525TY046GFS3XSK6J3QDPDV
+  - 01M59KGHXJSZG6ZPT1GRAXPZAN
+  - 01M5A8F9D26J50HDBYMEKPJE56
+  - 01M5CFHVDFEPXVNTTXMCY1FK6H
+- module: feature.Gate
+  path: src/pmem/hooks/snapshot.py
+  expect:
+  - 01M51YSZGCTE8VTY010YN58PMZ
+  - 01M525TY046GFS3XSK6J3QDPDV
+  - 01M59JGGE104VESC7EX3D0TGNF
+  - 01M5CFHVDFEPXVNTTXMCY1FK6H
+- module: feature.Gate
+  path: src/pmem/hooks/state.py
+  expect:
+  - 01M51S7PF17NJRGAAVR1TRXBT8
+  - 01M5CFHVDFEPXVNTTXMCY1FK6H
+- module: feature.Gate
+  path: src/pmem/index/graph.py
+  expect:
+  - 01M5AAZCH79VFHV9FZMFTRNHJF
+  - 01M5CFJW7X2AGE7BKARZRVZ6RW
+- module: feature.Import
+  path: src/pmem/cli/import_cmd.py
+  expect:
+  - 01M59J951N8TDHJQQT1CDHJAQ7
+- module: feature.Import
+  path: src/pmem/core/ids.py
+  expect:
+  - 01M5A1KDQ5SPRR50DHRTZEG4T6
+- module: feature.Import
+  path: src/pmem/importers/lancedb.py
+  expect:
+  - 01M4X7E2GM36C8AX17HNRFGEGH
+  - 01M52A60H9G0114KT6M9AWJQW9
+  - 01M59J951N8TDHJQQT1CDHJAQ7
+- module: feature.Import
+  path: tests/importers/test_lancedb_import.py
+  expect:
+  - 01M5A1KDQ5SPRR50DHRTZEG4T6
+- module: feature.Metrics
+  path: src/pmem/bench/runner.py
+  expect:
+  - 01M4X5ZV9ZSWY5HXJWHJXCWKCT
+  - 01M5A8NDQMTBVC9GH7M5MG0F3V
+  - 01M5CHMWGTHSPYD8R6XSD0STCB
+- module: feature.Metrics
+  path: src/pmem/catalog/migrate.py
+  expect:
+  - 01M5CFJJJX8PGTZ5YNC9F5BTNK
+- module: feature.Metrics
+  path: src/pmem/hooks/mcp.py
+  expect:
+  - 01M5CFJZRQ4M5TX0995HDTBR4K
+- module: feature.Metrics
+  path: src/pmem/hooks/reminders.py
+  expect:
+  - 01M5CFJZRQ4M5TX0995HDTBR4K
+- module: feature.Metrics
+  path: src/pmem/metrics/cite.py
+  expect:
+  - 01M4X5HC6TNDY2JAVJZFJKWBT1
+- module: feature.Metrics
+  path: src/pmem/metrics/cleanup.py
+  expect:
+  - 01M5CCEGMA5G5D0PFZ2AK40DZA
+- module: feature.Metrics
+  path: src/pmem/metrics/events.py
+  expect:
+  - 01M59QZP2NJYPJ6GDRZQWKTJSA
+  - 01M5A8NDQMTBVC9GH7M5MG0F3V
+  - 01M5CFJJJX8PGTZ5YNC9F5BTNK
+- module: feature.Metrics
+  path: src/pmem/metrics/health.py
+  expect:
+  - 01M52HVYVMDHAYCZHX1K44BB0T
+  - 01M5A9637TPSG4YY21HH8PN4JZ
+  - 01M5CFJJJX8PGTZ5YNC9F5BTNK
+  - 01M5CFJKZZKE2DD8Y2Q3KS85WT
+- module: feature.Metrics
+  path: src/pmem/metrics/report.py
+  expect:
+  - 01M4XF770TCRKHWCK45QAKNC1V
+  - 01M4Z6PF0W0JKGVBCR03Z5RC3S
+  - 01M59KNQYHWQ5NEQ2G0YP6GH5A
+  - 01M5A8NDQMTBVC9GH7M5MG0F3V
+  - 01M5CFJKZZKE2DD8Y2Q3KS85WT
+  - 01M5CFJZRQ4M5TX0995HDTBR4K
+  - 01M5CFK17EASJ4YNGJTNPJM71V
+  - 01M5CJXN5NNXPBW37X52QC9KMS
+- module: feature.Metrics
+  path: src/pmem/scan/files.py
+  expect:
+  - 01M5CCEGMA5G5D0PFZ2AK40DZA
+- module: feature.Metrics
+  path: src/pmem/vcs/svn.py
+  expect:
+  - 01M4XF770TCRKHWCK45QAKNC1V
+- module: feature.ModuleCatalog
+  path: src/pmem/catalog/coverage.py
+  expect:
+  - 01M59KH4VKZKH9WH11BZ944YNE
+- module: feature.ModuleCatalog
+  path: src/pmem/catalog/migrate.py
+  expect:
+  - 01M52J04QGKZ47ZZ1RRCX3ETDZ
+  - 01M59J77JJVJZV0XB1QXW86YW4
+  - 01M5A0PBG6VWB16K23TWNRFXT0
+  - 01M5CFJNTQXEJB52YR1XTM6ET2
+- module: feature.ModuleCatalog
+  path: src/pmem/catalog/sync.py
+  expect:
+  - 01M59J77JJVJZV0XB1QXW86YW4
+  - 01M5A8G3D7FAKAB5SRK3X1A9HX
+  - 01M5CFJNTQXEJB52YR1XTM6ET2
+- module: feature.ModuleCatalog
+  path: src/pmem/catalog/yamlfile.py
+  expect:
+  - 01M59J77JJVJZV0XB1QXW86YW4
+- module: feature.ModuleCatalog
+  path: src/pmem/cli/migrate_cmd.py
+  expect:
+  - 01M5A0PBG6VWB16K23TWNRFXT0
+- module: feature.ModuleCatalog
+  path: src/pmem/core/registry.py
+  expect:
+  - 01M4X6ETSPH4CHRHE76VRX9404
+  - 01M51NZ2Y8SBPH444NYVN46PQE
+  - 01M51WQ1HAX8QZH4XGKYCJCMRR
+  - 01M52J04QGKZ47ZZ1RRCX3ETDZ
+  - 01M59J77JJVJZV0XB1QXW86YW4
+  - 01M59KH4VKZKH9WH11BZ944YNE
+  - 01M59YEJ1V04ZV6R8QSRZKCNS1
+  - 01M5A8G3D7FAKAB5SRK3X1A9HX
+- module: feature.ModuleCatalog
+  path: src/pmem/hooks/reminders.py
+  expect:
+  - 01M52J04QGKZ47ZZ1RRCX3ETDZ
+- module: feature.ModuleCatalog
+  path: src/pmem/scan/lite.py
+  expect:
+  - 01M5CFJNTQXEJB52YR1XTM6ET2
+- module: feature.ModuleCatalog
+  path: src/pmem/service/record.py
+  expect:
+  - 01M52J04QGKZ47ZZ1RRCX3ETDZ
+- module: feature.Onboarding
+  path: src/pmem/cli/doctor_cmd.py
+  expect:
+  - 01M51QHH4KWDAX349Z1M37XC37
+  - 01M51VN7Y3RVS2A3Q5TZ9FJC7B
+  - 01M52G7P3FMY0VYA8HHKYWF9WX
+  - 01M5CFKAKGSMQ4AZZVE6R73CM6
+- module: feature.Onboarding
+  path: src/pmem/cli/init_cmd.py
+  expect:
+  - 01M59YER88RFBGZSS50K1ZX6B8
+  - 01M5A0PEWG6WSEJXC1SNZFGPD0
+- module: feature.Onboarding
+  path: src/pmem/generate/integrations.py
+  expect:
+  - 01M51VN7Y3RVS2A3Q5TZ9FJC7B
+  - 01M52G7P3FMY0VYA8HHKYWF9WX
+  - 01M59G7FMN5H2D5EAZCADVAE3G
+  - 01M5A0PEWG6WSEJXC1SNZFGPD0
+  - 01M5CFJ4KYWXQDJDZDPCD2PW0J
+  - 01M5CFJ675VP99EGB614E98AGE
+- module: feature.Onboarding
+  path: src/pmem/generate/templates.py
+  expect:
+  - 01M51QHH4KWDAX349Z1M37XC37
+  - 01M51VN7Y3RVS2A3Q5TZ9FJC7B
+  - 01M59JBD5RPA14QG2Z1VMG8N0A
+  - 01M59KHDFWMBSWCAMYQTTPTKF3
+  - 01M5CFJ4KYWXQDJDZDPCD2PW0J
+  - 01M5CFJ675VP99EGB614E98AGE
+  - 01M5CQ4WGFMQZFHAGJ35P6A6K3
+- module: feature.Onboarding
+  path: src/pmem/hooks/review.py
+  expect:
+  - 01M5CQ4WGFMQZFHAGJ35P6A6K3
+- module: feature.Onboarding
+  path: src/pmem/scan/files.py
+  expect:
+  - 01M52HS37DKEM2KENXAF8CAJW6
+  - 01M59TCT2K1XB2CMSGPJGR8S52
+- module: feature.Onboarding
+  path: src/pmem/scan/lite.py
+  expect:
+  - 01M52HS37DKEM2KENXAF8CAJW6
+  - 01M59KHDFWMBSWCAMYQTTPTKF3
+  - 01M59TCT2K1XB2CMSGPJGR8S52
+- module: feature.Onboarding
+  path: src/pmem/server/app.py
+  expect:
+  - 01M5CQ4WGFMQZFHAGJ35P6A6K3
+- module: feature.Onboarding
+  path: src/pmem/service/search.py
+  expect:
+  - 01M5CQ4WGFMQZFHAGJ35P6A6K3
+- module: feature.Onboarding
+  path: src/pmem/vcs/git.py
+  expect:
+  - 01M59JBD5RPA14QG2Z1VMG8N0A
+- module: feature.Retrieval
+  path: docs/pmem-guide.html
+  expect:
+  - 01M5CFJ9F6S0600RH2HKGHR320
+- module: feature.Retrieval
+  path: scripts/eval_real_queries.py
+  expect:
+  - 01M5CJXZ80NA1QYVM3JG82ZQ6R
+- module: feature.Retrieval
+  path: src/pmem/cli/reindex_cmd.py
+  expect:
+  - 01M51WQ2D7CAYHMHXX53YQJQHT
+- module: feature.Retrieval
+  path: src/pmem/core/entry.py
+  expect:
+  - 01M5CCDMHAH5NK6JF0H3XDAJ13
+- module: feature.Retrieval
+  path: src/pmem/index/anchors.py
+  expect:
+  - 01M525TV4DF1JDYWBBRR6TT6X8
+  - 01M5AAZA1NXHY9DX2T3GHDY79E
+  - 01M5CEQ7761KCP8GVSQBX9952Q
+  - 01M5CEX09VZKB7KKGVTYXDY75G
+  - 01M5CFPZ23KMEC39WMDHNS5W5E
+  - 01M5CHMMPZHPYS3XECV1KC0J4S
+  - 01M5CKQ4AGMSE093QEHFG1QM8B
+- module: feature.Retrieval
+  path: src/pmem/index/embedder.py
+  expect:
+  - 01M4X40BBTRXTJT8KJS5DJ3AB0
+  - 01M5CFPZ23KMEC39WMDHNS5W5E
+- module: feature.Retrieval
+  path: src/pmem/index/graph.py
+  expect:
+  - 01M5CCDMHAH5NK6JF0H3XDAJ13
+  - 01M5CFPZ23KMEC39WMDHNS5W5E
+- module: feature.Retrieval
+  path: src/pmem/index/store.py
+  expect:
+  - 01M5A0PEDG5CFH3ZQVBTD4JB5D
+  - 01M5AAZA1NXHY9DX2T3GHDY79E
+  - 01M5CAVE8WNP4ESCMD549MGZXS
+  - 01M5CCDMHAH5NK6JF0H3XDAJ13
+  - 01M5CEX09VZKB7KKGVTYXDY75G
+  - 01M5CFJ7KZX34KEYGN92ZARYZS
+  - 01M5CFJ9F6S0600RH2HKGHR320
+  - 01M5CFK93YEEHZXDZH8M6H1K06
+- module: feature.Retrieval
+  path: src/pmem/service/search.py
+  expect:
+  - 01M5AAZA1NXHY9DX2T3GHDY79E
+- module: feature.Retrieval
+  path: src/pmem/vcs/git.py
+  expect:
+  - 01M5CEQ7761KCP8GVSQBX9952Q
+  - 01M5CHMMPZHPYS3XECV1KC0J4S
+- module: feature.Storage
+  path: src/pmem/core/fileio.py
+  expect:
+  - 01M5A8G8V805TGCAJGVDC3QQHQ
+- module: feature.Storage
+  path: src/pmem/storage/files.py
+  expect:
+  - 01M51VN6PNEY4WZXDSR558EPB3
+  - 01M59J7SX8T0AJ998K88W0564D
+  - 01M59YEKRB2236BWF1REH0JRRC
+  - 01M5A8G8V805TGCAJGVDC3QQHQ
+- module: feature.Storage
+  path: src/pmem/vcs/base.py
+  expect:
+  - 01M525TWRGYKJEKEQG0JHZC592
+  - 01M52G7BZDS5WHBAX1GC192D17
+  - 01M59J7SX8T0AJ998K88W0564D
+  - 01M59KH9VDQPAEW0YFKJD14DM0
+- module: feature.Storage
+  path: src/pmem/vcs/git.py
+  expect:
+  - 01M4XFGPBBEE838VGRFE9V7WWG
+  - 01M525TWRGYKJEKEQG0JHZC592
+  - 01M59J7SX8T0AJ998K88W0564D
+  - 01M59KH9VDQPAEW0YFKJD14DM0
+  - 01M5A8G8V805TGCAJGVDC3QQHQ
+  - 01M5CEQRZ23YJP2106XV5ZRPNQ
+- module: feature.Storage
+  path: src/pmem/vcs/svn.py
+  expect:
+  - 01M4XFGPBBEE838VGRFE9V7WWG
+  - 01M520BHHVKP9P15E00RTE933P
+  - 01M52G7BZDS5WHBAX1GC192D17
+  - 01M59KH9VDQPAEW0YFKJD14DM0
+  - 01M5A96G43R63S84C48SYN72GP
+  - 01M5CEQRZ23YJP2106XV5ZRPNQ
+- module: feature.Storage
+  path: tests/conftest.py
+  expect:
+  - 01M51WPVG6P4VR20F8R50MNWY4
+- module: feature.Tools
+  path: src/pmem/core/entry.py
+  expect:
+  - 01M5CFJCC6ZS9KJM8YHMBA55NZ
+- module: feature.Tools
+  path: src/pmem/core/secrets.py
+  expect:
+  - 01M5A8N9P3NSJD0G91ZX0TCX4J
+- module: feature.Tools
+  path: src/pmem/index/embedder.py
+  expect:
+  - 01M4X3ZQVT896027Z2P2Z9VN9G
+- module: feature.Tools
+  path: src/pmem/index/store.py
+  expect:
+  - 01M5CFJAYP6254TXPNE10M4X8W
+- module: feature.Tools
+  path: src/pmem/metrics/health.py
+  expect:
+  - 01M59R05JVPBPEWZMB0MZYCB2P
+- module: feature.Tools
+  path: src/pmem/server/app.py
+  expect:
+  - 01M51ZQRJB8WDAJA2EF122AV4T
+  - 01M521A0BBD5N9CE3TEE03VW36
+  - 01M59J7MB4DFCDF3ZSPVSC86RH
+  - 01M5A96BCE6G9929YMVCMW0J7Q
+  - 01M5CHMVWJRHPPSMSRSYVJFFCE
+- module: feature.Tools
+  path: src/pmem/service/__init__.py
+  expect:
+  - 01M59KGYQAWMJW3QGTA5J5BQKQ
+- module: feature.Tools
+  path: src/pmem/service/base.py
+  expect:
+  - 01M51PJQ94JEJQ0M977FCABXM9
+  - 01M59KGYQAWMJW3QGTA5J5BQKQ
+  - 01M5CFK7KH5RK5WD3NSZ9Y15MY
+- module: feature.Tools
+  path: src/pmem/service/curation.py
+  expect:
+  - 01M4ZRSNRDE7FNX5H8X39555AV
+- module: feature.Tools
+  path: src/pmem/service/record.py
+  expect:
+  - 01M4ZFGJPJQB3B8JDX14CRT84V
+  - 01M521A0BBD5N9CE3TEE03VW36
+  - 01M52A5ZHHWHGVNQEZB0BN6CAV
+  - 01M59J7MB4DFCDF3ZSPVSC86RH
+  - 01M5A8N9P3NSJD0G91ZX0TCX4J
+  - 01M5ACNAPSVJZG4Y3F08N2YW89
+  - 01M5CFJAYP6254TXPNE10M4X8W
+  - 01M5CFJCC6ZS9KJM8YHMBA55NZ
+  - 01M5CFK7KH5RK5WD3NSZ9Y15MY
+  - 01M5CHMVWJRHPPSMSRSYVJFFCE
+  - 01M5CJ63HHKP7WPZBQBTPN35PS
+- module: feature.Tools
+  path: src/pmem/service/search.py
+  expect:
+  - 01M51PJQ94JEJQ0M977FCABXM9
+  - 01M59R05JVPBPEWZMB0MZYCB2P
+  - 01M5ACNAPSVJZG4Y3F08N2YW89
+- module: feature.Tools
+  path: src/pmem/service/status.py
+  expect:
+  - 01M5CFJCC6ZS9KJM8YHMBA55NZ
+  - 01M5CFK7KH5RK5WD3NSZ9Y15MY
+- module: feature.Wiki
+  path: src/pmem/cli/wiki_cmd.py
+  expect:
+  - 01M51PKK3PK1GPSH0Z2J0FD0BX
+  - 01M59J8HNBSXB4P8BZ2GTTDN1Q
+- module: feature.Wiki
+  path: src/pmem/generate/templates.py
+  expect:
+  - 01M51PJS4Z9M2WF1ZVCR5Y07ZC
+- module: feature.Wiki
+  path: src/pmem/generate/wiki.py
+  expect:
+  - 01M51PJS4Z9M2WF1ZVCR5Y07ZC
+  - 01M59J8HNBSXB4P8BZ2GTTDN1Q
+  - 01M5ACNSQC78QC9QBH2YBVQRD7
+- module: infra.Common
+  path: README.md
+  expect:
+  - 01M59N3GDHK9VRVH2RYC9GW9S6
+  - 01M5CFJE42APN2HMMBFCZQV20C
+- module: infra.Common
+  path: docs/architecture.md
+  expect:
+  - 01M5CFJE42APN2HMMBFCZQV20C
+- module: infra.Common
+  path: docs/images/pmem-flow.svg
+  expect:
+  - 01M59N3GDHK9VRVH2RYC9GW9S6
+- module: infra.Common
+  path: docs/pmem-guide.html
+  expect:
+  - 01M59N3GDHK9VRVH2RYC9GW9S6
+  - 01M5CFHY7KWGT8BW26CM28C64Q
+  - 01M5CFJE42APN2HMMBFCZQV20C
+- module: infra.Common
+  path: docs/superpowers/specs/2026-10-14-pmem-design.md
+  expect:
+  - 01M5CG4K029FYHTB1R648MV5S1
+- module: infra.Common
+  path: src/pmem/cli/brief.py
+  expect:
+  - 01M5CFHWTQV49R4Y2EXQ7JDFH5
+  - 01M5CFJE42APN2HMMBFCZQV20C
+- module: infra.Common
+  path: src/pmem/cli/main.py
+  expect:
+  - 01M5A2X278E033B7PHC34M2EME
+  - 01M5ACNJZBAPDYJSHTNF4RH55G
+  - 01M5CFHWTQV49R4Y2EXQ7JDFH5
+  - 01M5CFHY7KWGT8BW26CM28C64Q
+- module: infra.Common
+  path: src/pmem/core/seen.py
+  expect:
+  - 01M5ACNJZBAPDYJSHTNF4RH55G
+- module: infra.Common
+  path: src/pmem/server/app.py
+  expect:
+  - 01M5CFHY7KWGT8BW26CM28C64Q
+- module: infra.Common
+  path: src/pmem/vcs/git.py
+  expect:
+  - 01M5CFHY7KWGT8BW26CM28C64Q
+- module: infra.Common
+  path: tests/test_layering.py
+  expect:
+  - 01M5A1JBRA5SB1MWP4Y3Q7DS7A
+- module: infra.Model
+  path: src/pmem/core/config.py
+  expect:
+  - 01M51PJWSRY2S5AJE1KWR9ZEK0
+  - 01M51WPKCSBNTXFWYJT8T8RXGX
+  - 01M5CFJFP3T9HDEAH4SZGX78B9
+  - 01M5CFJH62GP7DFKH0Z5F6BJNM
+  - 01M5CFK2NSSX4X0ZVR3K3CZW9A
+- module: infra.Model
+  path: src/pmem/core/entry.py
+  expect:
+  - 01M59TCMS5CS2QYTKRA6WA1041
+  - 01M5ACNNF7R5W94J0545T3C9GE
+  - 01M5CAVBTDR5YZHM5N3HYM6SY8
+  - 01M5CFK4GCE9ZDNDCCMNPY1GRS
+  - 01M5CFK63ZFBHGGNF0ZBAXCS1Y
+- module: infra.Model
+  path: src/pmem/core/ids.py
+  expect:
+  - 01M4X7E20M2YK5V0G9838SNFYE
+  - 01M51VNAC1V5A9K26RHRYPSA6F
+  - 01M5A1JECRPPWGZSH9FBEV2NQ7
+- module: infra.Model
+  path: src/pmem/core/registry.py
+  expect:
+  - 01M51WPKCSBNTXFWYJT8T8RXGX
+- module: infra.Model
+  path: src/pmem/core/textfmt.py
+  expect:
+  - 01M52A5XFKT2P2DQQQGDKSZ84C
+  - 01M5A8NBZE5S147NH20GDTWJ8J
+- module: infra.Model
+  path: src/pmem/generate/templates.py
+  expect:
+  - 01M5CFJFP3T9HDEAH4SZGX78B9
+  - 01M5CFJH62GP7DFKH0Z5F6BJNM
+- module: infra.Model
+  path: src/pmem/hooks/gate.py
+  expect:
+  - 01M5CFJH62GP7DFKH0Z5F6BJNM
+- module: infra.Model
+  path: src/pmem/hooks/review.py
+  expect:
+  - 01M5CFJFP3T9HDEAH4SZGX78B9
+- module: infra.Model
+  path: src/pmem/index/anchors.py
+  expect:
+  - 01M5CFK63ZFBHGGNF0ZBAXCS1Y
+- module: infra.Model
+  path: src/pmem/server/app.py
+  expect:
+  - 01M5CFK2NSSX4X0ZVR3K3CZW9A
+- module: infra.Model
+  path: src/pmem/service/status.py
+  expect:
+  - 01M5CFK63ZFBHGGNF0ZBAXCS1Y
+- module: infra.Watchdog
+  path: src/pmem/cli/main.py
+  expect:
+  - 01M59E3VTMVG5N5AR0WSKZVBY4
+- module: infra.Watchdog
+  path: src/pmem/server/app.py
+  expect:
+  - 01M59E3Q2YACDS3Q8W6WD7F7ZZ
+- module: infra.Watchdog
+  path: src/pmem/server/watchdog.py
+  expect:
+  - 01M59E3Q2YACDS3Q8W6WD7F7ZZ
+  - 01M5A2P74CHG2PSTJX03ESYYKA
+- module: infra.Watchdog
+  path: tests/test_watchdog.py
+  expect:
+  - 01M5A2P74CHG2PSTJX03ESYYKA

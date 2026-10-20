@@ -79,6 +79,19 @@ def test_split_by_path_moves_memories_by_anchor_and_entity(project, capsys):
         service.close()
 
 
+def test_superseded_memory_follows_its_replacement(project):
+    old = record(project, "Board", None, "旧结论")
+    service = MemoryService(project)
+    try:
+        fix = service.record("gameplay.Merge", "Event", "correction", TEXT + "更正", supersedes=[old],
+                             anchors=["src/Merge/Event/Season.cs#Run"])
+    finally:
+        service.close()
+    assert fix["ok"], fix
+    assert split(project, "--to", "activity.MergeEvent=src/Merge/Event/**", "--apply") == 0
+    assert module_of(project, fix["id"]) == module_of(project, old) == "activity.MergeEvent"
+
+
 def test_assign_overrides_and_exact_path_leaves_source(project):
     both = record(project, "Board", ["src/Merge/Core/Board.cs", "src/Merge/Event/Season.cs"])
     assert split(project, "--to", "gameplay.MergeCore=src/Merge/**", "--assign", f"{both}=gameplay.MergeCore",

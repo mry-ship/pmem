@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from pmem.core.fileio import write_atomic
 from pmem.service.base import ServiceBase, fail, returns_errors
+from pmem.storage.files import StorageError
 
 # 动作 → (允许的原状态, 新状态)；记忆文件写入后只有这些状态变更由负责人通过命令行发起。
 # restore 回到归档前的状态，没记录时才用 active
@@ -23,21 +23,28 @@ class StatusOps(ServiceBase):
         """核对过关联代码、仍然成立的记忆：把核对日期记为今天，之后不再因更早的代码改动标为 stale。"""
         now = datetime.now().astimezone()
         today = now.date().isoformat()
-        confirmed, missing = [], []
+        confirmed, missing, invalid = [], [], []
         for entry_id in dict.fromkeys(i for i in ids or [] if i):
             path = self.storage.find_path(entry_id)
             if path is None:
                 missing.append(entry_id)
                 continue
-            entry = self.storage.read(path)
-            entry.verified = today
-            entry.verified_at = now.isoformat(timespec="milliseconds")
-            write_atomic(path, entry.to_markdown())
+            try:
+                entry = self.storage.read(path)
+                entry.verified = today
+                entry.verified_at = now.isoformat(timespec="milliseconds")
+                self.storage.rewrite(path, entry)
+            except StorageError as exc:
+                invalid.append({"id": entry_id, "error": str(exc)})
+                continue
             confirmed.append(entry_id)
         self._log("confirm", conv=source_conversation, ids=confirmed)
-        response: dict = {"ok": bool(confirmed) or not missing, "confirmed": confirmed, "verified": today}
+        response: dict = {"ok": bool(confirmed) or not (missing or invalid), "confirmed": confirmed,
+                          "verified": today}
         if missing:
             response["missing"] = missing
+        if invalid:
+            response["invalid"] = invalid
         if confirmed:
             self.index.refresh(force=True)
             self._refresh_wiki(response)
@@ -50,14 +57,18 @@ class StatusOps(ServiceBase):
         归档时记下日期和原状态：按日期回看时那天之后才归档的仍算有效，恢复时回到原状态。"""
         allowed, target = STATUS_ACTIONS[action]
         today = date.today().isoformat()
-        changed, missing, skipped = [], [], []
+        changed, missing, skipped, invalid = [], [], [], []
         statuses: dict[str, str] = {}
         for entry_id in dict.fromkeys(i for i in ids or [] if i):
             path = self.storage.find_path(entry_id)
             if path is None:
                 missing.append(entry_id)
                 continue
-            entry = self.storage.read(path)
+            try:
+                entry = self.storage.read(path)
+            except StorageError as exc:
+                invalid.append({"id": entry_id, "error": str(exc)})
+                continue
             if entry.status not in allowed:
                 skipped.append({"id": entry_id, "status": entry.status})
                 continue
@@ -69,13 +80,17 @@ class StatusOps(ServiceBase):
                 entry.archived_on = entry.archived_from = entry.archived_by = None
                 # 恢复撤销过的合并产物 = 重做这次合并，它替代的记忆重新隐藏
                 entry.reverted_on = entry.reverted_by = None
-            write_atomic(path, entry.to_markdown())
+            try:
+                self.storage.rewrite(path, entry)
+            except StorageError as exc:
+                invalid.append({"id": entry_id, "error": str(exc)})
+                continue
             changed.append(entry_id)
             statuses[entry_id] = entry.status
         self._log("status", action=action, ids=changed)
         # restore 回到各自归档前的状态，不一定是 target；状态不一致时 status 为 mixed，逐条见 statuses
         distinct = set(statuses.values()) or {target}
-        response: dict = {"ok": bool(changed) or not (missing or skipped), "action": action,
+        response: dict = {"ok": bool(changed) or not (missing or skipped or invalid), "action": action,
                           "status": next(iter(distinct)) if len(distinct) == 1 else "mixed", "changed": changed}
         if len(distinct) > 1:
             response["statuses"] = statuses
@@ -83,11 +98,14 @@ class StatusOps(ServiceBase):
             response["missing"] = missing
         if skipped:
             response["skipped"] = skipped
+        if invalid:
+            response["invalid"] = invalid
         if changed:
             self.index.refresh(force=True)
             self._refresh_wiki(response)
         return response
 
+    @returns_errors
     def revert(self, entry_id: str) -> dict:
         """撤销一次合并（或替代）：这条归档并标为已撤销，它替代的原记忆重新现行。
         只归档不能做到这一点：归档记忆的替代关系仍然算数（归档表示整条演进线过时）。"""
@@ -107,7 +125,7 @@ class StatusOps(ServiceBase):
             entry.archived_on, entry.archived_from, entry.archived_by = today, entry.status, self.user
             entry.status = "archived"
         entry.reverted_on, entry.reverted_by = today, self.user
-        write_atomic(path, entry.to_markdown())
+        self.storage.rewrite(path, entry)
         self._log("status", action="revert", ids=[entry_id])
         self.index.refresh(force=True)
         hidden = self.index.superseded()

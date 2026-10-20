@@ -6,7 +6,7 @@ kind: risk
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/gate.py#_written
+- src/pmem/hooks/reminders.py#_written
 revision: git:f340df3
 author: 1002378395@qq.com
 note_date: '2026-10-20'

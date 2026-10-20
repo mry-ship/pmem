@@ -31,7 +31,7 @@ def build_parser():
 
     p = sub.add_parser("scan", help="输出目录概览，供 Agent 划分模块")
     p.add_argument("--root", default=".")
-    p.add_argument("--depth", type=int, default=4)
+    p.add_argument("--depth", type=_positive, default=4, help="目录树展开的层数，默认 4")
 
     p = sub.add_parser("sync", help="重新扫描代码目录：列出新模块候选、要追加的路径、第三方目录和冷候选转正（默认只预览）")
     p.add_argument("--apply", action="store_true", help="写入 modules.yaml（只追加，不改已有模块名）")
@@ -53,7 +53,7 @@ def build_parser():
     p.add_argument("--module", default="")
     p.add_argument("--path", default="")
     p.add_argument("--entity", default="")
-    p.add_argument("--limit", type=int, default=5)
+    p.add_argument("--limit", type=_positive, default=None, help="默认按 config.yaml 的 search.limit")
     p.add_argument("--as-of", default="", help="只看这一天（YYYY-MM-DD）有效的记忆")
     p.add_argument("--full", action="store_true", help="本对话已返回过的记忆也给全文（默认只列标题）")
     p.add_argument("--id", dest="ids", action="extend", nargs="+", default=None,
@@ -73,8 +73,8 @@ def build_parser():
 
     p = sub.add_parser("terms", help="记忆里的高频词，供 Agent 整理同义叫法（pmem-normalize 技能）")
     p.add_argument("--module", default="")
-    p.add_argument("--top", type=int, default=300)
-    p.add_argument("--min", type=int, default=2, help="至少出现在几条记忆里")
+    p.add_argument("--top", type=_positive, default=300, help="最多列出多少个词，默认 300")
+    p.add_argument("--min", type=_positive, default=2, help="至少出现在几条记忆里")
     p.add_argument("--root", default=".")
 
     p = sub.add_parser("anchors", help="从记忆正文里提到的文件名、类名.成员 补全关联代码；代码搬家后用 --rename 改写（默认只预览）")
@@ -96,7 +96,7 @@ def build_parser():
                    help="feature 功能记录（改了模块就写）、plan 规划；其余是教训")
     body = p.add_mutually_exclusive_group(required=True)
     body.add_argument("--content", help="正文；传 - 表示从标准输入读取")
-    body.add_argument("--content-file", help="从 UTF-8 文件读取正文（正文含引号或较长时推荐）")
+    body.add_argument("--content-file", help="从文件读取正文（正文含引号或较长时推荐）；UTF-8 或带 BOM 的 UTF-16")
     # extend + nargs：一个参数后可以跟多个值（--alias 闪退 崩溃），也可以重复写；
     # 默认 None 表示没传，带 --draft-id 覆盖时沿用原值；只写参数名不跟值表示清空
     keep = "；带 --draft-id 时不写则沿用原值，只写参数名不跟值表示清空"
@@ -126,7 +126,7 @@ def build_parser():
     p.add_argument("ids", nargs="*")
     p.add_argument("--module", default="")
     p.add_argument("--plan", action="store_true", help="按改动热度列出值得先补种子记忆的模块")
-    p.add_argument("--top", type=int, default=None, help="配合 --plan：列出前几个模块，默认 10")
+    p.add_argument("--top", type=_positive, default=None, help="配合 --plan：列出前几个模块，默认 10")
     action = p.add_mutually_exclusive_group()
     action.add_argument("--accept", action="store_true", help="确认：转为正式记忆")
     action.add_argument("--reject", action="store_true", help="退回：标为归档")
@@ -165,7 +165,7 @@ def build_parser():
         mp.add_argument("--root", default=".")
 
     p = sub.add_parser("health", help="健康报告：未登记与重复模块、检索落空、过时记忆、被拒写入等（负责人定期看）")
-    p.add_argument("--days", type=int, default=60)
+    p.add_argument("--days", type=_positive, default=60)
     p.add_argument("--json", action="store_true")
     p.add_argument("--root", default=".")
 
@@ -175,14 +175,14 @@ def build_parser():
 
     p = sub.add_parser("map", help="记忆演化图（本地 HTML）与图上自检：漏记、断链、悬而未决、过期")
     p.add_argument("--out", default=None, help="HTML 输出路径，默认 Wiki 目录下的 map.html")
-    p.add_argument("--days", type=int, default=30, help="漏记检查看近几天的提交")
+    p.add_argument("--days", type=_positive, default=30, help="漏记检查看近几天的提交")
     p.add_argument("--json", action="store_true", help="只输出图数据与自检结果（JSON），不生成 HTML")
     p.add_argument("--root", default=".")
 
     p = sub.add_parser("compact", help="列出积累了多条零碎记忆的议题；指定议题时输出全部正文，供 Agent 合并成一条")
     p.add_argument("--module", default="")
     p.add_argument("--entity", default="")
-    p.add_argument("--min", type=int, default=5, help="一个议题至少积累多少条才列出")
+    p.add_argument("--min", type=_positive, default=5, help="一个议题至少积累多少条才列出")
     p.add_argument("--undo", default="", metavar="记忆id",
                    help="撤销一次合并：合并后的那条归档，它替代的原记忆重新现行（重做用 pmem archive --restore）")
     p.add_argument("--json", action="store_true")
@@ -193,27 +193,40 @@ def build_parser():
     p.add_argument("--catalog", default=None, help="参考实现的 modules.yaml，用于填充大类与议题")
     p.add_argument("--author", default="imported", help="源库没有作者信息，统一记为此作者")
     p.add_argument("--guess-kind", action="store_true", help="按正文开头的关键词推断类型（默认全部记为 conclusion）")
-    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--dry-run", action="store_true", help="只统计会导入多少条，不写文件")
     p.add_argument("--root", default=".")
 
     p = sub.add_parser("reindex", help="清空本机索引缓存并重建（换了嵌入模型或检索异常时用）")
     p.add_argument("--root", default=".")
 
     p = sub.add_parser("report", help="本机收益报告：检索命中、避坑、跨人复用、记忆采用率等")
-    p.add_argument("--days", type=int, default=30)
+    p.add_argument("--days", type=_positive, default=30)
     p.add_argument("--json", action="store_true")
     p.add_argument("--root", default=".")
 
     p = sub.add_parser("bench", help="对照实验：同一任务有/无记忆各跑一遍（需要 Cursor SDK 与 CURSOR_API_KEY）")
     p.add_argument("cases", nargs="?", default="bench/cases.yaml")
     p.add_argument("--arms", default="on,off", help="要跑的组，逗号分隔：on,off")
-    p.add_argument("--repeats", type=int, default=None)
-    p.add_argument("--model", default=None)
+    p.add_argument("--repeats", type=_positive, default=None, help="每组重复几次，默认按用例文件的 repeats")
+    p.add_argument("--model", default=None, help="Agent 使用的模型，默认按用例文件的 model")
     p.add_argument("--only", action="append", default=[], help="只跑指定用例 id，可重复")
-    p.add_argument("--out", default="bench-results")
+    p.add_argument("--out", default="bench-results", help="结果目录（results.jsonl、summary.md）")
     p.add_argument("--dry-run", action="store_true", help="不调用 Agent，只验证起始提交上验收确实失败")
     p.add_argument("--root", default=".")
     return parser
+
+
+def _positive(raw: str) -> int:
+    """--limit、--days 等：负数和 0 原先会被静默当成 1 或得到“最近 -5 天”。"""
+    import argparse
+
+    try:
+        value = int(raw)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"需要正整数，收到 {raw!r}") from None
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"需要正整数，收到 {raw!r}")
+    return value
 
 
 def _project_root(raw: str) -> Path:
@@ -224,6 +237,20 @@ def _project_root(raw: str) -> Path:
         print(f"{Path(raw).resolve()} 不在 pmem 项目中，请先运行 pmem init", file=sys.stderr)
         raise SystemExit(2)
     return root
+
+
+# 自己处理或不读项目配置的命令：doctor 要把配置错误列成 ✘ 继续自检，init 会生成配置
+_NO_PREFLIGHT = {"init", "scan", "hook", "serve", "doctor", "bench"}
+
+
+def _preflight(raw_root: str) -> None:
+    """配置和模块目录写错时，所有命令都在开始前报同一行原因、退出码 2，不再有的返回 1、有的照常返回 0。"""
+    from pmem.core.config import Config
+    from pmem.core.registry import ModuleRegistry
+
+    config = Config.load(_project_root(raw_root))
+    if config.modules_path.exists():
+        ModuleRegistry.load(config.modules_path)
 
 
 def _print_json(data: dict) -> None:
@@ -245,17 +272,28 @@ def main(argv: list[str] | None = None) -> int:
             from pmem.cli.hook_cmd import run_hook
 
             return run_hook(args_list[1], rest[1])
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.command in SERVICE_COMMANDS:
-        return _run_service(args)
-    handler = COMMANDS.get(args.command)
-    if handler is None:
-        parser.print_help()
-        return 0
-    return handler(args)
+    from pmem.core.config import ConfigError
+    from pmem.core.registry import RegistryError
+
+    try:
+        if args.command not in _NO_PREFLIGHT and getattr(args, "root", None) is not None:
+            _preflight(args.root)
+        if args.command in SERVICE_COMMANDS:
+            return _run_service(args)
+        handler = COMMANDS.get(args.command)
+        if handler is None:
+            parser.print_help()
+            return 0
+        return handler(args)
+    except (ConfigError, RegistryError) as exc:
+        # 配置或模块目录写错是用户能自己改的，给一行原因，不给异常栈
+        print(f"pmem：{exc}", file=sys.stderr)
+        return 2
 
 
 # ---- 各子命令；依赖在用到时才导入，保持启动快 ----
@@ -282,6 +320,9 @@ def _init(args) -> int:
 def _scan(args) -> int:
     from pmem.scan.lite import run_scan
 
+    if not Path(args.root).is_dir():
+        print(f"目录不存在：{args.root}", file=sys.stderr)
+        return 2
     return run_scan(Path(args.root), args.depth)
 
 
@@ -323,18 +364,43 @@ def _report(args) -> int:
 
 
 def _bench(args) -> int:
-    from pmem.bench.runner import dry_run_executor, run_bench
+    import yaml
+
+    from pmem.bench.runner import ARMS, BenchUnavailable, dry_run_executor, run_bench
 
     root = _project_root(args.root)
     arms = tuple(a.strip() for a in args.arms.split(",") if a.strip())
-    records = run_bench(
-        root, root / args.cases, root / args.out, arms=arms, repeats=1 if args.dry_run else args.repeats,
-        model=args.model, executor=dry_run_executor if args.dry_run else None, only=args.only or None,
-    )
+    unknown = [a for a in arms if a not in ARMS]
+    if unknown or not arms:
+        print(f"--arms 只能取 {', '.join(ARMS)}，收到：{args.arms}", file=sys.stderr)
+        return 2
+    cases = root / args.cases
+    if not cases.is_file():
+        print(f"找不到用例文件：{cases}", file=sys.stderr)
+        return 2
+    try:
+        records = run_bench(
+            root, cases, root / args.out, arms=arms, repeats=1 if args.dry_run else args.repeats,
+            model=args.model, executor=dry_run_executor if args.dry_run else None, only=args.only or None,
+        )
+    except BenchUnavailable as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except (ValueError, TypeError, yaml.YAMLError) as exc:
+        print(f"用例文件有误：{exc}", file=sys.stderr)
+        return 2
     if args.dry_run:
+        broken = sorted({r.case for r in records if r.metrics.status != "dry_run"})
         bad = sorted({r.case for r in records if r.passed})
-        print("用例有效：起始提交上验收均失败" if not bad else f"这些用例在起始提交上已能通过，需要调整：{'、'.join(bad)}")
-        return 1 if bad else 0
+        if broken:
+            print(f"这些用例没能在起始提交上跑起来（起始提交、setup 或工作区有误），详见 results.jsonl：{'、'.join(broken)}")
+        if bad:
+            print(f"这些用例在起始提交上已能通过，需要调整：{'、'.join(bad)}")
+        if not records:
+            print("没有可运行的用例（检查 --only 和用例文件）")
+        if not broken and not bad and records:
+            print("用例有效：起始提交上验收均失败")
+        return 1 if broken or bad or not records else 0
     print(f"结果见 {root / args.out / 'summary.md'}")
     return 0
 

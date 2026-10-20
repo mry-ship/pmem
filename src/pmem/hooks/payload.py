@@ -12,8 +12,9 @@ _FIELDS = ("conversation_id", "generation_id", "hook_event_name", "tool_name", "
            "transcript_path")
 _TRANSCRIPT_TAIL = 512 * 1024
 _USER_QUERY = re.compile(r"<user_query>\s*(.*?)\s*</user_query>", re.DOTALL)
-_INPUT_FIELDS = ("file_path", "command", "cwd", "module", "path", "entity", "query", "target_directory", "draft_id")
-_PATH_KEYS = ("file_path", "path", "target_file", "target_directory")
+_INPUT_FIELDS = ("file_path", "command", "cwd", "module", "path", "entity", "kind", "query", "target_directory",
+                 "draft_id", "target_file", "target_notebook")
+_PATH_KEYS = ("file_path", "path", "target_file", "target_notebook", "target_directory")
 _PATH_LIST_KEYS = ("target_directories", "paths")
 
 
@@ -77,6 +78,11 @@ def _extract(text: str) -> dict:
             value = _string_field(head[1], key)
             if value is not None:
                 inputs[key] = value
+        # 一次删多个文件的 file_paths 是列表；抠不出来会让这些文件绕过闸门
+        listed = re.search(r'"file_paths"\s*:\s*\[([^\]]*)\]', head[1])
+        if listed:
+            items = [_string_field('"x":' + raw, "x") for raw in re.findall(r'"(?:[^"\\]|\\.)*"', listed.group(1))]
+            inputs["file_paths"] = [i for i in items if i]
         data["tool_input"] = inputs
     path = _string_field(text, "file_path")
     if path is not None:

@@ -15,6 +15,9 @@ FEATURES_HINT = ("features 是本模块已实现的功能（feature）和未实�
                  "必须保持的行为，改动会改变这些行为时先用 ids=[...]（命令行 --id）取全文核对，不要把它们当冗余代码改回去；"
                  "规划还没实现，不是现状。")
 APPLIES_HINT = "带 applies 的记忆只在该前提下成立：先判断当前情况是否满足，不满足就不要套用。"
+# seen_hint 很短且告诉终端用户怎么取全文（终端看不到工具说明），每次都给
+_ONCE_HINTS = ("features_hint", "applies_hint", "verify_hint")
+_HINT_MARK = "hint:"
 _KEPT_ON_COLLAPSE = ("module", "id", "entity", "kind", "date", "stale", "check", "status", "scope", "applies")
 
 
@@ -43,6 +46,8 @@ class SearchOps(ServiceBase):
             response = fail(str(exc))
         conversation = source_conversation or self._claim_conversation(response)
         collapsed = self._collapse_seen(response, conversation, full) if response.get("ok") else []
+        if response.get("ok"):
+            self._hints_once(response, conversation)
         items = response.get("items") or []
         self._log(
             "search",
@@ -90,6 +95,20 @@ class SearchOps(ServiceBase):
         if collapsed:
             response["seen_hint"] = SEEN_HINT.format(n=len(collapsed))
         return collapsed
+
+    def _hints_once(self, response: dict, conversation: str | None) -> None:
+        """字段说明类的固定提示每个对话只给一次；和全文去重共用记录，上下文压缩后清空、再给一次。"""
+        if not conversation:
+            return
+        given = {k for k in _ONCE_HINTS if k in response}
+        if not given:
+            return
+        cache_dir = self.config.cache_dir
+        shown = seen.load(cache_dir, conversation)
+        for key in given:
+            if _HINT_MARK + key in shown:
+                del response[key]
+        seen.add(cache_dir, conversation, [_HINT_MARK + k for k in given if _HINT_MARK + k not in shown])
 
     def _by_ids(self, ids: list[str]) -> dict:
         """按 id 取全文（功能记录、去重后的标题都可以这样展开）；被替代、归档的也给，并标出状态。"""

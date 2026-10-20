@@ -51,6 +51,14 @@ DEFAULTS: dict = {
     "server": {"watchdog": True, "request_timeout": 120},
 }
 
+_LIST_KEYS = ("gate.watch", "gate.ignore", "gate.skip_markers", "gate.resume_markers", "gate.analysis_markers",
+              "gate.record_exempt")
+# 数值配置项：（最小值, 类型）；写成字符串或负数会在写入、检索时才抛异常栈
+_NUMBERS = {
+    "write.content_min": (0, int), "write.content_max": (1, int), "write.recommend_max": (1, int),
+    "write.max_per_day_per_entity": (1, int), "search.limit": (1, int), "search.max_per_batch": (1, int),
+    "search.recency_half_life_days": (1, float), "search.feature_limit": (0, int), "server.request_timeout": (1, float),
+}
 _CHOICES = {
     "vcs": ("auto", "git", "svn", "none"),
     "gate.mode": ("off", "warn", "block"),
@@ -122,15 +130,32 @@ class Config:
     def __init__(self, root: Path, data: dict):
         self.root = root
         self.data = data
-        gate = data.get("gate") or {}
+        for section in ("gate", "write", "search", "server", "embedding", "wiki", "project"):
+            if not isinstance(data.get(section), dict):
+                raise ConfigError(f"配置项 {section} 应是键值对，当前为 {data.get(section)!r}")
+        gate = data["gate"]
         if isinstance(gate.get("mode"), bool):
             gate["mode"] = "warn" if gate["mode"] else "off"
         for key, allowed in _CHOICES.items():
             value = self.get(key)
             if value not in allowed:
                 raise ConfigError(f"配置项 {key} 只能是 {' / '.join(allowed)}，当前为 {value!r}")
-        if not isinstance(self.get("gate.record_exempt") or [], list):
-            raise ConfigError("配置项 gate.record_exempt 应是 glob 列表")
+        for key in _LIST_KEYS:
+            section, name = key.split(".")
+            value = data[section].get(name)
+            if isinstance(value, str):
+                # 只写了一项时常写成字符串；按字符逐个匹配会让闸门静默失效
+                data[section][name] = [value]
+            elif value is not None and not isinstance(value, list):
+                raise ConfigError(f"配置项 {key} 应是列表，当前为 {value!r}")
+        for key, (low, kind) in _NUMBERS.items():
+            value = self.get(key)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or (kind is int and value != int(value)):
+                raise ConfigError(f"配置项 {key} 应是{'整数' if kind is int else '数字'}，当前为 {value!r}")
+            if value < low:
+                raise ConfigError(f"配置项 {key} 不能小于 {low}，当前为 {value!r}")
+        if self.get("write.content_max") < self.get("write.content_min"):
+            raise ConfigError("配置项 write.content_max 不能小于 write.content_min")
         patterns = self.get("write.secret_patterns") or []
         if not isinstance(patterns, list):
             raise ConfigError("配置项 write.secret_patterns 应是正则表达式列表")

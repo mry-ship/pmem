@@ -6,8 +6,8 @@ kind: correction
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/gate.py#_only_committed
-- src/pmem/hooks/gate.py#_shell_after
+- src/pmem/hooks/snapshot.py#_only_committed
+- src/pmem/hooks/snapshot.py#_shell_after
 revision: git:edf9c94
 author: 1002378395@qq.com
 note_date: '2026-10-19'

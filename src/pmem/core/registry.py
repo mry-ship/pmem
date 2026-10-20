@@ -8,7 +8,7 @@ from wcmatch import glob as wglob
 
 from pmem.core.config import load_yaml
 
-DEFAULT_CATEGORIES = ("activity", "gameplay", "economy", "infra")
+DEFAULT_CATEGORIES = ("feature", "infra")
 
 _CATEGORY_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
@@ -153,7 +153,12 @@ class ModuleRegistry:
         for key in ("modules", "candidates", "categories", "entities"):
             if data.get(key) is not None and not isinstance(data[key], dict):
                 raise RegistryError(f"modules.yaml 里的 {key} 应是键值对")
-        self.categories: list[str] = list((data.get("categories") or {}).keys()) or list(DEFAULT_CATEGORIES)
+        # 没写 categories（文件为空或被删）时按已登记模块的大类推断，都没有时用通用预设；
+        # 原先固定回落到游戏项目的四个大类，非游戏项目已有的 feature.* 记忆全部报“未知大类”
+        declared = list((data.get("categories") or {}).keys())
+        inferred = [mid.split(".", 1)[0] for mid in [*(data.get("modules") or {}), *(data.get("candidates") or {})]
+                    if "." in str(mid)]
+        self.categories: list[str] = declared or list(dict.fromkeys(inferred)) or list(DEFAULT_CATEGORIES)
         self.modules: dict[str, Module] = {
             mid: Module.from_dict(mid, body) for mid, body in (data.get("modules") or {}).items()
         }

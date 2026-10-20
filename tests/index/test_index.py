@@ -113,8 +113,32 @@ def test_same_batch_is_capped(storage, tmp_path):
         add(storage, f"同一次对话里的第 {i} 条奖励结论", source_conversation="conv-1")
     other = add(storage, "另一次对话的奖励结论", source_conversation="conv-2")
     result = make_index(storage, tmp_path).search(module="gameplay.Jigsaw", query="奖励结论", today=TODAY)
-    assert len(result.items) == 3
-    assert other.id in ids(result)
+    assert len(result.items) == 5
+    assert other.id in ids(result)[:3]
+
+
+def test_same_author_batch_is_a_90_minute_window_not_a_fixed_bucket():
+    from pmem.index.store import _BATCH_WINDOW_MS, _spread_batches
+
+    edge = _BATCH_WINDOW_MS * 1000
+    entries = [Entry(id=new_ulid(), module="m.A", entity="E", kind="conclusion", content="x",
+                     note_date="2026-10-14", author="alice") for _ in range(3)]
+    other = Entry(id=new_ulid(), module="m.A", entity="E", kind="conclusion", content="x", note_date="2026-10-14",
+                  author="bob")
+    ranked = [(1.0, edge - 60_000, entries[0]), (0.9, edge + 60_000, entries[1]), (0.8, edge + 120_000, entries[2]),
+              (0.1, edge, other)]
+    chosen = _spread_batches(ranked, limit=10, max_per_batch=2)
+    assert chosen == [entries[0], entries[1], other, entries[2]]
+
+
+def test_batch_overflow_is_demoted_but_still_beats_unrelated_entries(storage, tmp_path):
+    """超出同批名额的记忆只降到其他相关结果之后，不能整条丢掉、输给完全不相干的记忆。"""
+    same = [add(storage, f"奖励重复发放的第 {i} 个原因", source_conversation="conv-1") for i in range(3)]
+    unrelated = [add(storage, f"配置表字段说明 {i}", entity="Config", source_conversation=f"conv-{i + 2}")
+                 for i in range(3)]
+    result = make_index(storage, tmp_path).search(module="gameplay.Jigsaw", query="奖励重复发放", today=TODAY)
+    assert set(ids(result)[:3]) == {e.id for e in same}
+    assert set(ids(result)[3:]) <= {e.id for e in unrelated}
 
 
 def test_newer_entry_wins_on_equal_relevance(storage, tmp_path):

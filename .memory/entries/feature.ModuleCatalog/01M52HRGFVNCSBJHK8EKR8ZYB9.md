@@ -9,7 +9,7 @@ anchors:
 - src/pmem/catalog/migrate.py#plan_deprecate
 - src/pmem/core/registry.py#deprecated
 - src/pmem/service/record.py#_record
-- src/pmem/hooks/gate.py#_deprecated
+- src/pmem/hooks/reminders.py#_deprecated
 - src/pmem/cli/seed_cmd.py#seed_plan
 - src/pmem/metrics/health.py#build_health
 revision: git:5003560

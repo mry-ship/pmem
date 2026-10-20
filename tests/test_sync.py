@@ -97,6 +97,13 @@ def test_new_folder_named_like_a_deprecated_module_is_never_overwritten(project)
     assert out["modules"]["gameplay.Match"] == data["modules"]["gameplay.Match"]
 
 
+def test_new_variant_folder_is_not_appended_to_a_deprecated_module(project):
+    data = yaml.safe_load(MODULES)
+    data["modules"]["economy.Season"]["status"] = "deprecated"
+    plan = plan_sync(project, ModuleRegistry(data), Counter(), Counter({"src/Season/Autumn/S.cs": 3}), Counter())
+    assert "economy.Season" not in plan.append_paths
+
+
 @pytest.mark.parametrize("candidate", ["gameplay.Match", "economy.Match"])
 def test_new_folder_named_like_a_candidate_is_appended_to_it(project, candidate):
     data = yaml.safe_load(MODULES)

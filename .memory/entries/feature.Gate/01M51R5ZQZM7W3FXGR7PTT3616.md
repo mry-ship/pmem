@@ -7,8 +7,8 @@ status: active
 supersedes: []
 anchors:
 - src/pmem/hooks/shell.py#shell_write_targets
-- src/pmem/hooks/gate.py#_search_digest
-- src/pmem/hooks/gate.py#_unreviewed
+- src/pmem/hooks/review.py#_search_digest
+- src/pmem/hooks/review.py#_unreviewed
 - src/pmem/hooks/gate.py#on_pre_tool
 - src/pmem/hooks/payload.py#turn_tool_paths
 revision: git:874e444
@@ -20,7 +20,7 @@ aliases:
 - 不查记忆
 - 绕过
 verified: '2026-10-20'
-verified_at: '2026-10-20T18:57:28.399+08:00'
+verified_at: '2026-10-20T19:48:17.753+08:00'
 ---
 结论：有 3 个“不查记忆也没人知道”的漏洞，已修复。
 

@@ -189,7 +189,7 @@ def test_digest_for_module_with_only_unrelated_features(gate_root):
            entity="Mute")
     _entry(gate_root, "economy.Shop", "risk", "风险：全项目都会踩。", "scope: project\n")
     text = _read(gate_root, "src/Jigsaw/Board.cs")
-    assert "都是功能记录" in text and "还没有研发记忆" not in text and "静音" not in text
+    assert "无关的功能记录" in text and "还没有记忆" not in text and "静音" not in text
 
 
 def test_after_mcp_registers_feature_rows(gate_root):
@@ -282,3 +282,14 @@ def test_cli_accepts_feature_kind_applies_and_ids():
 def test_rule_and_compact_skill_describe_two_layers():
     assert "功能记录（改了模块就写）" in RULE_BODY and "search_memory(ids=[...])" in RULE_BODY
     assert "适用条件不同的记忆不合并" in COMPACT_SKILL
+
+
+def test_trimmed_rule_keeps_every_instruction_that_changes_behaviour():
+    """规则只说什么时候做；字段写法在 record_memory 说明里，结果字段含义在检索提示里。"""
+    for phrase in ("跳过记忆", "search_memory(path=", "list_modules()", "memory_graph", "as_of",
+                   "confirm_memory", "correction", "pmem search --module", "pmem record", "安装 pmem",
+                   "记忆：查了 <模块>，用到「<记忆标题>」", "没有相关记忆", "记忆：不涉及项目模块，未查", "[pmem]",
+                   "不要向用户确认", "draft_id", "plan", "exclusion", "risk", "decision", "不问用户",
+                   "不写密码、密钥、个人信息"):
+        assert phrase in RULE_BODY, phrase
+    assert len(RULE_BODY) < 1400

@@ -100,7 +100,8 @@ def _variant_owner(registry: ModuleRegistry, owner: dict[str, str], parent: str)
         return None
     mid = next(iter(owners))
     module = registry.modules.get(mid) or registry.candidates.get(mid)
-    if not mid or module is None:
+    # 已废弃的模块只读，新目录不能再挂到它上面
+    if not mid or module is None or module.deprecated:
         return None
     prefix = parent.lower().split("/")
     children = 0

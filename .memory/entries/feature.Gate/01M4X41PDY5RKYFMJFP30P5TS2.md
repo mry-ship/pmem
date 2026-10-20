@@ -6,7 +6,7 @@ kind: conclusion
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/gate.py#_guard
+- src/pmem/hooks/guard.py#_guard
 revision: git:e258c6e
 author: 1002378395@qq.com
 note_date: '2026-10-14'

@@ -7,8 +7,8 @@ status: active
 supersedes:
 - 01M51PJN7JSW2PJPCPR4FSJ220
 anchors:
-- src/pmem/hooks/gate.py#_pitfalls
-- src/pmem/hooks/gate.py#_guard_module
+- src/pmem/hooks/guard.py#_pitfalls
+- src/pmem/hooks/guard.py#_guard_module
 revision: git:7c086e5
 author: 1002378395@qq.com
 note_date: '2026-10-20'

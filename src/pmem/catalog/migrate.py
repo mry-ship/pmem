@@ -371,11 +371,39 @@ def plan_split(data: dict, registry: ModuleRegistry, storage: FilesStorage, sour
         else:
             dest[entry.id] = src_id
             unplaced.append(entry.id)
+    _follow_supersedes([e for _, e in entries], dest, set(manual), src_id, unplaced)
+    # 跟着替代它的记忆搬走了的，不再列为“横跨多个模块、留在原模块”
+    cross = [(entry_id, owners) for entry_id, owners in cross if dest.get(entry_id, src_id) == src_id]
     moves = [Move(path, e.id, src_id, dest[e.id]) for path, e in entries if dest.get(e.id, src_id) != src_id]
     counts = {t: sum(1 for m in moves if m.target == t) for t in target_ids}
     notes.append(f"{src_id} 的记忆 {len(entries)} 条：" + "，".join(f"分给 {t} {n} 条" for t, n in counts.items())
                  + f"，留在 {src_id} {len(entries) - len(moves)} 条")
     return SplitPlan(out, notes, moves, cross, unplaced)
+
+
+def _follow_supersedes(entries: list, dest: dict[str, str], pinned: set[str], src_id: str,
+                       unplaced: list[str]) -> None:
+    """被替代的记忆跟着替代它的记忆走：分到两个模块后成了跨模块替代，查原模块的人看不到新结论。
+    --assign 指定的不动；被分到不同模块的几条同时替代时留在原模块并列出。"""
+    by_id = {e.id: e for e in entries}
+    for _ in range(len(entries)):
+        wanted: dict[str, set[str]] = {}
+        for entry in entries:
+            for old in entry.supersedes:
+                if old in by_id and old not in pinned:
+                    wanted.setdefault(old, set()).add(dest.get(entry.id, src_id))
+        changed = False
+        for old, targets in wanted.items():
+            target = next(iter(targets)) if len(targets) == 1 else src_id
+            if len(targets) > 1 and old not in unplaced:
+                unplaced.append(old)
+            elif len(targets) == 1 and old in unplaced:
+                unplaced.remove(old)
+            if dest.get(old, src_id) != target:
+                dest[old] = target
+                changed = True
+        if not changed:
+            break
 
 
 def stray_moves(storage: FilesStorage, registry: ModuleRegistry) -> list[Move]:
@@ -412,7 +440,10 @@ def plan_move(registry: ModuleRegistry, storage: FilesStorage, ids: list[str], t
         path = storage.find_path(entry_id)
         if path is None:
             raise MigrateError(f"找不到记忆 {entry_id}")
-        entry = storage.read(path)
+        try:
+            entry = storage.read(path)
+        except ValueError as exc:
+            raise MigrateError(str(exc)) from exc
         if entry.module == resolved.id:
             raise MigrateError(f"记忆 {entry_id} 已经在 {resolved.id} 下")
         moves.append(Move(path, entry.id, entry.module, resolved.id))

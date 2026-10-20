@@ -6,9 +6,9 @@ kind: decision
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/gate.py#_from_pmem
-- src/pmem/hooks/gate.py#on_after_mcp
-- src/pmem/hooks/gate.py#foreign_tool
+- src/pmem/hooks/mcp.py#_from_pmem
+- src/pmem/hooks/mcp.py#on_after_mcp
+- src/pmem/hooks/mcp.py#foreign_tool
 revision: git:4479338
 author: 1002378395@qq.com
 note_date: '2026-10-16'

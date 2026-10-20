@@ -103,9 +103,12 @@ def summarize(root: Path, depth: int = 4) -> str:
     ]
     lines += [f"  {d}  ({counts[d]} 个代码文件)" for d in third_roots] or ["  （未发现）"]
     lines += ["", "目录概览（代码文件数 / 热度）："]
-    shown = 0
+    shown = hidden = 0
     for key in sorted(counts):
-        if any(key == t or key.startswith(t + "/") for t in third_roots) or counts[key] < 3:
+        if any(key == t or key.startswith(t + "/") for t in third_roots):
+            continue
+        if counts[key] < 3:
+            hidden += 1
             continue
         level = key.count("/")
         lines.append(f"  {'  ' * level}{key.rsplit('/', 1)[-1]}/  {counts[key]} / {changes[key]}    [{key}]")
@@ -113,6 +116,13 @@ def summarize(root: Path, depth: int = 4) -> str:
         if shown >= 400:
             lines.append("  ……（目录过多已截断，可用 --depth 调小）")
             break
+    if hidden:
+        # 小项目里所有目录都可能被藏掉，概览为空时 bootstrap 技能拿不到任何依据
+        lines.append(f"  （另有 {hidden} 个目录代码文件少于 3 个，未列出"
+                     + ("；项目较小，可直接按这些目录划分模块）" if not shown else "）"))
+        if not shown:
+            lines += [f"    [{key}]  {counts[key]} 个代码文件" for key in sorted(counts)
+                      if not any(key == t or key.startswith(t + "/") for t in third_roots)][:50]
     loose = [f for f in files if "/" not in f]
     if loose:
         lines.append(f"  （根目录散落代码文件 {len(loose)} 个）")

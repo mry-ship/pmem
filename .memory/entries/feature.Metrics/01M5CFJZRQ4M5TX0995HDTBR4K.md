@@ -7,8 +7,8 @@ status: active
 supersedes:
 - 01M4X5ZT04CKHE886GP8S08RM6
 anchors:
-- src/pmem/hooks/gate.py#on_stop
-- src/pmem/hooks/gate.py#on_after_mcp
+- src/pmem/hooks/reminders.py#on_stop
+- src/pmem/hooks/mcp.py#on_after_mcp
 - src/pmem/metrics/report.py#_link_cli_searches
 revision: git:7c086e5
 author: 1002378395@qq.com

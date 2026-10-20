@@ -357,6 +357,106 @@ def test_search_in_same_command_only_unlocks_that_module(make_project):
     assert handle("pre-tool", mixed, root)["permission"] == "allow"
 
 
+def test_write_before_search_in_same_command_is_still_blocked(make_project):
+    root = make_project("block")
+    payload = {"conversation_id": "c1", "tool_name": "Shell",
+               "tool_input": {"command": "Set-Content src/Jigsaw/Board.cs x; pmem search --module gameplay.Jigsaw",
+                              "cwd": ""}}
+    assert handle("pre-tool", payload, root)["permission"] == "deny"
+
+
+@pytest.mark.parametrize(
+    ("command", "targets"),
+    [
+        ("echo a > src/a.py & echo b > src/b.py", ["src/a.py", "src/b.py"]),
+        ("Set-Content src/a.py, src/b.py x", ["src/a.py", "src/b.py"]),
+        ("Set-Content -Path:src/a.py -Value x", ["src/a.py"]),
+        ("pushd src; popd; rm a.py", ["a.py"]),
+        ('cmd /c "cd /d src & del a.py"', [os.path.join("src", "a.py")]),
+        ('bash -c "cd src && rm a.py"', [os.path.join("src", "a.py")]),
+        ("Copy-Item -Path a.py src/b.py", ["src/b.py"]),
+        ("cp --target-directory=src a.py", [os.path.join("src", "a.py")]),
+        ("sed --in-place -e s/a/b/ src/a.py", ["src/a.py"]),
+        ("cat <<EOF > src/a.py\nEOF\nrm src/b.py\nEOF", ["src/a.py", "src/b.py"]),
+        ("git -C src checkout -- a.py", [os.path.join("src", "a.py")]),
+        ("python -c \"open('src/a.py', 'wt').write('x')\"", ["src/a.py"]),
+        ("node -e \"require('fs').unlinkSync('src/a.js')\"", ["src/a.js"]),
+    ],
+)
+def test_shell_write_targets_edge_cases(command, targets):
+    assert shell_write_targets(command) == targets
+
+
+@pytest.mark.parametrize(
+    ("command", "targets", "unseen"),
+    [
+        # 管道下游的删除：开关值不是目标，要处理的文件来自上游，必须拍快照
+        ("Get-ChildItem src | Remove-Item -Recurse -ErrorAction SilentlyContinue", [], True),
+        ("echo hi &rm src/a.py", ["src/a.py"], False),
+        ("echo hi& rm src/a.py", ["src/a.py"], False),
+        ("find . -name x -fprint src/a.py", [], True),
+        ("sort -o src/a.py src/a.py", ["src/a.py"], False),
+        ("git diff --output=src/a.py", ["src/a.py"], False),
+        ("cp -T src/a.py src/b.py", ["src/b.py"], False),
+        ("mv --target-directory=lib a.py", ["a.py", "lib"], False),
+        ("sed -i --expression=s/a/b/ src/a.py src/b.py", ["src/a.py", "src/b.py"], False),
+        ("sed -i -es/a/b/ src/a.py README.md", ["src/a.py", "README.md"], False),
+        ('bash -c "cd docs && ls" && rm src/a.py', ["src/a.py"], True),
+        ("python -c \"x = np.linalg.norm(v); df.rename(c); print('src/a.py')\"", [], True),
+        ("Rename-Item -Path src/a.py -NewName b.py", ["src/a.py", os.path.join("src", "b.py")], False),
+        ("git --work-tree=src checkout -- a.py", [os.path.join("src", "a.py")], False),
+        ("Get-Process | Tee-Object -Variable v", [], False),
+        ("echo x | tee src/a.py", ["src/a.py"], False),
+    ],
+)
+def test_shell_parsing_found_in_review(command, targets, unseen, tmp_path):
+    assert shell_write_targets(command, str(tmp_path)) == targets
+    assert may_change_unseen(command) is unseen
+
+
+def test_writing_into_an_existing_directory_targets_the_file(tmp_path):
+    (tmp_path / "src").mkdir()
+    assert shell_write_targets("cp a.py src", str(tmp_path)) == [os.path.join("src", "a.py")]
+    assert shell_write_targets("New-Item -Path src -Name a.py", str(tmp_path)) == [os.path.join("src", "a.py")]
+
+
+def test_long_or_heredoc_heavy_commands_parse_fast():
+    started = time.perf_counter()
+    shell_write_targets("python - <<PY\n" + "x = 1<<20\n" * 5000)
+    shell_write_targets("cat <<abcdefghijklmnop\n" * 3000)
+    shell_write_targets('python -c "' + "open(" * 20000 + '"')
+    assert may_change_unseen("x" * 70_000) is True
+    assert time.perf_counter() - started < 3
+
+
+def test_in_command_search_only_covers_its_own_module_and_later_writes(make_project):
+    root = make_project("block")
+    payload = {"conversation_id": "c1", "tool_name": "Shell", "tool_input": {"cwd": "", "command": (
+        "pmem search --module economy.Shop; Set-Content src/Jigsaw/Board.cs x; pmem search --module gameplay.Jigsaw")}}
+    assert handle("pre-tool", payload, root)["permission"] == "deny"
+    payload["tool_input"]["command"] = "pmem search --module gameplay.Jigsaw || Set-Content src/Jigsaw/Board.cs x"
+    assert handle("pre-tool", payload, root)["permission"] == "deny"
+    payload["tool_input"]["command"] = "pmem search --module gameplay.Jigsaw && Set-Content src/Jigsaw/Board.cs x"
+    assert handle("pre-tool", payload, root)["permission"] == "allow"
+
+
+def test_failed_in_command_search_is_flagged_after_the_write(make_project):
+    root = make_project("block")
+    command = "pmem search --module gameplay.Jigsaw --bogus; Set-Content src/Jigsaw/Board.cs x"
+    pre = {"conversation_id": "c1", "tool_name": "Shell", "tool_input": {"cwd": "", "command": command}}
+    assert handle("pre-tool", pre, root)["permission"] == "allow"
+    post = {**pre, "hook_event_name": "postToolUse", "tool_output": "error: unrecognized arguments: --bogus"}
+    assert "检索没有成功" in handle("post-tool", post, root)["additional_context"]
+
+
+def test_code_literal_of_the_working_directory_is_not_a_target(tmp_path):
+    code = f"python -c \"ROOT = '{tmp_path.as_posix()}'; Path(ROOT, 'out.txt').write_text('x')\""
+    assert shell_write_targets(code, str(tmp_path)) == ["out.txt"]
+    assert shell_write_targets("git checkout src", str(tmp_path)) == []
+    (tmp_path / "src").mkdir()
+    assert shell_write_targets("git checkout src", str(tmp_path)) == ["src"]
+
+
 def test_record_injection_adds_conversation_and_draft(make_project):
     root = make_project()
     payload = {"conversation_id": "c1", "tool_name": "MCP:record_memory",
@@ -373,6 +473,21 @@ def test_record_injection_adds_conversation_and_draft(make_project):
     assert "draft_id" not in handle("pre-tool", other, root)["updated_input"]
     same = {**payload, "tool_input": {**payload["tool_input"], "entity": "reward"}}
     assert handle("pre-tool", same, root)["updated_input"]["draft_id"] == "01JA7K3M2X9F4Q8W6ZB1C2D3E9"
+
+
+def test_feature_record_does_not_overwrite_a_lesson_on_the_same_entity(make_project):
+    """规则要求改了模块写一条功能记录、有教训另写；两者常用同一个议题名，互相覆盖就丢了教训。"""
+    root = make_project()
+    lesson = {"conversation_id": "c1", "tool_name": "MCP:record_memory",
+              "tool_input": {"module": "gameplay.Jigsaw", "entity": "Reward", "kind": "conclusion", "content": "x"}}
+    feature = {**lesson, "tool_input": {**lesson["tool_input"], "kind": "feature"}}
+    for kind, entry_id in (("conclusion", "01JA7K3M2X9F4Q8W6ZB1C2D3E9"), ("feature", "01JA7K3M2X9F4Q8W6ZB1C2D3E8")):
+        assert "draft_id" not in handle("pre-tool", lesson if kind == "conclusion" else feature, root)["updated_input"]
+        response = {"ok": True, "id": entry_id, "module": "gameplay.Jigsaw", "entity": "Reward", "kind": kind}
+        handle("after-mcp", {"conversation_id": "c1", "tool_name": "record_memory",
+                             "result_json": json.dumps(response)}, root)
+    assert handle("pre-tool", lesson, root)["updated_input"]["draft_id"] == "01JA7K3M2X9F4Q8W6ZB1C2D3E9"
+    assert handle("pre-tool", feature, root)["updated_input"]["draft_id"] == "01JA7K3M2X9F4Q8W6ZB1C2D3E8"
 
 
 def test_record_does_not_inject_committed_draft(make_project, monkeypatch):
@@ -432,7 +547,7 @@ def test_stop_reminds_once_for_edited_modules_without_record(make_project):
     handle("edited", edit, root)
     first = handle("stop", {"conversation_id": "c1", "status": "completed"}, root)
     assert "economy.Shop" in first["followup_message"]
-    assert first["followup_message"].startswith("[pmem] 以下是 pmem 自动发给 AI 的提醒") and "你无需操作" in first["followup_message"]
+    assert first["followup_message"].startswith("[pmem] 本轮修改了") and "自动发给 AI" not in first["followup_message"]
     assert handle("stop", {"conversation_id": "c1", "status": "completed"}, root) == {}
 
 
@@ -584,7 +699,7 @@ def test_record_injection_adds_files_edited_in_module(make_project):
                "tool_input": {"module": "economy.Shop", "entity": "Price", "kind": "risk", "content": "x"}}
     assert handle("pre-tool", payload, root)["updated_input"]["anchors"] == ["src/Shop/Shop.cs", "src/Shop/Price.cs"]
     payload["tool_input"]["anchors"] = ["src/Shop/Shop.cs#Buy"]
-    assert handle("pre-tool", payload, root)["updated_input"]["anchors"] == ["src/Shop/Shop.cs#Buy"]
+    assert "anchors" not in handle("pre-tool", payload, root)["updated_input"]
 
 
 def test_record_injection_skips_anchors_when_payload_was_only_partly_parsed(make_project):
@@ -597,7 +712,36 @@ def test_record_injection_skips_anchors_when_payload_was_only_partly_parsed(make
     payload = parse_payload(raw.encode("utf-8"))
     assert payload["_partial"] and "anchors" not in payload["tool_input"]
     updated = handle("pre-tool", payload, root)["updated_input"]
-    assert updated["module"] == "economy.Shop" and "anchors" not in updated
+    assert "anchors" not in updated
+
+
+def test_partly_parsed_feature_record_does_not_take_the_lessons_draft(make_project):
+    from pmem.hooks.payload import parse_payload
+
+    root = make_project()
+    response = {"ok": True, "id": "01JA7K3M2X9F4Q8W6ZB1C2D3E9", "module": "gameplay.Jigsaw", "entity": "Reward",
+                "kind": "conclusion"}
+    handle("after-mcp", {"conversation_id": "c1", "tool_name": "record_memory", "result_json": json.dumps(response)},
+           root)
+    raw = ('{"conversation_id": "c1", "tool_name": "record_memory", "tool_input": {"module": "gameplay.Jigsaw", '
+           '"entity": "Reward", "kind": "feature", "content": "broken \\q escape"}}')
+    payload = parse_payload(raw.encode("utf-8"))
+    assert payload["_partial"]
+    assert "draft_id" not in handle("pre-tool", payload, root)["updated_input"]
+
+
+def test_cursor_injection_returns_only_added_fields(make_project):
+    """Cursor 按字段合并 updated_input；回传 Hook 读到的参数会把转码损坏的中文写回去，服务就拿乱码检索、写入。"""
+    root = make_project()
+    garbled = "缁撴潫鎻愰啋"
+    search = {"conversation_id": "c1", "tool_name": "search_memory",
+              "tool_input": {"module": "economy.Shop", "query": garbled}}
+    assert handle("pre-tool", search, root)["updated_input"] == {"source_conversation": "c1"}
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    record = {"conversation_id": "c1", "tool_name": "record_memory",
+              "tool_input": {"module": "economy.Shop", "entity": "Price", "kind": "risk", "content": garbled}}
+    assert handle("pre-tool", record, root)["updated_input"] == {"source_conversation": "c1",
+                                                                 "anchors": ["src/Shop/Shop.cs"]}
 
 
 def _analysis_turn(root: Path, prompt: str, conv="c1") -> dict:
@@ -853,9 +997,17 @@ def test_digest_marks_memories_whose_code_is_gone(make_project):
     add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A2", "decision", "奖励统一由服务端发放", "2026-09-02", entity="Server")
     context = handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root)["additional_context"]
     stale_line = next(line for line in context.splitlines() if "旧的奖励缓存" in line)
-    assert "⚠ 需核实：src/Jigsaw/Gone.cs 已不存在" in stale_line
+    assert "（⚠ 需核实）" in stale_line and "Gone.cs" not in stale_line
     assert "需核实" not in next(line for line in context.splitlines() if "服务端发放" in line)
     assert "confirm_memory" in context
+    # 处理说明每个对话只给一次，上下文压缩后再给
+    handle("compact", {"conversation_id": "c1"}, root)
+    again = handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root)["additional_context"]
+    assert "confirm_memory" in again
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A3", "risk", "商店缓存会重复发放", "2026-09-03",
+              anchors="src/Shop/Gone.cs", module="economy.Shop")
+    shop = handle("post-tool", read_payload(root, "src/Shop/Shop.cs"), root)["additional_context"]
+    assert "（⚠ 需核实）" in shop and "confirm_memory" not in shop
 
 
 def test_stale_check_runs_after_session_lock_is_released(make_project, monkeypatch):
@@ -928,7 +1080,7 @@ def test_digest_puts_exclusions_first_and_hides_superseded(make_project):
     add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3A4", "correction", "更正后的说法", "2026-09-02", entity="Old",
               supersedes="01JA7K3M2X9F4Q8W6ZB1C2D3A3")
     text = handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root)["additional_context"]
-    assert "有 3 条现行研发记忆" in text
+    assert "现行记忆 3 条" in text
     assert text.index("排除项｜Dedup") < text.index("更正｜Old") < text.index("结论｜Reward")
     assert "已被推翻" not in text
 
@@ -1031,6 +1183,16 @@ def test_compaction_forgets_seen_memories(make_project):
     assert handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root)
     handle("compact", {"conversation_id": "c1"}, root)
     assert handle("post-tool", read_payload(root, "src/Jigsaw/Board.cs"), root)
+
+
+def test_compaction_is_logged_so_reports_can_split_repeats(make_project):
+    """压缩后重新给全文是设计行为；不记下压缩，报告会把它算成去重失效。"""
+    from pmem.metrics.events import read_events
+
+    root = make_project()
+    handle("compact", {"conversation_id": "c1", "trigger": "auto"}, root)
+    compacts = [e for e in read_events(Config.load(root).cache_dir, 0) if e["type"] == "compact"]
+    assert [(e["conv"], e.get("trigger")) for e in compacts] == [("c1", "auto")]
 
 
 def test_prompt_context_agents_get_digest_at_prompt_time(make_project):
@@ -1178,6 +1340,22 @@ def test_wildcard_matching_no_module_file_is_allowed(make_project):
     assert handle("pre-tool", shell("rm *.log"), root)["permission"] == "allow"
 
 
+def test_editing_a_file_with_brackets_in_its_path_is_guarded(make_project):
+    root = make_project("block")
+    denied = handle("pre-tool", write_payload(root, "src/Jigsaw/[id]/page.tsx"), root)
+    assert denied["permission"] == "deny" and "gameplay.Jigsaw" in denied["user_message"]
+
+
+@pytest.mark.parametrize("exists", [True, False])
+def test_shell_target_with_literal_brackets_is_guarded(make_project, exists):
+    root = make_project("block")
+    if exists:
+        (root / "src" / "Jigsaw" / "[id]").mkdir(parents=True)
+        (root / "src" / "Jigsaw" / "[id]" / "page.tsx").write_text("x", encoding="utf-8")
+    denied = handle("pre-tool", shell('rm "src/Jigsaw/[id]/page.tsx"'), root)
+    assert denied["permission"] == "deny" and "gameplay.Jigsaw" in denied["user_message"]
+
+
 def test_deleting_dot_folder_checks_modules_registered_under_it(make_project):
     root = make_project("block", with_memory=False)
     modules = root / ".memory" / "modules.yaml"
@@ -1231,10 +1409,10 @@ def test_missing_after_snapshot_does_not_blame_every_dirty_file(git_project, mon
 
 def test_slow_snapshots_pause_for_a_day(git_project, monkeypatch):
     root = git_project
-    import pmem.hooks.gate as gate_module
-    monkeypatch.setattr(gate_module, "SLOW_SNAPSHOT_SECONDS", -1)
+    import pmem.hooks.snapshot as snapshot_module
+    monkeypatch.setattr(snapshot_module, "SLOW_SNAPSHOT_SECONDS", -1)
     handle("pre-tool", shell("python gen.py"), root)
-    assert (Config.load(root).cache_dir / gate_module.SLOW_SNAPSHOT_MARK).exists()
+    assert (Config.load(root).cache_dir / snapshot_module.SLOW_SNAPSHOT_MARK).exists()
     # 执行前就慢的那次也不留快照，执行后不用再等一遍
     assert SessionState(Config.load(root).cache_dir, "c1").data["shell_before"] == {}
     handle("post-tool", shell("python gen.py"), root)

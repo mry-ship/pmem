@@ -133,21 +133,59 @@ def _usage(convs: dict[str, dict], events: list[dict], citations: dict, visible:
     }
 
 
+def _compactions(events: list[dict]) -> tuple[dict[str, list[float]], int]:
+    """各对话的压缩时刻。压缩清空“已给过全文”，之后再给全文是有意的，不算去重失效。
+    没有 compact 事件的旧日志按读代码摘要推断：同一模块的摘要每段对话只给一次（给过模块记忆才记已看过），
+    查过该模块也记已看过，之后再出现它的摘要说明中间压缩过。返回压缩时刻和其中推断出的次数。"""
+    marks: dict[str, list[float]] = defaultdict(list)
+    logged = {e["conv"] for e in events if e["type"] == "compact" and e.get("conv")}
+    digested: dict[str, set] = defaultdict(set)
+    inferred = 0
+    for e in sorted(events, key=lambda e: e["ts"]):
+        conv = e.get("conv")
+        if not conv:
+            continue
+        if e["type"] == "compact":
+            marks[conv].append(e["ts"])
+            digested[conv] = set()
+        elif e["type"] == "digest" and conv not in logged:
+            if e.get("module") in digested[conv]:
+                marks[conv].append(e["ts"])
+                digested[conv] = set()
+                inferred += 1
+            if e.get("ids"):
+                digested[conv].add(e.get("module"))
+        elif e["type"] in ("mcp_search", "search_call") and e.get("module"):
+            digested[conv].add(e["module"])
+    return marks, inferred
+
+
 def _repeats(events: list[dict]) -> dict:
-    """同一对话里的检索：一共返回多少条，其中多少条是之前给过全文又整条给了一遍、多少条已折叠成标题。"""
+    """同一对话里的检索：一共返回多少条，其中多少条是同一段对话（压缩之间）里给过全文又整条给了一遍、
+    多少条已折叠成标题；unsplit 是不按压缩切分时的重复条数，便于和旧报告对照。"""
+    marks, inferred = _compactions(events)
+    pending = {conv: sorted(ts) for conv, ts in marks.items()}
     shown: dict[str, set] = defaultdict(set)
-    total = repeated = collapsed = 0
+    ever: dict[str, set] = defaultdict(set)
+    total = repeated = collapsed = unsplit = 0
     for e in sorted((e for e in events if e["type"] == "search" and e.get("ok") and e.get("conv")),
                     key=lambda e: e["ts"]):
+        conv = e["conv"]
+        while pending.get(conv) and pending[conv][0] <= e["ts"]:
+            pending[conv].pop(0)
+            shown[conv] = set()
         folded = set(e.get("collapsed") or [])
         for i in e.get("ids") or []:
             total += 1
             if i in folded:
                 collapsed += 1
-            elif i in shown[e["conv"]]:
-                repeated += 1
-            shown[e["conv"]].add(i)
-    return {"items": total, "repeated": repeated, "collapsed": collapsed}
+            else:
+                repeated += i in shown[conv]
+                unsplit += i in ever[conv]
+            shown[conv].add(i)
+            ever[conv].add(i)
+    return {"items": total, "repeated": repeated, "collapsed": collapsed,
+            "compactions": sum(len(ts) for ts in marks.values()), "inferred": inferred, "unsplit": unsplit}
 
 
 def _pitfall_share(entries: list, since: float) -> dict:
@@ -373,6 +411,12 @@ def _render_quality(share: dict | None, repeats: dict | None, coverage: dict | N
             f"（{_pct(repeats['repeated'], repeats['items'])}）是同一对话里给过全文又整条给了一遍，"
             f"{repeats['collapsed']} 条已折叠成标题"
         )
+        if repeats.get("compactions"):
+            guessed = f"，其中 {repeats['inferred']} 次按读代码摘要推断" if repeats.get("inferred") else ""
+            lines.append(
+                f"    期间上下文压缩 {repeats['compactions']} 次{guessed}；压缩后重新给全文是有意的，上面已扣除"
+                f"（不扣除时 {repeats['unsplit']} 条，{_pct(repeats['unsplit'], repeats['items'])}）"
+            )
     return lines
 
 

@@ -5,7 +5,7 @@ import os
 from datetime import date
 from pathlib import Path
 
-from pmem.core.entry import KINDS, SCOPES, SUMMARY_MAX, Entry, auto_summary
+from pmem.core.entry import KINDS, SCOPES, SUMMARY_MAX, VISIBLE_STATUSES, Entry, auto_summary
 from pmem.core.ids import new_ulid
 from pmem.core.quality import content_hints, entity_hint, verify_hint
 from pmem.core.registry import ResolvedModule
@@ -33,6 +33,9 @@ SUMMARY_HINT = ("没填 summary：已按正文第一句生成标题“{title}”
 SUMMARY_LONG_HINT = "summary 有 {n} 字，超过建议的 {limit} 字：标题只写一句结论，细节放正文。"
 MAX_VERIFY_CHARS = 300
 MAX_APPLIES_CHARS = 120
+# summary 超过 SUMMARY_MAX 只提示；超过这个数就是把正文写进了标题，摘要、Wiki 每行都会被撑爆
+MAX_SUMMARY_CHARS = 200
+MAX_ENTITY_CHARS = 60
 
 
 def _one_line(text: str | None) -> str:
@@ -104,6 +107,15 @@ class RecordOps(ServiceBase):
         if scope and scope not in SCOPES:
             return fail(f"scope 只能是 {' / '.join(SCOPES)}，当前为 {scope!r}", "scope_invalid")
         summary = _one_line(summary) or None
+        if summary and len(summary) > MAX_SUMMARY_CHARS:
+            return fail(f"summary 最多 {MAX_SUMMARY_CHARS} 字（建议 {SUMMARY_MAX} 字以内的一句话），当前 {len(summary)} 字",
+                        "content_length")
+        raw_entity = str(entity or "").strip()
+        # splitlines 认 \r、\u2028 等所有换行；其他控制字符同样会拆断摘要行
+        if len(raw_entity.splitlines()) > 1 or len(raw_entity) > MAX_ENTITY_CHARS \
+                or any(ord(c) < 32 or 0x7f <= ord(c) < 0xa0 for c in raw_entity):
+            return fail(f"entity 是模块内议题的短名（如 Reward、Config），须单行且不超过 {MAX_ENTITY_CHARS} 字",
+                        "entity_invalid")
         applies = _one_line(applies) or None
         if applies and len(applies) > MAX_APPLIES_CHARS:
             return fail(f"applies 最多 {MAX_APPLIES_CHARS} 字（写这条在什么前提下成立），当前 {len(applies)} 字",
@@ -123,6 +135,8 @@ class RecordOps(ServiceBase):
         # 替代自己的草稿说明要新建一条（草稿已提交时只能这样）；闸门可能按同议题自动注入了这个 draft_id
         if draft_id and draft_id in (supersedes or []):
             draft_id = None
+        # 下面的草稿、归档、成环、每日上限判断都要看最新文件：终端可能刚归档或写入，常驻服务的索引有节流
+        self.index.refresh(force=True)
         # 覆盖草稿时没传（None）的列表沿用原值，传空列表才清空；否则替代关系丢失，旧记忆会悄悄恢复现行
         old = self.index.find(draft_id) if draft_id else None
         if old is not None and old.status == "archived":
@@ -142,22 +156,35 @@ class RecordOps(ServiceBase):
         today = date.today().isoformat()
         supersedes = list(dict.fromkeys(s for s in supersedes or [] if s))
         replaced = [found for s in supersedes if (found := self.index.find(s)) is not None]
+        # 被替代的记忆会从它所在模块的检索里消失，新结论却在别的模块，查原模块的人两边都看不到
+        cross = [e for e in replaced if e.module != resolved.id]
+        if cross:
+            where = "、".join(f"{e.id}（{e.module}）" for e in cross)
+            return fail(f"supersedes 只能填本模块（{resolved.id}）的记忆，{where} 属于别的模块。"
+                        f"旧结论在原模块已不成立：在原模块写一条 correction 替代它，正文说明新结论在 {resolved.id}；"
+                        f"旧记忆本来就归错了模块：先 pmem migrate move <id> --to {resolved.id} --apply 搬过来再替代",
+                        "supersede_cross_module")
         if old is not None and self._reaches(replaced, old.id):
             return fail(f"supersedes 会和 {old.id} 已有的替代关系连成环，两条记忆都会从检索里消失；"
                         "请新建一条（不带 draft_id）替代它们", "supersede_cycle")
         aliases = _clean_aliases(aliases)
-        hits = find_secrets(" ".join([entity_id, *aliases, summary or "", verify or "", applies or ""]),
+        hits = find_secrets(" ".join([entity_id, *aliases, *(anchors or []), summary or "", verify or "", applies or ""]),
                             self.config.get("write.secret_patterns") or [])
         if hits:
-            return fail("entity、aliases、summary、verify 或 applies 疑似包含敏感信息，已拒绝写入：" + "；".join(hits),
-                        "secret")
+            return fail("entity、aliases、anchors、summary、verify 或 applies 疑似包含敏感信息，已拒绝写入："
+                        + "；".join(hits), "secret")
         hints = self._write_hints(resolved.id, entity_id, kind, content, aliases, merging=len(replaced) >= 2)
         hints += self._field_hints(kind, content, summary, verify)
         if anchors and not any("#" in a for a in anchors):
             hints.append(ANCHOR_HINT)
-        # 替代仍然现行的旧记忆（含合并零碎记忆）不增加条数，不受每日上限约束；反复替代同一条已被替代的不算
+        # 替代仍然现行的旧记忆（含合并零碎记忆）不增加现行条数，不受每日上限约束；
+        # 已被替代、已归档的不算，否则可以借它们无限写入
         hidden = self.index.superseded()
-        if not draft_id and not any(e.id not in hidden for e in replaced):
+        replaces_current = any(e.id not in hidden and e.status in VISIBLE_STATUSES for e in replaced)
+        # 覆盖同议题当天的草稿不增加当天条数；换了议题或覆盖的是前几天的草稿，照常计数
+        same_draft = old is not None and old.module == resolved.id and old.note_date == today \
+            and old.entity.lower() == entity_id.lower()
+        if not same_draft and not replaces_current:
             over_cap = self._daily_cap_error(resolved.id, entity_id, today)
             if over_cap:
                 return over_cap
@@ -187,6 +214,7 @@ class RecordOps(ServiceBase):
             scope=scope if scope != "module" else None,
             verify=verify,
             applies=applies,
+            extra=dict(old.extra) if old is not None else {},
         )
         written = self.storage.write(entry, draft_id=draft_id or None)
         self.index.refresh(force=True)
@@ -196,6 +224,7 @@ class RecordOps(ServiceBase):
             "id": written.entry.id,
             "module": resolved.id,
             "entity": entity_id,
+            "kind": kind,
             "path": written.path.relative_to(self.root).as_posix(),
             "overwritten": written.overwritten,
             "draft_id": written.entry.id,

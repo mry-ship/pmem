@@ -422,7 +422,7 @@ git commit -m "接入 pmem"</code></pre>
     <div class="arrow">→</div>
     <div class="node"><b>3. 按模块写</b>每个改过的模块写一条功能记录（谁要求的、为什么、必须保持的行为）；另有试过不行的方向、根因和坑、看代码看不出的约束、方案取舍时，各写一条教训。只改测试、生成代码、配置的不用写。</div>
     <div class="arrow">→</div>
-    <div class="node"><b>4. 结束追问</b>改了模块却没写记忆，回合结束时提醒 AI 补写功能记录和教训；确实不用记（只改了注释、格式、重命名）时，AI 回复“无需记录：原因”。不需要你回复。Cursor 会把它显示成一条用户消息，首行写着“以下是 pmem 自动发给 AI 的提醒，由 AI 处理，你无需操作”。</div>
+    <div class="node"><b>4. 结束追问</b>改了模块却没写记忆，回合结束时提醒 AI 补写功能记录和教训；确实不用记（只改了注释、格式、重命名）时，AI 回复“无需记录：原因”。不需要你回复。Cursor 会把它显示成一条以“[pmem]”开头的用户消息，由 AI 处理。</div>
   </div>
 
   <h3>写记忆的约定</h3>
@@ -465,7 +465,7 @@ git commit -m "接入 pmem"</code></pre>
     <li>别的记忆服务也叫 <code>search_memory</code> 时，它的结果不算“查过 pmem”。</li>
     <li>拦截提示里直接列出该模块现行的排除项、风险和更正（最多 5 条）、关联代码就是要改的这个文件的功能记录，以及本对话还没给过的全项目级坑，即使 AI 检索时关键词没对上，也能先看到这些坑和必须保持的行为。</li>
     <li>“查过”的判定：MCP 的 <code>search_memory</code>，或终端里运行 <code>pmem search --module &lt;模块&gt;</code>。MCP 不可用时用终端也行，不会把 Agent 卡死。</li>
-    <li>结束提醒：改了模块却没写记忆，提醒每个模块写一条功能记录，另有被排除的方向、根因或坑、约束、方案取舍时再写教训；确实不用记时回复“无需记录：原因”。只改了 <code>gate.record_exempt</code> 里的文件（默认是测试、生成代码、json/yaml/toml 等配置）的模块不提醒。整个对话只查了记忆、没改也没写，也提醒一次（<code>gate.analysis_reminder</code> 可关）。中断结束的回合和说了“跳过记忆”的对话不提醒。提醒以“[pmem] 以下是 pmem 自动发给 AI 的提醒”开头，用户不用处理；Claude Code、Codex 下以 Hook 反馈的形式出现（各版本都支持）。</li>
+    <li>结束提醒：改了模块却没写记忆，提醒每个模块写一条功能记录，另有被排除的方向、根因或坑、约束、方案取舍时再写教训；确实不用记时回复“无需记录：原因”。只改了 <code>gate.record_exempt</code> 里的文件（默认是测试、生成代码、json/yaml/toml 等配置）的模块不提醒。整个对话只查了记忆、没改也没写，也提醒一次（<code>gate.analysis_reminder</code> 可关）。中断结束的回合和说了“跳过记忆”的对话不提醒。提醒以“[pmem]”开头，用户不用处理；Claude Code、Codex 下以 Hook 反馈的形式出现（各版本都支持）。</li>
     <li>记忆审查（不改代码也生效，每个模块每个对话一次）：
       <ul>
         <li>读代码时，附上该文件所属模块的现行教训摘要（每条只列一句话标题，排除项、风险优先，最多 6 条；关联代码之后改过的标“需核实”），另附至多 2 条关联代码就是这个文件的功能记录，再附上本对话还没给过的全项目级坑（至多 3 条，模块还没有记忆时也附），<code>gate.read_digest</code> 可关。</li>
@@ -514,9 +514,9 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem migrate rename|merge|split|deprecate|tidy</code></td><td>模块改名、合并、拆分，把记忆文件搬到新模块名下；<code>split A --to 新模块=路径[,路径]</code> 可写多次，<code>--by entity</code> 按议题拆，<code>--assign id=模块</code> 指定个别记忆的去向；<code>deprecate</code> 把模块标为只读（<code>--undo</code> 撤销）；<code>tidy</code> 只搬还在旧名下的记忆。默认预览，<code>--apply</code> 执行；<code>--root</code>、<code>--apply</code> 写在子命令之后</td></tr>
     <tr><td><code>pmem sync</code></td><td>对照代码目录列出新模块、新冷候选、要给已有模块追加的路径、新的第三方目录和可转正的冷候选；默认预览，<code>--apply</code> 只追加、不改已有模块名</td></tr>
     <tr><td><code>pmem health [--days 60]</code></td><td>健康报告：未登记和疑似重复的模块、还在旧模块名下的记忆、无归属的代码目录、检索落空热点、可能过时的记忆、疑似互相矛盾的记忆、没人检索的模块、被拒绝的写入、待确认的种子、改了代码却没写功能记录的模块、建议归档与清理待核对、召回偏低的模块</td></tr>
-    <tr><td><code>pmem map [--out 文件] [--days 30] [--json]</code></td><td>记忆演化图：默认写 Wiki 目录下的 <code>map.html</code>（单文件、不联网，可缩放、拖动、按类型筛选、只看现行，点节点看全文），终端打印总评和自检（漏记、断链、悬而未决、过期）；<code>--days</code> 是漏记统计的天数，<code>--json</code> 输出图数据</td></tr>
+    <tr><td><code>pmem map [--out 文件] [--days 30] [--json]</code></td><td>记忆演化图：默认写 Wiki 目录下的 <code>map.html</code>（单文件、不联网，可缩放、拖动、按类型筛选、只看现行，点节点看全文），终端打印总评和自检（漏记、断链、悬而未决、过期）；<code>--days</code> 是漏记统计的天数，<code>--json</code> 输出图数据。配置里的 Wiki 目录指到项目外时拒绝并返回 2；<code>--out</code> 可以指到别处</td></tr>
     <tr><td><code>pmem graph --module X</code></td><td>模块全貌，或某议题的时间线</td></tr>
-    <tr><td><code>pmem wiki [--out 目录]</code></td><td>生成每模块一页的 Markdown Wiki（默认 <code>.memory/wiki/</code>）：议题、现行结论、历史、相关模块、代码链接，过期的标“需核实”；只覆盖它自己生成的页面。写入或确认记忆后会自动运行（<code>wiki.auto</code>）</td></tr>
+    <tr><td><code>pmem wiki [--out 目录]</code></td><td>生成每模块一页的 Markdown Wiki（默认 <code>.memory/wiki/</code>）：议题、现行结论、历史、相关模块、代码链接，过期的标“需核实”；只覆盖它自己生成的页面，页面文件名只能是合法模块名，不能写出输出目录。配置里的目录指到项目外时拒绝并返回 2；<code>--out</code> 可以指到项目外，但页面仍不能跳出那个目录。写入或确认记忆后会自动运行（<code>wiki.auto</code>）；自动生成时目录在项目外则只警告、记忆仍写入</td></tr>
     <tr><td><code>pmem list</code></td><td>模块与记忆数量</td></tr>
     <tr><td><code>pmem terms</code></td><td>记忆里的高频词，用于整理同义词</td></tr>
     <tr><td><code>pmem compact</code></td><td>列出零碎记忆较多的议题；指定议题时输出全部正文供合并；<code>--undo &lt;id&gt;</code> 撤销一次合并（合并产物归档并标为已撤销，原记忆重新现行）</td></tr>
@@ -561,7 +561,7 @@ gate:
   record_exempt: [...]      <span class="c"># 只改了这些文件的模块不提醒写功能记录；默认是测试、生成代码、json/yaml/toml 等配置，写了就整个替换默认值</span>
 wiki:
   auto: true                <span class="c"># 写入或确认记忆后自动重新生成 Wiki</span>
-  dir: .memory/wiki         <span class="c"># 首次生成时自带 .gitignore，不进版本库；想提交就删掉它</span>
+  dir: .memory/wiki         <span class="c"># 必须在项目内。指到项目外时 pmem wiki / pmem map 拒绝；自动生成只警告。首次生成自带 .gitignore</span>
 write:
   default_status: active    <span class="c"># active 直接生效 / draft 需人工审阅</span>
   content_min: 20
@@ -572,13 +572,13 @@ write:
 search:
   limit: 5                  <span class="c"># 默认返回几条教训</span>
   feature_limit: 3          <span class="c"># 另外最多列几条功能记录和规划的标题；0 不列</span>
-  max_per_batch: 2          <span class="c"># 同一批写入的记忆最多返回几条</span>
+  max_per_batch: 2          <span class="c"># 同一批写入的记忆前几条按原位置排，超出的往后排</span>
   recency_half_life_days: 90  <span class="c"># 时效加分的半衰期</span>
 embedding:
   backend: auto             <span class="c"># auto / onnx / ollama / openai / none</span>
   model: ""                 <span class="c"># 为空用默认：onnx 为 BAAI/bge-small-zh-v1.5，ollama 为 bge-m3；openai 必填</span>
   model_path: ""            <span class="c"># onnx 用本地模型目录（离线环境）</span>
-  base_url: ""              <span class="c"># ollama 默认 http://localhost:11434；openai 必填，密钥读 PMEM_OPENAI_API_KEY 或 OPENAI_API_KEY</span>
+  base_url: ""              <span class="c"># 只接受本机（localhost、127.0.0.1、::1）和 https://api.openai.com。其他地址须在本机设置 PMEM_EMBED_ALLOW_REMOTE=1，且必须是 https。OPENAI_API_KEY 只发给官方地址，其余只用 PMEM_OPENAI_API_KEY。ollama 留空即 http://localhost:11434</span>
 server:
   watchdog: true            <span class="c"># MCP 服务崩溃、卡死或 pmem 升级后自动重启</span>
   request_timeout: 120      <span class="c"># 单次调用超过这么多秒没响应就判定卡死并重启</span></code></pre>
@@ -613,7 +613,7 @@ server:
     阶段趋势按机制推断，佐证是上一代系统的前后对比，pmem 自己的分阶段数据还没测；可定期用 <code>pmem report</code> 看本项目“用到记忆 / 未用到”两组对话的对比。
   </div>
   <div class="callout ok">
-    <strong>记忆变多不会让 token 线性增长。</strong>AI 不会直接读 <code>.md</code> 文件，只拿到检索返回的 Top-K：默认 5 条、上限 10 条，同一批次最多 2 条，被替代的不返回。单次调用的 token 只和返回条数有关，与库里总数无关。
+    <strong>记忆变多不会让 token 线性增长。</strong>AI 不会直接读 <code>.md</code> 文件，只拿到检索返回的 Top-K：默认 5 条、上限 10 条，同一批次超过 2 条的往后排，被替代的不返回。单次调用的 token 只和返回条数有关，与库里总数无关。
   </div>
   <table>
     <tr><th>什么时候</th><th>额外 token（本仓库实测，GPT-4o 分词）</th><th>额外耗时</th></tr>
@@ -639,7 +639,7 @@ server:
     <li>查询词按 <code>synonyms</code> 和记忆的 <code>aliases</code> 扩展，扩展词权重略低于原词。</li>
     <li>相关度 = 0.6 × 向量相似度 + 0.4 × BM25（关键词匹配算法）。</li>
     <li>议题匹配加 0.15；按文件检索时，关联代码（anchors）就是这个文件的加 0.3、同目录的加 0.1，模块里最近在改别的方面也不会把它挤掉；排除项、更正加 0.05；再乘时间系数 0.7 + 0.3 × 0.5<sup>天数/90</sup>：越新越靠前，最旧也保留七成（核对过的按核对日期算）。</li>
-    <li>同一批次（同一对话，或同一作者 90 分钟内）最多返回 2 条，避免碎片挤占名额。</li>
+    <li>同一批次（同一对话，或同一作者 90 分钟内）只有前 2 条按原位置排，超出的降到其他相关结果之后（仍在不相关的之前），避免碎片挤占名额，又不整条丢掉。</li>
     <li>议题内没命中时退回整个模块，并标注 <code>fallback: module</code>。</li>
   </ol>
   <p>分词：中文按二元组切分、英文按词，camelCase 拆开。默认语义模型 bge-small-zh-v1.5（ONNX 格式，约 90 MB），首次调用才加载。</p>
@@ -688,7 +688,7 @@ server:
       <p>给模块负责人定期收口用，只列有问题的段落并附处理办法；按 pmem-consolidate 技能可以让 Agent 逐节处理。检索、拒绝等数据只来自本机事件日志；“没人检索的模块”在本机检索少于 20 次时不统计。</p>
       <p>“疑似互相矛盾的记忆”：同模块同议题、都还现行、一条是结论或决定而另一条是排除项或更正、正文用词高度相似（不比较风险类）。确实冲突就写更正替代过时的那条；两条都成立就 <code>pmem confirm</code> 较早那条，之后不再提示。</p>
       <p>“未登记模块”：写入时用了 <code>modules.yaml</code> 里没有的模块名会自动新建。报告按这些记忆的关联代码给出建议登记的 paths（同一目录有 2 个以上文件的登记整个目录），并说明这些代码现在归哪个模块：都归同一个已登记模块的多半是写错了名字，用 <code>pmem migrate merge</code> 并过去；冷候选模块已有记忆的用 <code>pmem sync --apply</code> 转正。</p>
-      <p>“召回偏低”：现行教训 10 条以上、本机按模块检索 10 次以上，但被返回过的教训不到 30% 的模块（本机检索少于 20 次时不统计）。列出从没返回过的议题；常问却查不到的补 aliases 或登记同义词，议题太杂的用 <code>pmem migrate split --by entity</code> 拆开。功能记录在检索里只给标题，不参与这项统计。</p>
+      <p>“召回偏低”：现行教训 10 条以上、本机按模块检索 10 次以上，但被返回过的教训不到 30% 的模块（本机检索少于 20 次时不统计）。列出从没返回过的议题；常问却查不到的补 aliases 或登记同义词，议题太杂的用 <code>pmem migrate split &lt;模块&gt; --by entity --to &lt;新模块&gt;=&lt;议题&gt;</code> 拆开。功能记录在检索里只给标题，不参与这项统计。</p>
       <p>“改了代码却没写功能记录”：按结束时需要记录的模块统计，回复“无需记录”的也列出，由负责人判断是否真的不用记。</p>
       <p>清理候选只建议归档、从不删除，每条附判断依据（✓ 满足、✗ 不满足）。“建议归档”要同时满足：关联代码全部不存在（没写关联代码的看正文提到的文件和类，找到的不到 20%）、同议题没有其他现行记忆、没被其他记忆引用、统计期内本机没被用过（本机检索太少时不看这一条）。只满足一部分的列为“待核对”；排除项、风险、更正、全项目级和种子记忆最多到“待核对”。关联代码还有一处在的记忆不会成为候选。</p>
     </div>
@@ -756,7 +756,7 @@ pmem reindex</code></pre>
   <p>检索总是返回得分最高的几条，由 Agent 读正文判断是否相关。真实数据上相关和不相关的得分区间重叠，设阈值会把真命中也挡掉，所以没加。把常用叫法写全比阈值更管用。</p>
   <h3>用 SVN 可以吗？</h3>
   <p>可以。作者和版本号取自 SVN，新记忆会自动 <code>svn add</code>，终端命令的事后比对也支持。按函数判断“需核实”目前只支持 Git。</p>
-  <h3>对话里出现一条“[pmem] 以下是 pmem 自动发给 AI 的提醒”，要我处理吗？</h3>
+  <h3>对话里出现一条以“[pmem]”开头的消息，要我处理吗？</h3>
   <p>不用。这是回合结束时 pmem 自动发给 AI 的提醒（比如改了代码还没写记忆），Cursor 把它显示成一条用户消息。AI 会为改过的模块补写功能记录，再看本轮有没有被排除的方向、根因或坑、约束、方案取舍，有就补写教训；确实不用记时回复“无需记录：原因”，不需要你提供原因。</p>
   <h3>为什么做了功能也要记？不会变成变更日志吗？</h3>
   <p>功能记录写的是“谁要求的、哪些行为必须保持”，不是“改了哪个方法”。没有它，用户要求的行为看起来就像普通实现，后来的人（包括 AI）可能当成冗余改回去。功能记录在检索里只列标题、单独一组，教训照样优先、给全文，所以不会被挤掉；改某个文件时，关联到这个文件的功能记录会出现在读代码摘要和拦截提示里。</p>

@@ -45,6 +45,8 @@ def pick_agents(root: Path, raw: str) -> list[str]:
         return agents
     agents = [a.strip() for a in raw.split(",") if a.strip()]
     unknown = [a for a in agents if a not in SUPPORTED_AGENTS]
+    if not agents:
+        raise SystemExit(f"--agents 没有给出 Agent；可选 {', '.join(SUPPORTED_AGENTS)}、all、auto")
     if unknown:
         raise SystemExit(f"不支持的 Agent：{'、'.join(unknown)}；可选 {', '.join(SUPPORTED_AGENTS)}、all、auto")
     return agents
@@ -74,6 +76,17 @@ def _is_pmem(command) -> bool:
     return str(command or "").startswith(("pmem hook", HOOK_WRAPPER))
 
 
+def _is_pmem_handler(handler) -> bool:
+    return isinstance(handler, dict) and _is_pmem(handler.get("command"))
+
+
+def _hook_table(data: dict, path: Path) -> dict:
+    hooks = data.setdefault("hooks", {})
+    if not isinstance(hooks, dict) or not all(isinstance(v, list) for v in hooks.values()):
+        raise SystemExit(f"{path} 的 hooks 应为“事件名 → 列表”，当前结构不对，请先修复")
+    return hooks
+
+
 def write_hook_wrappers(root: Path) -> None:
     """.memory/bin/pmem-hook（macOS/Linux）与 pmem-hook.cmd（Windows，PowerShell 会优先选它）。"""
     folder = root / ".memory" / "bin"
@@ -91,31 +104,46 @@ def write_hook_wrappers(root: Path) -> None:
 def merge_hooks(path: Path) -> None:
     data = _read_json(path)
     data.setdefault("version", 1)
-    hooks = data.setdefault("hooks", {})
+    hooks = _hook_table(data, path)
     for event in list(hooks):
         if event not in CURSOR_HOOKS:
-            kept = [h for h in hooks[event] if not _is_pmem(h.get("command"))]
+            kept = [h for h in hooks[event] if not _is_pmem_handler(h)]
             if kept:
                 hooks[event] = kept
             else:
                 del hooks[event]
     for event, entry in CURSOR_HOOKS.items():
-        kept = [h for h in hooks.get(event, []) if not _is_pmem(h.get("command"))]
+        kept = [h for h in hooks.get(event, []) if not _is_pmem_handler(h)]
         hooks[event] = [*kept, dict(entry)]
     _write_json(path, data)
 
 
 def merge_group_hooks(path: Path, wanted: dict) -> None:
-    """Claude Code / Codex 的三层结构（事件 → 匹配组 → 处理器）：去掉旧的 pmem 处理器后追加新的。"""
+    """Claude Code / Codex 的三层结构（事件 → 匹配组 → 处理器）：去掉旧的 pmem 处理器后追加新的；
+    模板里已经没有的事件下的 pmem 处理器同样删掉。"""
     data = _read_json(path)
-    hooks = data.setdefault("hooks", {})
-    for event, groups in wanted.items():
+    hooks = _hook_table(data, path)
+
+    def without_pmem(groups: list) -> list:
         kept = []
-        for group in hooks.get(event, []):
-            handlers = [h for h in group.get("hooks", []) if not _is_pmem(h.get("command"))]
+        for group in groups:
+            if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
+                kept.append(group)
+                continue
+            handlers = [h for h in group["hooks"] if not _is_pmem_handler(h)]
             if handlers:
                 kept.append({**group, "hooks": handlers})
-        hooks[event] = [*kept, *json.loads(json.dumps(groups))]
+        return kept
+
+    for event in list(hooks):
+        if event not in wanted:
+            kept = without_pmem(hooks[event])
+            if kept:
+                hooks[event] = kept
+            else:
+                del hooks[event]
+    for event, groups in wanted.items():
+        hooks[event] = [*without_pmem(hooks.get(event, [])), *json.loads(json.dumps(groups))]
     _write_json(path, data)
 
 
@@ -138,11 +166,14 @@ def merge_codex_mcp(path: Path) -> bool:
 def upsert_block(path: Path, block: str) -> None:
     """在 CLAUDE.md / AGENTS.md 里写入或替换 pmem 段落，段落之外的内容保持不变。"""
     text = path.read_text(encoding="utf-8-sig") if path.exists() else ""
-    start, end = text.find(BLOCK_BEGIN), text.find(BLOCK_END)
+    start = text.find(BLOCK_BEGIN)
+    end = text.find(BLOCK_END, start) if start >= 0 else -1
     if start >= 0 and end > start:
         tail = text[end + len(BLOCK_END):].lstrip("\n")
         text = text[:start] + block + ("\n" + tail if tail else "")
     else:
+        # 结束标记被删掉时不知道旧段落到哪为止：只去掉孤立的开始标记，免得下次把中间的用户内容当段落替换掉
+        text = text.replace(BLOCK_BEGIN, "")
         text = (text.rstrip("\n") + "\n\n" if text.strip() else "") + block
     write_text(path, text)
 

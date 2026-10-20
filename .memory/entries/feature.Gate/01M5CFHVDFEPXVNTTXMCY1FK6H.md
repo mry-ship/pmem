@@ -10,8 +10,8 @@ anchors:
 - src/pmem/hooks/shell.py#_unwrap
 - src/pmem/hooks/shell.py#_stages
 - src/pmem/hooks/shell.py#scan
-- src/pmem/hooks/gate.py#_target_modules
-- src/pmem/hooks/gate.py#_needs_snapshot
+- src/pmem/hooks/memories.py#_target_modules
+- src/pmem/hooks/snapshot.py#needs_snapshot
 - src/pmem/hooks/state.py#_load
 - src/pmem/cli/hook_cmd.py#run_hook
 revision: git:7c086e5

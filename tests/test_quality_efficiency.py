@@ -12,7 +12,7 @@ from pmem.core.entry import Entry, auto_summary
 from pmem.core.ids import new_ulid
 from pmem.core.quality import content_hints, verify_hint
 from pmem.hooks.gate import handle
-from pmem.metrics.health import _repeat_corrections
+from pmem.metrics.health import _cross_module_supersedes, _repeat_corrections, reject_reason
 from pmem.metrics.report import _pitfall_share, _render_quality, _repeats
 from pmem.service import MemoryService
 
@@ -139,6 +139,19 @@ def test_second_search_in_same_conversation_returns_titles_only(svc):
     assert "content" not in row and "seen_hint" in second
 
 
+def test_field_hints_are_given_once_per_conversation(svc):
+    write(svc)
+    write(svc, entity="Share", kind="feature", content="用户要求：完成拼图后弹出分享面板。")
+    first = svc.search(module="gameplay.Jigsaw", source_conversation="c1")
+    assert "features_hint" in first
+    second = svc.search(module="gameplay.Jigsaw", source_conversation="c1")
+    assert "features_hint" not in second and "seen_hint" in second
+    assert "seen_hint" in svc.search(module="gameplay.Jigsaw", source_conversation="c1")
+    seen.clear(svc.config.cache_dir, "c1")
+    assert "features_hint" in svc.search(module="gameplay.Jigsaw", source_conversation="c1")
+    assert "features_hint" in svc.search(module="gameplay.Jigsaw")
+
+
 def test_full_flag_and_other_conversations_get_full_text(svc):
     write(svc)
     svc.search(module="gameplay.Jigsaw", source_conversation="c1")
@@ -239,7 +252,7 @@ def test_project_pitfalls_are_attached_once_per_conversation(gate_root):
 def test_module_without_memories_still_gets_project_pitfalls(gate_root):
     _entry(gate_root, "gameplay.Jigsaw", "exclusion", "排除：不要在客户端去重。", "scope: project\n")
     text = _read(gate_root, "src/Shop/Shop.cs")
-    assert "该模块还没有研发记忆" in text and "不要在客户端去重" in text
+    assert "该模块还没有记忆" in text and "不要在客户端去重" in text
 
 
 def test_guard_lists_project_pitfalls_when_not_yet_shown(gate_root):
@@ -312,7 +325,33 @@ def test_repeats_counts_full_repeats_and_collapsed():
         {"type": "search", "ok": True, "conv": "c2", "ts": 4, "ids": ["a"]},
         {"type": "search", "ok": True, "ts": 5, "ids": ["a"]},
     ]
-    assert _repeats(events) == {"items": 7, "repeated": 1, "collapsed": 2}
+    assert _repeats(events) == {"items": 7, "repeated": 1, "collapsed": 2, "compactions": 0, "inferred": 0,
+                                "unsplit": 1}
+
+
+def test_repeats_after_compaction_are_not_counted():
+    """压缩清空了“已给过”，再给全文是有意的；没有压缩事件的旧日志按同一模块的读代码摘要重复出现推断。"""
+    events = [
+        {"type": "search", "ok": True, "conv": "c1", "ts": 1, "ids": ["a"]},
+        {"type": "compact", "conv": "c1", "ts": 2},
+        {"type": "search", "ok": True, "conv": "c1", "ts": 3, "ids": ["a"]},
+        {"type": "digest", "conv": "c2", "ts": 4, "module": "m.A", "ids": ["x"]},
+        {"type": "search", "ok": True, "conv": "c2", "ts": 5, "ids": ["b"]},
+        {"type": "digest", "conv": "c2", "ts": 6, "module": "m.A", "ids": ["x"]},
+        {"type": "search", "ok": True, "conv": "c2", "ts": 7, "ids": ["b"]},
+        # 只给了全项目通用的坑时不记已看过，同一模块再给摘要不代表压缩过
+        {"type": "digest", "conv": "c3", "ts": 8, "module": "m.A", "ids": []},
+        {"type": "search", "ok": True, "conv": "c3", "ts": 9, "ids": ["c"]},
+        {"type": "digest", "conv": "c3", "ts": 10, "module": "m.A", "ids": ["x"]},
+        {"type": "search", "ok": True, "conv": "c3", "ts": 11, "ids": ["c"]},
+        # 查过某模块也会记已看过，之后又出现它的摘要同样说明压缩过
+        {"type": "mcp_search", "conv": "c4", "ts": 12, "module": "m.B"},
+        {"type": "search", "ok": True, "conv": "c4", "ts": 12.5, "ids": ["d"]},
+        {"type": "digest", "conv": "c4", "ts": 13, "module": "m.B", "ids": ["y"]},
+        {"type": "search", "ok": True, "conv": "c4", "ts": 14, "ids": ["d"]},
+    ]
+    assert _repeats(events) == {"items": 8, "repeated": 1, "collapsed": 0, "compactions": 3, "inferred": 2,
+                                "unsplit": 4}
 
 
 def test_pitfall_share_and_render_warns_when_low():
@@ -334,6 +373,19 @@ def test_health_flags_repeated_corrections_in_period():
     rows.append(Entry(id=new_ulid(), module="m.A", entity="Other", kind="correction", content="x",
                       note_date="2026-10-19", author="a"))
     assert _repeat_corrections(rows, now - 86400) == [("m.A", "Enc", 2)]
+
+
+def test_health_lists_existing_cross_module_supersedes():
+    def entry(module, supersedes=()):
+        return Entry(id=new_ulid(), module=module, entity="E", kind="correction", content="x",
+                     note_date="2026-10-19", author="a", supersedes=list(supersedes))
+
+    old, same = entry("m.B"), entry("m.A")
+    cross, local = entry("m.A", [old.id]), entry("m.A", [same.id])
+    assert _cross_module_supersedes([old, same, cross, local], {cross.id, local.id}) == [
+        {"id": cross.id, "module": "m.A", "replaced": old.id, "replaced_module": "m.B"}]
+    assert _cross_module_supersedes([old, cross], set()) == []
+    assert reject_reason("", "supersede_cross_module") == "替代了别的模块的记忆"
 
 
 # ---- 命令行简报 ----

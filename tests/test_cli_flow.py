@@ -151,6 +151,21 @@ def test_scan_lists_directories_and_third_party(tmp_path, capsys):
     assert "[Assets/Game/Jigsaw]" in out
 
 
+def test_bad_input_gets_one_line_error_instead_of_traceback(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
+    assert main(["scan", "--root", str(tmp_path / "missing")]) == 2
+    with pytest.raises(SystemExit, match="没有给出 Agent"):
+        main(["init", "--root", str(tmp_path), "--agents", ","])
+    main(["init", "--root", str(tmp_path), "--type", "generic"])
+    config = tmp_path / ".memory" / "config.yaml"
+    config.write_text(config.read_text(encoding="utf-8").replace("mode: block", "mode: bogus"), encoding="utf-8")
+    capsys.readouterr()
+    assert main(["doctor", "--root", str(tmp_path)]) == 1
+    assert "配置读不出" in capsys.readouterr().out
+    assert main(["sync", "--root", str(tmp_path)]) == 2
+    assert "gate.mode" in capsys.readouterr().err
+
+
 def test_doctor_reports_coverage(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
     main(["init", "--root", str(tmp_path), "--type", "generic"])
@@ -305,6 +320,21 @@ def test_record_and_search_from_cli(tmp_path, capsys, monkeypatch):
     assert "- 掉登录" in entry.read_text(encoding="utf-8")
     main(base + ["--alias"])
     assert "掉登录" not in entry.read_text(encoding="utf-8")
+
+
+def test_cli_search_uses_configured_limit_unless_given(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
+    main(["init", "--root", str(tmp_path), "--type", "generic"])
+    (tmp_path / ".memory" / "config.yaml").write_text(
+        "vcs: none\nembedding: { backend: none }\nsearch: { limit: 1 }\n", encoding="utf-8")
+    for entity in ("Token", "Session"):
+        main(["record", "--root", str(tmp_path), "--module", "feature.Login", "--entity", entity,
+              "--kind", "conclusion", "--content", f"登录{entity}过期后由拦截器静默刷新，失败才跳登录页。"])
+    capsys.readouterr()
+    main(["search", "--root", str(tmp_path), "--module", "feature.Login"])
+    assert len(json.loads(capsys.readouterr().out)["items"]) == 1
+    main(["search", "--root", str(tmp_path), "--module", "feature.Login", "--limit", "2"])
+    assert len(json.loads(capsys.readouterr().out)["items"]) == 2
 
 
 def test_reindex_rebuilds_cache_and_reports_bad_files(tmp_path, capsys, monkeypatch):

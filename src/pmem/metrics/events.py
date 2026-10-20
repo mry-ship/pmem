@@ -73,5 +73,6 @@ def read_events(cache_dir: Path, since: float = 0.0) -> Iterator[dict]:
                     record = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if record.get("ts", 0) >= since:
+                # 写坏的行可能恰好是合法 JSON 但不是对象（如半截里的 123）
+                if isinstance(record, dict) and record.get("ts", 0) >= since:
                     yield record

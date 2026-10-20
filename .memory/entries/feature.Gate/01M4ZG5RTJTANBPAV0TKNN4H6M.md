@@ -7,8 +7,8 @@ status: active
 supersedes:
 - 01M4Z9R2MF226TQJSCJJ2YG4YM
 anchors:
-- src/pmem/hooks/gate.py#tool_response
-- src/pmem/hooks/gate.py#draft_key
+- src/pmem/hooks/mcp.py#tool_response
+- src/pmem/hooks/mcp.py#draft_key
 revision: git:0c43c31
 author: 1002378395@qq.com
 note_date: '2026-10-15'

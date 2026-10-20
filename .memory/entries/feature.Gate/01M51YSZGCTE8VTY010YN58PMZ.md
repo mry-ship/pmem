@@ -10,9 +10,9 @@ supersedes:
 anchors:
 - src/pmem/hooks/shell.py#scan
 - src/pmem/hooks/shell.py#may_change_unseen
-- src/pmem/hooks/gate.py#_shell_after
-- src/pmem/hooks/gate.py#_snapshot_before_shell
-- src/pmem/hooks/gate.py#_dirty_snapshot
+- src/pmem/hooks/snapshot.py#_shell_after
+- src/pmem/hooks/snapshot.py#_snapshot_before_shell
+- src/pmem/hooks/snapshot.py#_dirty_snapshot
 revision: git:4479338
 author: 1002378395@qq.com
 note_date: '2026-10-16'

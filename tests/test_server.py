@@ -29,6 +29,17 @@ def test_record_and_search_through_tools(project):  # noqa: F811
     assert listing["project_root"] == str(project.resolve())
 
 
+def test_search_limit_from_config_applies_when_the_caller_omits_it(project):  # noqa: F811
+    config = project / ".memory" / "config.yaml"
+    config.write_text(config.read_text(encoding="utf-8") + "\nsearch: { limit: 1 }\n", encoding="utf-8")
+    server = build_server(project)
+    for i in range(2):
+        call(server, "record_memory", {"module": "gameplay.Jigsaw", "entity": f"T{i}", "kind": "conclusion",
+                                       "content": f"拼图奖励重复发放的根因是领取按钮没有防连点，第 {i} 条。"})
+    assert len(call(server, "search_memory", {"module": "gameplay.Jigsaw"})["items"]) == 1
+    assert len(call(server, "search_memory", {"module": "gameplay.Jigsaw", "limit": 2})["items"]) == 2
+
+
 def test_every_response_is_marked_as_pmem(project):  # noqa: F811
     """闸门靠这个标记区分别家记忆服务的同名工具。"""
     server = build_server(project)

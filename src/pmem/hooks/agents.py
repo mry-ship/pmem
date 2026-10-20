@@ -39,6 +39,8 @@ def normalize(agent: str, payload: dict) -> dict:
         return payload
     data = dict(payload)
     data["conversation_id"] = payload.get("session_id") or payload.get("conversation_id") or ""
+    # Claude Code、Codex 的 updatedInput 整体替换原参数；Cursor 按字段合并
+    data["replaces_input"] = True
     # Claude Code、Codex 的 UserPromptSubmit 可以给这一轮加上下文；Cursor 的 beforeSubmitPrompt 不行
     data["prompt_context"] = True
     name = str(payload.get("tool_name") or "")

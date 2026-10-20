@@ -36,7 +36,7 @@ def run_migrate(root: Path, action: str, first: str | None, second: str | None, 
     split = None
     try:
         registry = ModuleRegistry.load(config.modules_path)
-        storage = FilesStorage(config.root, detect_vcs(config.root, config.get("vcs")))
+        storage = FilesStorage(config.root, detect_vcs(config.root, config.get("vcs")), bool(config.get("svn_auto_add")))
         notes: list[str] = []
         new_data = data
         if action == "rename":

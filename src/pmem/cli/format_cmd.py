@@ -22,7 +22,7 @@ def run_format(root: Path, module: str | None, apply: bool) -> int:
         except RegistryError as exc:
             print(exc)
             return 1
-    storage = FilesStorage(root, detect_vcs(root, config.get("vcs")))
+    storage = FilesStorage(root, detect_vcs(root, config.get("vcs")), bool(config.get("svn_auto_add")))
     scanned = changed = 0
     sample: list[str] = []
     for path, entry in storage.iter_all():

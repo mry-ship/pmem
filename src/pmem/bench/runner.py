@@ -66,9 +66,18 @@ class RunRecord:
 Executor = Callable[[str, Path, dict, str, int], RunMetrics]
 
 
+class BenchUnavailable(RuntimeError):
+    """缺 SDK、没设 API Key：每次运行都会失败，整个实验直接中止。"""
+
+
 def load_cases(path: Path) -> tuple[dict, list[Case]]:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    cases = [Case(**raw) for raw in data.get("cases") or []]
+    if not isinstance(data, dict):
+        raise ValueError("用例文件的顶层应是键值对（repeats、cases 等）")  # noqa: TRY004  命令行按 ValueError 报用例文件有误
+    raw_cases = data.get("cases") or []
+    if not isinstance(raw_cases, list) or not all(isinstance(raw, dict) for raw in raw_cases):
+        raise ValueError("cases 应是用例列表，每个用例是键值对")
+    cases = [Case(**raw) for raw in raw_cases]
     ids = [c.id for c in cases]
     if len(ids) != len(set(ids)):
         raise ValueError("用例 id 不能重复")
@@ -141,10 +150,10 @@ def sdk_executor(prompt: str, cwd: Path, mcp_servers: dict, model: str, timeout_
     try:
         from cursor_sdk import Agent, AgentOptions, CursorAgentError, LocalAgentOptions, StdioMcpServerConfig
     except ImportError as exc:
-        raise RuntimeError("缺少 Cursor SDK：pip install \"pmem[bench]\" 或 uv pip install cursor-sdk") from exc
+        raise BenchUnavailable("缺少 Cursor SDK：pip install \"pmem[bench]\" 或 uv pip install cursor-sdk") from exc
     api_key = os.environ.get("CURSOR_API_KEY")
     if not api_key:
-        raise RuntimeError("请先设置环境变量 CURSOR_API_KEY（Cursor Dashboard → Integrations）")
+        raise BenchUnavailable("请先设置环境变量 CURSOR_API_KEY（Cursor Dashboard → Integrations）")
 
     metrics = RunMetrics()
     started = time.monotonic()
@@ -233,8 +242,7 @@ def run_bench(
                         prefix, servers = arm_options(arm, workspace)
                         metrics = executor(prefix + case.prompt, workspace, servers, model, case.timeout_minutes)
                         passed, output = run_check(case, repo, workspace) if metrics.status != "startup_error" else (False, "")
-                    except RuntimeError:
-                        # 缺 SDK、没设 API Key：每次运行都会失败，直接中止
+                    except BenchUnavailable:
                         raise
                     except Exception as exc:  # noqa: BLE001
                         # 单次运行出错（起始提交写错、工作区建不出来）记为失败，不让整个实验中止

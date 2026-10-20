@@ -6,9 +6,9 @@ kind: decision
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/gate.py#_skip_notice
+- src/pmem/hooks/review.py#_skip_notice
 - src/pmem/hooks/gate.py#on_prompt
-- src/pmem/hooks/gate.py#_guard
+- src/pmem/hooks/guard.py#_guard
 revision: git:30e135f
 author: 1002378395@qq.com
 note_date: '2026-10-16'

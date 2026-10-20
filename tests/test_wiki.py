@@ -101,6 +101,46 @@ def test_wiki_rerun_removes_stale_generated_pages_only(root):
     assert (wiki / "notes.md").exists()
 
 
+def test_wiki_module_name_cannot_escape_directory(root, capsys):
+    sentinel = root / "AGENTS.md"
+    sentinel.write_text("keep\n", encoding="utf-8")
+    folder = root / ".memory" / "entries" / "gameplay.Jigsaw"
+    (folder / "01JA7K3M2X9F4Q8W6ZB1C2D3C1.md").write_text(
+        "---\nid: 01JA7K3M2X9F4Q8W6ZB1C2D3C1\nmodule: ../../AGENTS\nentity: X\nkind: risk\n"
+        "status: active\nauthor: a\nnote_date: '2026-10-03'\n---\n不要把这条写到仓库外。\n",
+        encoding="utf-8",
+    )
+    assert main(["wiki", "--root", str(root)]) == 0
+    assert sentinel.read_text(encoding="utf-8") == "keep\n"
+    wiki = root / ".memory" / "wiki"
+    assert not any(p.name == "AGENTS.md" for p in root.rglob("AGENTS.md") if p != sentinel)
+    index = (wiki / "index.md").read_text(encoding="utf-8")
+    assert "`../../AGENTS`" in index
+    assert "](../../AGENTS.md)" not in index
+    assert "../../AGENTS" in capsys.readouterr().err
+
+
+def test_wiki_does_not_follow_page_symlink(root):
+    wiki = root / ".memory" / "wiki"
+    wiki.mkdir()
+    sentinel = root / "AGENTS.md"
+    sentinel.write_text("keep\n", encoding="utf-8")
+    link = wiki / "gameplay.Jigsaw.md"
+    try:
+        link.symlink_to(sentinel)
+    except OSError:
+        pytest.skip("当前环境不能创建符号链接")
+    assert main(["wiki", "--root", str(root)]) == 0
+    assert sentinel.read_text(encoding="utf-8") == "keep\n"
+    assert link.is_symlink()
+
+
+def test_wiki_dir_outside_project_is_refused(root):
+    (root / ".memory" / "config.yaml").write_text(CONFIG + "wiki: { dir: ../outside-wiki }\n", encoding="utf-8")
+    assert main(["wiki", "--root", str(root)]) == 2
+    assert not (root.parent / "outside-wiki").exists()
+
+
 def test_wiki_never_overwrites_hand_written_pages(root, capsys):
     docs = root / "docs"
     docs.mkdir()

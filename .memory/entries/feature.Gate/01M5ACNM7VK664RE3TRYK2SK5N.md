@@ -6,10 +6,10 @@ kind: decision
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/gate.py#take_project_pitfalls
-- src/pmem/hooks/gate.py#_offer_digest
+- src/pmem/hooks/memories.py#take_project_pitfalls
+- src/pmem/hooks/review.py#_offer_digest
 - src/pmem/hooks/gate.py#on_compact
-- src/pmem/hooks/gate.py#_note_cli_calls
+- src/pmem/hooks/mcp.py#_note_cli_calls
 revision: git:627b54f
 author: 1002378395@qq.com
 note_date: '2026-10-19'

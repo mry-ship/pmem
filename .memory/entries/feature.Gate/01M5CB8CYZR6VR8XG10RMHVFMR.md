@@ -6,12 +6,14 @@ kind: feature
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/gate.py#on_after_mcp
-- src/pmem/hooks/gate.py#_offer_digest
+- src/pmem/hooks/mcp.py#on_after_mcp
+- src/pmem/hooks/review.py#_offer_digest
 revision: git:7866189
 author: 1002378395@qq.com
 note_date: '2026-10-20'
 summary: 检索返回的功能记录计入已看过；只有无关功能记录时摘要不说没有记忆
+verified: '2026-10-20'
+verified_at: '2026-10-20T19:41:04.401+08:00'
 ---
 功能记录分层后闸门必须保持的两点行为（v0.3.1 复查时补上）：
 1. MCP 检索返回后登记“看过的记忆”时，features 组（功能记录和规划标题）和 items、timeline 一样计入：返回的 id 记为已返回，不限模块检索时 features 里出现的模块也算看过。

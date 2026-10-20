@@ -8,9 +8,9 @@ supersedes: []
 anchors:
 - src/pmem/hooks/shell.py#scan
 - src/pmem/hooks/shell.py#_redirects
-- src/pmem/hooks/gate.py#_target_modules
-- src/pmem/hooks/gate.py#_needs_snapshot
-- src/pmem/hooks/gate.py#_draft_open
+- src/pmem/hooks/memories.py#_target_modules
+- src/pmem/hooks/snapshot.py#needs_snapshot
+- src/pmem/hooks/mcp.py#_draft_open
 - src/pmem/hooks/state.py#_load
 - src/pmem/cli/hook_cmd.py#run_hook
 revision: git:df9b06c

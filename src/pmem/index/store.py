@@ -299,7 +299,11 @@ class MemoryIndex:
 
         query = (query or "").strip()
         weights, result.expanded = self._query_weights(query)
-        relevance = self._relevance(pool, query, weights, result) if semantic else self._bm25(pool, weights)
+        keyword = self._bm25(pool, weights)
+        relevance = self._relevance(pool, query, keyword, result) if semantic else keyword
+        # 超出同批名额时只降到相关结果之后；语义分几乎总大于 0、与无关记忆重叠，相关只认关键词命中或锚点挨着
+        related = {i.entry.id for i, kw in zip(pool, keyword, strict=True)
+                   if kw > 0 or anchor_affinity(i.entry.anchors, path)}
         day = date.fromisoformat(as_of) if as_of else (today or date.today())
         ranked = sorted(
             (
@@ -314,17 +318,16 @@ class MemoryIndex:
         if feature_limit is not None:
             if feature_limit > 0:
                 records = _spread_batches([t for t in ranked if t[2].kind in RECORD_KINDS], feature_limit,
-                                          max_per_batch)
+                                          max_per_batch, related)
             ranked = [t for t in ranked if t[2].kind not in RECORD_KINDS]
-        chosen = _spread_batches(ranked, limit, max_per_batch)
+        chosen = _spread_batches(ranked, limit, max_per_batch, related)
         # 回看历史时代码早已变化，核对没有意义
         problems = self.check_anchors(chosen + records) if verify and not as_of else {}
         result.items = [entry_row(e, problems.get(e.id), with_module=module is None) for e in chosen]
         result.features = [title_row(e, problems.get(e.id), with_module=module is None) for e in records]
         return result
 
-    def _relevance(self, pool: list[Indexed], query: str, weights: dict[str, float], result: SearchResult) -> list[float]:
-        keyword = self._bm25(pool, weights)
+    def _relevance(self, pool: list[Indexed], query: str, keyword: list[float], result: SearchResult) -> list[float]:
         if not query:
             return keyword
         if self.embedder is None:
@@ -359,19 +362,31 @@ def _score(entry: Entry, relevance: float, entity: str | None, today: date, half
     return (relevance + bonus) * (0.7 + 0.3 * recency)
 
 
-def _spread_batches(ranked: list[tuple[float, int, Entry]], limit: int, max_per_batch: int) -> list[Entry]:
-    """同一批（同一对话，或同一作者同一模块 90 分钟内）最多取 max_per_batch 条，免得碎片挤占名额。"""
-    per_batch: Counter = Counter()
-    chosen: list[Entry] = []
-    for _score, created, entry in ranked:
-        batch = entry.source_conversation or f"{entry.author}|{entry.module}|{created // _BATCH_WINDOW_MS}"
-        if per_batch[batch] >= max_per_batch:
+def _spread_batches(ranked: list[tuple[float, int, Entry]], limit: int, max_per_batch: int,
+                    related: set[str] | None = None) -> list[Entry]:
+    """同一批（同一对话，或同一作者同一模块 90 分钟内）先取 max_per_batch 条，免得碎片挤占名额；
+    超出的不丢，排到其他相关结果之后、不相关（related 之外）的结果之前。related 为 None 时都算相关。"""
+    # 按时间连续成段：与这一段第一条相隔 90 分钟以内的算同一批，不按固定时间桶切（跨桶边界的会被拆开）
+    batches: dict[str, str] = {}
+    opened: dict[str, int] = {}
+    for _score, created, entry in sorted(ranked, key=lambda r: r[1]):
+        if entry.source_conversation:
             continue
+        owner = f"{entry.author}|{entry.module}"
+        if owner not in opened or created - opened[owner] > _BATCH_WINDOW_MS:
+            opened[owner] = created
+        batches[entry.id] = f"{owner}|{opened[owner]}"
+    per_batch: Counter = Counter()
+    kept: list[Entry] = []
+    overflow: tuple[list[Entry], list[Entry]] = ([], [])
+    for _score, _created, entry in ranked:
+        batch = entry.source_conversation or batches[entry.id]
+        unrelated = related is not None and entry.id not in related
+        (kept if per_batch[batch] < max_per_batch else overflow[unrelated]).append(entry)
         per_batch[batch] += 1
-        chosen.append(entry)
-        if len(chosen) >= limit:
-            break
-    return chosen
+    # 名额内的保持原排序（只靠语义命中的答案不能被挪后），超额的相关记忆插在最后一条相关结果之后
+    cut = max((n + 1 for n, e in enumerate(kept) if related is None or e.id in related), default=0)
+    return (kept[:cut] + overflow[0] + kept[cut:] + overflow[1])[:limit]
 
 
 def title_row(entry: Entry, problems: list[str] | None, with_module: bool) -> dict:

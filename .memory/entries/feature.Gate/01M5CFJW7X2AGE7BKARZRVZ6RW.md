@@ -7,9 +7,9 @@ status: active
 supersedes:
 - 01M51NT6KBHR112A1Y5EWTMQGF
 anchors:
-- src/pmem/hooks/gate.py#_offer_digest
-- src/pmem/hooks/gate.py#_unreviewed
-- src/pmem/hooks/gate.py#on_stop
+- src/pmem/hooks/review.py#_offer_digest
+- src/pmem/hooks/review.py#_unreviewed
+- src/pmem/hooks/reminders.py#on_stop
 - src/pmem/index/graph.py#digest
 revision: git:7c086e5
 author: 1002378395@qq.com

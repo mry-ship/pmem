@@ -6,9 +6,9 @@ kind: feature
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/gate.py#on_stop
-- src/pmem/hooks/gate.py#_record_required
-- src/pmem/hooks/gate.py#_pitfalls
+- src/pmem/hooks/reminders.py#on_stop
+- src/pmem/hooks/reminders.py#_record_required
+- src/pmem/hooks/guard.py#_pitfalls
 revision: git:f340df3
 author: 1002378395@qq.com
 note_date: '2026-10-20'

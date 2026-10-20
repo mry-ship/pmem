@@ -67,7 +67,7 @@ cd <repo>
 pmem init                       # 问答 → 生成配置骨架
 pmem scan                       # 确定性扫描 → 模块草案 + 待决清单
 # 在 Cursor 里："按记忆初始化流程划分模块"   ← 项目技能 pmem-bootstrap
-pmem doctor --coverage          # 覆盖率与自检，必须全绿
+pmem doctor                     # 覆盖率与自检，必须全绿
 # 可选，在 Cursor 里："为热点模块提炼种子记忆"  ← 项目技能 pmem-seed
 提交 .memory/ 与 .cursor/ 下的生成文件
 把生成的《团队接入说明》贴给成员
@@ -84,7 +84,7 @@ uv tool install pmem            # 一次
 ### 2.4 模块负责人旅程
 
 ```text
-pmem report                     # 健康报告
+pmem health                     # 健康报告
 # 在 Cursor 里："按收口流程处理本周报告"      ← 项目技能 pmem-consolidate
 pmem migrate ...                # 改名 / 合并 / 拆分 / 废弃
 pmem sync                       # 新目录 → 新模块候选（只追加）
@@ -204,31 +204,33 @@ source:
 schema_version: 1
 project:
   name: my-game                 # 仅用于展示与缓存目录区分
-  type: game                    # game / app / backend / tool / generic
-  language: zh                  # 规则与提示语言：zh / en
+  type: game                    # game / app / backend / generic（只在 pmem init 时决定大类预设）
 vcs: auto                       # auto / git / svn / none
 svn_auto_add: true              # SVN 下写入新记忆时自动 svn add
 embedding:
-  backend: onnx                 # onnx / ollama / openai
-  model: <待评测确定的多语言小模型>
+  backend: auto                 # auto / onnx / ollama / openai / none
+  model: ""                     # 留空用内置默认模型
   model_path: ""                # 离线环境可指定本地模型目录
-  base_url: ""                  # ollama / openai 后端使用
+  base_url: ""                  # 只接受本机和 https://api.openai.com；其他地址要本机 PMEM_EMBED_ALLOW_REMOTE=1
 gate:
-  mode: warn                    # off / warn / block
-  watch: ["Assets/Game/**", "src/**"]
-  ignore: ["**/*.md", "docs/**"]
+  mode: block                   # off / warn / block
+  watch: ["Assets/Game/**", "src/**"]   # 留空表示全部代码
+  ignore: ["**/*.md", "docs/**", ".memory/**", ".cursor/**"]
   skip_markers: ["跳过记忆", "skip-memory"]
+  resume_markers: ["恢复记忆", "resume-memory"]
 write:
   default_status: active        # active（小团队）/ draft（需审阅）
-  content_min: 100
+  content_min: 20
   content_max: 1200
   max_per_day_per_entity: 5     # 超出时拒绝并要求合并，不静默删除
-  secret_patterns: default      # 默认规则集，可追加正则
+  secret_patterns: []           # 内置规则总是生效；这里追加项目自己的正则
 search:
   limit: 5
   max_per_batch: 2
   recency_half_life_days: 90
 ```
+
+完整配置项与默认值以 `src/pmem/core/config.py` 的 `DEFAULTS` 和手册 `docs/pmem-guide.html` 为准；取值写错时所有命令统一报 `ConfigError`。
 
 ### 4.5 `modules.yaml`
 
@@ -377,7 +379,7 @@ score   = (rel + bonus) * (0.7 + 0.3 * recency)
 ```
 
 - 默认排除已被替代与已归档的记忆。
-- 多样性：同一批（同 `source.conversation`；缺失时为同作者 + 同模块 + 90 分钟窗口）最多 `max_per_batch` 条。
+- 多样性：同一批（同 `source.conversation`；缺失时为同作者 + 同模块 + 90 分钟窗口）前 `max_per_batch` 条按原位置排，超出的降到其他相关结果（关键词命中或锚点挨着）之后、不相关的之前。
 - 对返回的每条记忆校验 `anchors`：文件不存在，或文件里找不到符号名 → `stale: true`。
 
 ### 7.3 `record_memory`
@@ -441,20 +443,24 @@ score   = (rel + bonus) * (0.7 + 0.3 * recency)
 {
   "version": 1,
   "hooks": {
-    "beforeSubmitPrompt": [{ "command": ".memory/bin/pmem-hook prompt" }],
-    "preToolUse": [
-      { "command": ".memory/bin/pmem-hook pre-edit", "matcher": "Write|StrReplace|EditNotebook|Delete|Shell", "failClosed": false },
-      { "command": ".memory/bin/pmem-hook pre-record", "matcher": "MCP:.*record_memory", "failClosed": false }
-    ],
-    "afterMCPExecution": [{ "command": ".memory/bin/pmem-hook track", "matcher": "search_memory|record_memory" }],
-    "afterFileEdit": [{ "command": ".memory/bin/pmem-hook edited" }],
-    "preCompact": [{ "command": ".memory/bin/pmem-hook compact" }],
-    "stop": [{ "command": ".memory/bin/pmem-hook stop", "loop_limit": 1 }]
+    "sessionStart": [{ "command": ".memory/bin/pmem-hook session" }],
+    "beforeSubmitPrompt": [{ "command": "pmem hook prompt" }],
+    "preToolUse": [{
+      "command": "pmem hook pre-tool",
+      "matcher": "Write|StrReplace|Edit|MultiEdit|EditNotebook|Delete|Shell|MCP|record_memory|search_memory",
+      "failClosed": false
+    }],
+    "afterMCPExecution": [{ "command": "pmem hook after-mcp" }],
+    "afterFileEdit": [{ "command": "pmem hook edited" }],
+    "postToolUse": [{ "command": "pmem hook post-tool", "matcher": "Read|Grep|Glob|SemanticSearch|codebase_search|Shell" }],
+    "preCompact": [{ "command": "pmem hook compact" }],
+    "stop": [{ "command": "pmem hook stop", "loop_limit": 1 }]
   }
 }
 ```
 
-（matcher 写法、Windows 下命令执行方式需按实测调整，见 13.2。）
+只有 sessionStart 经 `.memory/bin/pmem-hook` 包装脚本（没装 pmem 时提醒用户安装），其余直接调用 `pmem hook <事件>`。
+以 `src/pmem/generate/templates.py` 的 `CURSOR_HOOKS` 为准；Claude Code、Codex 的配置见同文件。
 
 ### 9.2 各事件行为
 
@@ -496,7 +502,7 @@ score   = (rel + bonus) * (0.7 + 0.3 * recency)
 
 ### 10.1 第 0 步：项目画像（`pmem init` 问答）
 
-问 5 项：项目类型、主要语言/引擎、团队规模、界面语言、闸门力度。支持非交互参数（`--type game --lang zh --gate warn`），便于测试。
+不再问答：项目类型和闸门力度用参数给出（`--type game --gate warn`），其余由扫描和 `pmem-bootstrap` 技能决定；`--agents` 选择要接入的 Agent（cursor、claude、codex、all、auto）。
 
 ### 10.2 第 1 步：确定性扫描
 
@@ -537,7 +543,7 @@ score   = (rel + bonus) * (0.7 + 0.3 * recency)
 
 技能引导 Agent 每次只问一个争议项；结束时冻结大类，写入 3–5 条 `boundaries`。
 
-### 10.5 第 4 步：覆盖率校验（`pmem doctor --coverage`）
+### 10.5 第 4 步：覆盖率校验（`pmem doctor`）
 
 - 每个受守护文件恰好映射到一个模块，或被 `ignore`；
 - 路径重叠按“更具体优先”，同等具体时报错；
@@ -576,15 +582,16 @@ score   = (rel + bonus) * (0.7 + 0.3 * recency)
 | 命令 | 作用 |
 |---|---|
 | `pmem sync` | 重新扫描，列出新目录与新模块候选；只追加，不改已有名字；`--apply` 才写入（细则见模块与初始化设计文档第 7.1 节） |
-| `pmem report` | 健康报告：未登记模块、疑似重复模块、检索落空热点（模块 × 议题）、无归属新目录、可能过时的记忆、60 天无人检索的模块、被拒绝的写入统计 |
+| `pmem health` | 健康报告：未登记模块、疑似重复模块、检索落空热点（模块 × 议题）、无归属新目录、可能过时的记忆、60 天无人检索的模块、被拒绝的写入统计等 |
+| `pmem report` | 收益报告：闸门拦截、检索与采用、对话内重复等（本机统计） |
 | `pmem migrate rename A B` | 改名，旧名自动成为别名 |
-| `pmem migrate merge A B` | A 标为 `merged_into:B`，读写自动转到 B；`--rewrite` 时才物理移动文件 |
+| `pmem migrate merge A B` | A 的路径、别名等并入 B，A 标为 `merged_into:B`，记忆文件随之搬到 B；默认只预览，`--apply` 才写 |
 | `pmem migrate split A --to B=路径 [--by path\|entity] [--assign id=模块]` | 拆分，按路径或议题重新分配；记忆按关联代码的新归属分配，判断不了的留在 A 并列出 |
 | `pmem migrate deprecate A` | 废弃：只读，拒绝新写入 |
 | `pmem archive <id>` | 负责人归档单条记忆 |
 | `pmem reindex` | 删除并重建本地索引 |
 | `pmem import --lancedb <路径>` | 从参考实现的 LanceDB 库导入 |
-| `pmem upgrade` | 升级后重新生成接入文件、迁移配置格式 |
+| `pmem init` | 升级 pmem 后重新运行，更新规则、技能和 Hooks（已有的 config.yaml、modules.yaml 不覆盖） |
 
 ### 11.1 本地统计
 

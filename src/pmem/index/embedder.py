@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
+from urllib.parse import urlparse
 
 import numpy as np
 
@@ -13,6 +16,55 @@ from pmem.index.tokenize import tokenize
 
 DEFAULT_ONNX_MODEL = "BAAI/bge-small-zh-v1.5"
 LOAD_RETRY_SECONDS = 600.0
+_OFFICIAL_HOST = "api.openai.com"
+_REMOTE_ENV = "PMEM_EMBED_ALLOW_REMOTE"
+_REMOTE_REFUSED = (
+    "embedding.base_url 不是本机地址，也不是 https://api.openai.com。"
+    "仓库里的配置不能单独打开远程嵌入；要发给其他地址，请在本机设置环境变量 "
+    f"{_REMOTE_ENV}=1（且必须是 https），密钥只用 PMEM_OPENAI_API_KEY，不会带上 OPENAI_API_KEY"
+)
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """嵌入请求不跟随跳转，避免本机地址 302 到别处时把正文和密钥一起带过去。"""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(getattr(req, "full_url", ""), code, "嵌入服务拒绝跟随跳转", headers, fp)
+
+
+def _loopback(host: str) -> bool:
+    if host in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
+def embed_url(url: str) -> tuple[str, str] | None:
+    """允许的嵌入地址，返回 (去掉末尾斜杠的地址, local / official / remote)。
+
+    本机和官方 OpenAI 地址直接允许。其他地址必须由本机环境变量打开，仓库配置自己写了不算。
+    """
+    parsed = urlparse((url or "").strip())
+    host = (parsed.hostname or "").lower().rstrip(".")
+    if parsed.scheme not in {"http", "https"} or not host or parsed.username or parsed.password:
+        return None
+    if _loopback(host):
+        return parsed.geturl().rstrip("/"), "local"
+    if host == _OFFICIAL_HOST and parsed.scheme == "https":
+        return parsed.geturl().rstrip("/"), "official"
+    if os.environ.get(_REMOTE_ENV) == "1" and parsed.scheme == "https":
+        return parsed.geturl().rstrip("/"), "remote"
+    return None
+
+
+def _api_key(level: str) -> str:
+    """官方地址可以用环境里的 OpenAI 密钥。其他地址只认专供 pmem 的密钥，避免仓库配置把通用密钥带走。"""
+    dedicated = os.environ.get("PMEM_OPENAI_API_KEY") or ""
+    if level == "official":
+        return dedicated or os.environ.get("OPENAI_API_KEY") or ""
+    return dedicated
 
 
 def _normalise(matrix: np.ndarray) -> np.ndarray:
@@ -65,14 +117,18 @@ class OnnxEmbedder(Embedder):
 def _post_json(url: str, payload: dict, headers: dict | None = None, timeout: float = 60) -> dict:
     data = json.dumps(payload).encode("utf-8")
     request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **(headers or {})})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    opener = urllib.request.build_opener(_NoRedirect)
+    with opener.open(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
 class OllamaEmbedder(Embedder):
     def __init__(self, model: str, base_url: str = ""):
         self.model = model
-        self.base_url = (base_url or "http://localhost:11434").rstrip("/")
+        allowed = embed_url(base_url or "http://localhost:11434")
+        if allowed is None:
+            raise ValueError(_REMOTE_REFUSED)
+        self.base_url = allowed[0]
         self.id = f"ollama:{model}"
 
     def embed(self, texts: list[str]) -> np.ndarray:
@@ -81,14 +137,17 @@ class OllamaEmbedder(Embedder):
 
 
 class OpenAIEmbedder(Embedder):
-    def __init__(self, model: str, base_url: str):
+    def __init__(self, model: str, base_url: str, api_key: str = ""):
         self.model = model
-        self.base_url = base_url.rstrip("/")
+        allowed = embed_url(base_url)
+        if allowed is None:
+            raise ValueError(_REMOTE_REFUSED)
+        self.base_url, level = allowed
+        self._api_key = api_key if api_key else _api_key(level)
         self.id = f"openai:{model}"
 
     def embed(self, texts: list[str]) -> np.ndarray:
-        key = os.environ.get("PMEM_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY") or ""
-        headers = {"Authorization": f"Bearer {key}"} if key else {}
+        headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
         result = _post_json(f"{self.base_url}/embeddings", {"model": self.model, "input": texts}, headers)
         rows = sorted(result["data"], key=lambda item: item["index"])
         return _normalise(np.array([row["embedding"] for row in rows], dtype=np.float32))
@@ -125,10 +184,14 @@ def make_embedder(settings: dict, models_dir: Path | None = None) -> tuple[Embed
     if backend == "none":
         return None, "配置为不使用嵌入"
     if backend == "ollama":
+        if embed_url(settings.get("base_url") or "http://localhost:11434") is None:
+            return None, _REMOTE_REFUSED
         return OllamaEmbedder(model or "bge-m3", settings.get("base_url") or ""), None
     if backend == "openai":
         if not settings.get("base_url"):
             return None, "openai 后端需要配置 embedding.base_url"
+        if embed_url(settings["base_url"]) is None:
+            return None, _REMOTE_REFUSED
         return OpenAIEmbedder(model, settings["base_url"]), None
     if importlib.util.find_spec("fastembed") is None:
         return None, "未安装 fastembed（uv tool install 'pmem[embed]' 可启用语义检索）"

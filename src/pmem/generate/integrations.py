@@ -175,9 +175,11 @@ def setup_claude(root: Path) -> str:
 
 def setup_codex(root: Path) -> str:
     upsert_block(root / "AGENTS.md", RULE_BLOCK)
+    # Codex 只从 .agents/skills 读项目技能
+    _write_skills(root / ".agents" / "skills")
     merge_group_hooks(root / ".codex" / "hooks.json", CODEX_HOOKS)
     merge_codex_mcp(root / ".codex" / "config.toml")
-    return "Codex：AGENTS.md 中的 pmem 段落、合并 .codex/hooks.json 与 .codex/config.toml"
+    return "Codex：AGENTS.md 中的 pmem 段落、.agents/skills/pmem-*、合并 .codex/hooks.json 与 .codex/config.toml"
 
 
 SETUP = {"cursor": setup_cursor, "claude": setup_claude, "codex": setup_codex}

@@ -16,6 +16,8 @@ aliases:
 - 整理记忆库
 - 技能
 - skill
+verified: '2026-10-20'
+verified_at: '2026-10-20T18:57:28.399+08:00'
 ---
 决定：pmem init 生成的项目技能新增 pmem-consolidate（模板 CONSOLIDATE_SKILL），与 bootstrap、compact、normalize、seed 一起写到各工具的 skills 目录。
 它是 v0.2 consolidate 的落地方式：不做自动合并，而是让 Agent 按 pmem health 的各节依次收口：

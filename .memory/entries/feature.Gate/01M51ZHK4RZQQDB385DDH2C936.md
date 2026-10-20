@@ -18,6 +18,8 @@ aliases:
 - TileMatch
 - 误登记
 - 来源标记
+verified: '2026-10-20'
+verified_at: '2026-10-20T18:57:28.399+08:00'
 ---
 决定：别的记忆服务（如 TileMatch 的 dev-memory）也叫 search_memory / record_memory 时，闸门不能把它的结果当成“查过 pmem”。
 Cursor 传给 Hook 的 MCP 工具名不带服务名（spike 抓包实测：tool_name 就是 search_memory，可见字段没有服务信息），所以由 pmem 自己在返回里加来源标记：

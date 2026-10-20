@@ -364,8 +364,9 @@ pmem init --gate warn                     <span class="c"># 闸门力度：block
         <tr><td>公共</td><td><code>.memory/config.yaml</code>、<code>.memory/modules.yaml</code>、<code>.memory/entries/</code></td></tr>
         <tr><td>Cursor</td><td><code>.cursor/rules/pmem.mdc</code>、<code>.cursor/skills/pmem-*</code>、<code>.cursor/hooks.json</code>、<code>.cursor/mcp.json</code></td></tr>
         <tr><td>Claude Code</td><td><code>CLAUDE.md</code> 中的 pmem 段落、<code>.claude/skills/pmem-*</code>、<code>.claude/settings.json</code>、<code>.mcp.json</code></td></tr>
-        <tr><td>Codex</td><td><code>AGENTS.md</code> 中的 pmem 段落、<code>.codex/hooks.json</code>、<code>.codex/config.toml</code></td></tr>
+        <tr><td>Codex</td><td><code>AGENTS.md</code> 中的 pmem 段落、<code>.agents/skills/pmem-*</code>、<code>.codex/hooks.json</code>、<code>.codex/config.toml</code></td></tr>
       </table>
+      <p>Claude Code 的 Hook 同时守护 Windows 上的 <code>PowerShell</code> 工具，并带 <code>"onFailure": "continue"</code>：没装 Git Bash 或 pmem 时 Hook 起不来也照常放行，不会卡住所有修改（这时闸门不生效，<code>pmem doctor</code> 会提示）。旧版接入请重新运行 <code>pmem init</code>。</p>
     </li>
     <li>
       <strong>在工具里启用 MCP</strong><span class="tag manual">每人一次，手动</span>
@@ -549,7 +550,7 @@ svn_auto_add: true          <span class="c"># SVN 下新写的记忆文件自动
 gate:
   mode: block               <span class="c"># block 检索成功返回才放行 / warn 只提醒一次 / off 只靠规则</span>
   watch: []                 <span class="c"># 为空 = 所有已登记模块的路径都受守护</span>
-  ignore: ["**/*.md", "docs/**", ".memory/**", ".cursor/**"]
+  ignore: ["**/*.md", "docs/**", ".memory/**", ".cursor/**", ".claude/**", ".codex/**", ".agents/**"]
   skip_markers: ["跳过记忆", "skip-memory"]       <span class="c"># 用户这样说时本对话不查也不写（须是独立短语）</span>
   resume_markers: ["恢复记忆", "resume-memory"]   <span class="c"># 误判或改主意时，说这个重新打开</span>
   stop_reminder: true       <span class="c"># 改了模块却没写记忆时，结束提醒一次</span>

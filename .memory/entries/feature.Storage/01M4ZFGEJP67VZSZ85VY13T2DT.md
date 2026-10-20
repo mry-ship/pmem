@@ -7,7 +7,7 @@ status: active
 supersedes: []
 anchors:
 - src/pmem/vcs/svn.py#changed_after
-- src/pmem/vcs/git.py#changed_after
+- src/pmem/vcs/git.py#changed_since
 revision: git:fc9f6d8
 author: 1002378395@qq.com
 note_date: '2026-10-15'

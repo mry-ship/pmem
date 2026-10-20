@@ -20,7 +20,7 @@ DEFAULTS: dict = {
     "gate": {
         "mode": "block",
         "watch": [],
-        "ignore": ["**/*.md", "docs/**", ".memory/**", ".cursor/**"],
+        "ignore": ["**/*.md", "docs/**", ".memory/**", ".cursor/**", ".claude/**", ".codex/**", ".agents/**"],
         "skip_markers": ["跳过记忆", "skip-memory"],
         "resume_markers": ["恢复记忆", "resume-memory"],
         "stop_reminder": True,

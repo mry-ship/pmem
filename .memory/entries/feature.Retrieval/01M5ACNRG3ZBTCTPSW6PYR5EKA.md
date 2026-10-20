@@ -7,7 +7,7 @@ status: active
 supersedes: []
 anchors:
 - src/pmem/index/store.py#entry_text
-- src/pmem/index/store.py#_row
+- src/pmem/index/store.py#entry_row
 revision: git:627b54f
 author: 1002378395@qq.com
 note_date: '2026-10-19'

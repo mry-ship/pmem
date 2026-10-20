@@ -131,8 +131,20 @@ def test_claude_gets_memory_digest_on_prompt_and_on_read(root):
     assert output["hookEventName"] == "PostToolUse" and "gameplay.Jigsaw" in output["additionalContext"]
 
 
-def test_codex_prompt_gets_no_context(root):
-    assert run("codex", "prompt", {"session_id": "s10", "prompt": "Jigsaw 的奖励怎么发"}, root) == {}
+def test_codex_prompt_gets_memory_digest(root):
+    output = run("codex", "prompt", {"session_id": "s10", "prompt": "Jigsaw 的奖励怎么发"}, root)["hookSpecificOutput"]
+    assert output["hookEventName"] == "UserPromptSubmit" and "旧结论" in output["additionalContext"]
+
+
+def test_claude_powershell_tool_is_checked_like_bash(root):
+    ps = {"session_id": "s11", "cwd": str(root), "tool_name": "PowerShell",
+          "tool_input": {"command": "Set-Content src/Jigsaw/Board.cs 'x'"}}
+    assert run("claude", "pre-tool", ps, root)["hookSpecificOutput"]["permissionDecision"] == "deny"
+    ps["tool_input"]["command"] = "pmem search --module gameplay.Jigsaw 奖励"
+    run("claude", "pre-tool", ps, root)
+    run("claude", "post-tool", {**ps, "tool_response": {"stdout": "gameplay.Jigsaw：1 条", "stderr": ""}}, root)
+    ps["tool_input"]["command"] = "Set-Content src/Jigsaw/Board.cs 'x'"
+    assert run("claude", "pre-tool", ps, root) == {}
 
 
 def test_hook_cli_with_agent_flag_finds_project_from_payload_cwd(root, tmp_path, capsys, monkeypatch):

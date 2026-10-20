@@ -59,6 +59,13 @@ _GIT_READ_ONLY = {"status", "log", "diff", "show", "blame", "branch", "rev-parse
 _SVN_READ_ONLY = {"status", "st", "stat", "log", "diff", "di", "info", "cat", "list", "ls", "blame", "praise",
                   "annotate", "ann", "propget", "pg", "proplist", "pl", "help", "?", "h", "--version"}
 _PMEM_READ_ONLY = {"search", "graph", "list", "terms", "doctor", "report", "compact", "scan", "--help", "-h"}
+# 只改变后面命令运行方式的前缀（sudo rm x 真正执行的是 rm），值为会吞掉下一个参数的选项
+_PREFIXES = {
+    "sudo": {"-u", "-g", "-p", "-C", "-D", "-U", "-h", "-r", "-t"}, "doas": {"-u", "-C"},
+    "env": {"-u", "-C", "--unset", "--chdir"}, "command": set(), "builtin": set(),
+    "nohup": set(), "exec": {"-a"}, "time": {"-f", "-o", "--format", "--output"}, "nice": {"-n"},
+    "stdbuf": {"-i", "-o", "-e"},
+}
 
 
 def _strip_heredocs(command: str) -> str:
@@ -79,7 +86,8 @@ def _statements_with_ops(command: str) -> list[tuple[str, str]]:
 
 
 def _stages(statement: str) -> list[str]:
-    return re.split(r"\s*\|\s*", statement)
+    # >| 是强制覆盖的重定向，不是管道
+    return re.split(r"\s*(?<!>)\|\s*", statement)
 
 
 def _segments(command: str) -> list[str]:
@@ -96,11 +104,28 @@ def _program(token: str) -> str:
     return re.split(r"[\\/]", token)[-1].lower().removesuffix(".exe")
 
 
+def _unwrap(tokens: list[str]) -> list[str]:
+    """去掉 sudo、env A=1、command 这类前缀，留下真正执行的命令；前缀后面没有命令时原样返回（单独的 env 是只读）。"""
+    while tokens and (prefix := _program(tokens[0])) in _PREFIXES:
+        valued = _PREFIXES[prefix]
+        i = 1
+        while i < len(tokens) and (tokens[i].startswith("-") or (prefix == "env" and "=" in tokens[i])):
+            if prefix == "command" and tokens[i] in ("-v", "-V"):
+                return tokens
+            i += 2 if tokens[i] in valued else 1
+        if i >= len(tokens):
+            return tokens
+        tokens = tokens[i:]
+    return tokens
+
+
 def _command(segment: str) -> tuple[list[str], str]:
-    """（参数, 归一化的命令名）：去掉 PowerShell 的 & / . 调用前缀，命令名去路径和 .exe（/bin/rm、rm.exe 都是 rm）。"""
+    """（参数, 归一化的命令名）：去掉 PowerShell 的 & / . 调用前缀和 sudo / env 等前缀，
+    命令名去路径和 .exe（/bin/rm、rm.exe 都是 rm）。"""
     tokens = _tokens(segment)
     if tokens and tokens[0] in ("&", "."):
         tokens = tokens[1:]
+    tokens = _unwrap(tokens)
     return tokens, (_program(tokens[0]) if tokens else "")
 
 

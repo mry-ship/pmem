@@ -7,7 +7,7 @@ status: active
 supersedes: []
 anchors:
 - src/pmem/hooks/gate.py#_segments
-- src/pmem/hooks/gate.py#cli_args
+- src/pmem/hooks/shell.py#cli_args
 revision: git:f29e9f0
 author: 1002378395@qq.com
 note_date: '2026-10-16'

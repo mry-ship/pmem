@@ -6,7 +6,7 @@ kind: decision
 status: active
 supersedes: []
 anchors:
-- src/pmem/cli/anchors_cmd.py#FileIndex
+- src/pmem/scan/files.py#FileIndex
 - src/pmem/cli/seed_cmd.py#seed_plan
 revision: git:5003560
 author: 1002378395@qq.com

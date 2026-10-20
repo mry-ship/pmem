@@ -19,6 +19,8 @@ aliases:
 - 替代成环
 - 每日上限
 - daily cap
+verified: '2026-10-20'
+verified_at: '2026-10-20T18:57:28.399+08:00'
 source:
   conversation: b48c143a-9675-4a7b-97ea-8ee28f06840e
 ---

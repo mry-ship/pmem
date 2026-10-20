@@ -17,6 +17,8 @@ aliases:
 - 并发写入
 - jsonl 损坏
 - events.jsonl
+verified: '2026-10-20'
+verified_at: '2026-10-20T18:57:28.399+08:00'
 source:
   conversation: 6b540a20-0fb2-45fe-9ffb-9ce5b287b508
 ---

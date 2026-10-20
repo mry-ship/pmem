@@ -1,6 +1,7 @@
 import os
 import subprocess
-from datetime import date
+import time
+from datetime import datetime, timezone
 
 import pytest
 
@@ -126,31 +127,56 @@ def test_svn_counts_uncommitted_memories(svn_wc):
     assert vcs.uncommitted_count(entries) == 2
 
 
-def test_plain_changed_after_uses_mtime(tmp_path):
+def _at(text: str) -> float:
+    return datetime.fromisoformat(text).timestamp()
+
+
+def _commit_at(root, message: str, moment: str) -> None:
+    env = {**os.environ, "GIT_AUTHOR_DATE": moment, "GIT_COMMITTER_DATE": moment}
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True, env=env, capture_output=True)
+    subprocess.run(["git", "commit", "-q", "-m", message], cwd=root, check=True, env=env, capture_output=True)
+
+
+def test_plain_changed_since_uses_mtime(tmp_path):
     vcs = detect_vcs(tmp_path)
     (tmp_path / "a.ts").write_text("x", encoding="utf-8")
     (tmp_path / "old.ts").write_text("x", encoding="utf-8")
     os.utime(tmp_path / "old.ts", (946684800, 946684800))
-    today = date.today().isoformat()
-    assert vcs.changed_after(["a.ts", "old.ts", "gone.ts"], "2001-01-01") == {"a.ts": today}
-    assert vcs.changed_after(["a.ts"], today) == {}
+    found = vcs.changed_since(["a.ts", "old.ts", "gone.ts"], 978307200)
+    assert list(found) == ["a.ts"] and found["a.ts"] == (tmp_path / "a.ts").stat().st_mtime
+    assert vcs.changed_since(["a.ts"], time.time() + 60) == {}
 
 
-def test_git_changed_after_commits_and_local_edits(git_repo):
+def test_git_changed_since_is_precise_to_the_second(git_repo):
+    """同一天里写下（或核对）记忆之后的改动也要算：原先按天比较，当天之后的改动一律放过。"""
     vcs = detect_vcs(git_repo)
     (git_repo / "src").mkdir()
     (git_repo / "src" / "a.ts").write_text("x", encoding="utf-8")
-    run(["git", "add", "-A"], git_repo)
-    run(["git", "commit", "-q", "-m", "a"], git_repo)
-    today = date.today().isoformat()
-    assert vcs.changed_after(["src/a.ts", "README.md"], "2000-01-01") == {"src/a.ts": today, "README.md": today}
-    assert vcs.changed_after(["src/a.ts"], today) == {}
-    assert vcs.changed_after([], "2000-01-01") == {}
-    (git_repo / "README.md").write_text("changed\n", encoding="utf-8")
-    assert vcs.changed_after(["README.md"], "2000-01-01") == {"README.md": today}
+    _commit_at(git_repo, "a", "2026-09-05T10:00:00")
+    (git_repo / "src" / "a.ts").write_text("y", encoding="utf-8")
+    _commit_at(git_repo, "b", "2026-09-05T15:00:00")
+    assert vcs.changed_since(["src/a.ts"], _at("2026-09-05T12:00:00")) == {"src/a.ts": _at("2026-09-05T15:00:00")}
+    assert vcs.changed_since(["src/a.ts"], _at("2026-09-05T15:00:00")) == {}
+    assert vcs.commit_times(["src/a.ts"], _at("2026-09-01T00:00:00")) == {
+        "src/a.ts": [_at("2026-09-05T10:00:00"), _at("2026-09-05T15:00:00")]}
+    assert vcs.file_before("src/a.ts", _at("2026-09-05T12:00:00")) == "x"
+    assert vcs.file_before("src/a.ts", _at("2026-09-05T15:00:00")) == "y"
+    assert vcs.file_before("src/a.ts", _at("2026-09-05T09:00:00")) is None
+    assert vcs.changed_since([], 0) == {}
 
 
-def test_git_changed_after_splits_long_path_lists(git_repo):
+def test_git_local_edits_count_from_their_modification_time(git_repo):
+    """未提交的修改按文件修改时间算：写记忆前就改好、还没提交的代码不算“之后改过”。"""
+    vcs = detect_vcs(git_repo)
+    readme = git_repo / "README.md"
+    readme.write_text("changed\n", encoding="utf-8")
+    edited = readme.stat().st_mtime
+    assert vcs.changed_since(["README.md"], edited - 1) == {"README.md": edited}
+    assert vcs.changed_since(["README.md"], edited + 1) == {}
+    assert vcs.commit_times(["README.md"], edited) == {}
+
+
+def test_git_changed_since_splits_long_path_lists(git_repo):
     """Windows 命令行约 32K 字符上限：记忆多了一次传完所有路径会失败，被当成“都没改过”。"""
     vcs = detect_vcs(git_repo)
     (git_repo / "src").mkdir()
@@ -159,8 +185,8 @@ def test_git_changed_after_splits_long_path_lists(git_repo):
     run(["git", "commit", "-q", "-m", "a"], git_repo)
     padding = [f"src/{'deep/' * 20}missing{i}.ts" for i in range(400)]
     assert sum(len(p) for p in padding) > 40000
-    found = vcs.changed_after([*padding, "src/a.ts"], "2000-01-01")
-    assert found == {"src/a.ts": date.today().isoformat()}
+    found = vcs.changed_since([*padding, "src/a.ts"], _at("2000-01-01T00:00:00"))
+    assert list(found) == ["src/a.ts"]
 
 
 def test_path_batches_respect_the_length_limit():
@@ -180,10 +206,19 @@ def test_svn_lists_dirty_files_relative_to_root(svn_wc):
     assert sorted(vcs.dirty_files()) == ["README.md", "newdir/deep/a.cs"]
 
 
-def test_svn_changed_after_reads_commit_date_and_local_edits(svn_wc):
+def test_svn_changed_since_reads_commit_time_and_local_edits(svn_wc):
     vcs = detect_vcs(svn_wc)
-    found = vcs.changed_after(["README.md", "missing.ts"], "2000-01-01")
+    found = vcs.changed_since(["README.md", "missing.ts"], _at("2000-01-01T00:00:00"))
     assert list(found) == ["README.md"]
-    assert vcs.changed_after(["README.md"], "2999-01-01") == {}
+    assert vcs.changed_since(["README.md"], _at("2999-01-01T00:00:00")) == {}
     (svn_wc / "README.md").write_text("changed\n", encoding="utf-8")
-    assert vcs.changed_after(["README.md"], "2000-01-01")["README.md"] == date.today().isoformat()
+    edited = (svn_wc / "README.md").stat().st_mtime
+    assert vcs.changed_since(["README.md"], edited - 1)["README.md"] == edited
+
+
+def test_svn_commit_time_keeps_seconds():
+    from pmem.vcs.svn import _timestamp
+
+    assert _timestamp("2026-10-20T03:04:05.123456Z") == datetime(2026, 10, 20, 3, 4, 5, 123456,
+                                                                    tzinfo=timezone.utc).timestamp()
+    assert _timestamp("") is None

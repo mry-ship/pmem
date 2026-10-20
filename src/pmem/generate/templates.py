@@ -42,7 +42,7 @@ vcs: auto                 # auto / git / svn / none
 gate:
   mode: {gate}             # block 未查该模块的记忆不许改（检索成功返回才放行）/ warn 只提醒一次 / off 只靠规则
   watch: []               # 为空 = 所有已登记模块的路径都受守护
-  ignore: ["**/*.md", "docs/**", ".memory/**", ".cursor/**"]
+  ignore: ["**/*.md", "docs/**", ".memory/**", ".cursor/**", ".claude/**", ".codex/**", ".agents/**"]
   skip_markers: ["跳过记忆", "skip-memory"]       # 用户这样说时，本对话不查也不写（须是独立短语）
   resume_markers: ["恢复记忆", "resume-memory"]   # 误判或改主意时，说这个重新打开
   analysis_reminder: true   # 对话只查了记忆、没改代码也没写记忆时，结束时提醒一次
@@ -395,9 +395,9 @@ MCP_SERVER = {"command": "pmem", "args": ["serve", "--root", "${workspaceFolder}
 PLAIN_MCP_SERVER = {"command": "pmem", "args": ["serve"]}
 
 
-def _agent_hooks(agent: str, pre_matcher: str, post_matcher: str) -> dict:
+def _agent_hooks(agent: str, pre_matcher: str, post_matcher: str, extra: dict | None = None) -> dict:
     def handler(event: str) -> list[dict]:
-        return [{"type": "command", "command": f"pmem hook {event} --agent {agent}", "timeout": 30}]
+        return [{"type": "command", "command": f"pmem hook {event} --agent {agent}", "timeout": 30, **(extra or {})}]
 
     return {
         "UserPromptSubmit": [{"hooks": handler("prompt")}],
@@ -408,10 +408,13 @@ def _agent_hooks(agent: str, pre_matcher: str, post_matcher: str) -> dict:
     }
 
 
+# Windows 上 Claude Code 另有 PowerShell 工具；没装 Git Bash 时 Hook 起不来默认会拦下工具，
+# onFailure: continue 让 pmem 没装好时照常放行（不认这个字段的旧版 Claude Code 直接忽略）
 CLAUDE_HOOKS = _agent_hooks(
     "claude",
-    "^(Write|Edit|MultiEdit|NotebookEdit|Bash|mcp__pmem__.*)$",
-    "^(Write|Edit|MultiEdit|NotebookEdit|Read|Grep|Glob|Bash|mcp__pmem__.*)$",
+    "^(Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|mcp__pmem__.*)$",
+    "^(Write|Edit|MultiEdit|NotebookEdit|Read|Grep|Glob|Bash|PowerShell|mcp__pmem__.*)$",
+    {"onFailure": "continue"},
 )
 CODEX_HOOKS = _agent_hooks("codex", "^(Bash|apply_patch|mcp__pmem__.*)$", "^(Bash|apply_patch|mcp__pmem__.*)$")
 CODEX_MCP_TOML = '[mcp_servers.pmem]\ncommand = "pmem"\nargs = ["serve"]\n'

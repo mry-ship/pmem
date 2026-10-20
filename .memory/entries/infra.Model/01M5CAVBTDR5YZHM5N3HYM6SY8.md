@@ -16,6 +16,8 @@ aliases:
 - planned
 - 待实现
 - 需求
+verified: '2026-10-20'
+verified_at: '2026-10-20T18:57:28.399+08:00'
 ---
 决定：“还没实现的需求”做成新类型 plan，而不是新状态 planned。
 原因：状态牵涉归档、恢复、as_of 回看、VISIBLE_STATUSES、REPLACING_STATUSES 和 health 的多处判断，加一个状态要改一串流转规则；

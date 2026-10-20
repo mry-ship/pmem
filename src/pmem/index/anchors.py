@@ -9,11 +9,13 @@ import json
 import os
 import re
 import time
-from datetime import date, timedelta
+from datetime import date, datetime
+from datetime import time as dt_time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from pmem.core.config import MEMORY_DIR
+from pmem.core.ids import ulid_ms
 
 if TYPE_CHECKING:
     from pmem.core.entry import Entry
@@ -129,24 +131,24 @@ class AnchorChecker:
     """cache_path 给出时，核对结果跨进程缓存：钩子、命令行、Wiki 各自是新进程，每次都重跑 git 太慢。
 
     缓存随工作区状态整体失效（当前提交、今天日期、记忆目录以外的未提交文件及其修改时间），
-    单条记忆再按 id、写入日、核对日和锚点命中；不在 Git 下（取不到未提交文件）时不缓存。
+    单条记忆再按 id、写入日、核对时刻和锚点命中；不在 Git 下（取不到未提交文件）时不缓存。
     """
 
     def __init__(self, root: Path, vcs: VCS, cache_path: Path | None = None):
         self.root = root
         self.vcs = vcs
         self.cache_path = cache_path
-        self._changes: dict[tuple, tuple[float, dict[str, str]]] = {}
-        self._old_texts: dict[tuple[str, str], str | None] = {}
+        self._changes: dict[tuple, tuple[float, dict]] = {}
+        self._old_texts: dict[tuple[str, float], str | None] = {}
         self._state: tuple[float, str | None] | None = None
 
-    def _changed_after(self, files: list[str], since: str) -> dict[str, str]:
-        key = (tuple(files), since)
+    def _cached(self, kind: str, files: list[str], since: float, query) -> dict:
+        key = (kind, tuple(files), since)
         cached = self._changes.get(key)
         if cached and time.monotonic() - cached[0] < CHANGE_CACHE_SECONDS:
             return cached[1]
         try:
-            found = self.vcs.changed_after(files, since)
+            found = query(files, since)
         except Exception:  # noqa: BLE001
             found = {}
         if len(self._changes) >= MAX_CACHED:
@@ -154,14 +156,13 @@ class AnchorChecker:
         self._changes[key] = (time.monotonic(), found)
         return found
 
-    def _baselines(self, entries: list[Entry], files: dict[str, Path]) -> dict[str, str]:
-        """每条记忆的核对基准日：此日及之前的代码改动视为已被这条记忆考虑过。
+    def _baselines(self, entries: list[Entry], files: dict[str, Path]) -> dict[str, float]:
+        """每条记忆的核对基准时刻（Unix 秒）：此刻及之前的代码改动视为已被这条记忆考虑过。
 
-        通常先写记忆、过一两天才连同代码一起提交，记忆自己那次修复的提交不能算“之后改过”。
-        记忆文件写下后不久就提交了（或还是本地草稿），提交日（草稿取今天）之前的改动算作同一份工作；
-        隔了很久才提交的（如从别的系统导入）仍以写入日为准。
+        基准先取写入或核对的时刻。写记忆、确认记忆时代码常还没提交，之后连同记忆一起提交，
+        这次提交不能算“之后改过”：记忆文件在基准之后 SAME_WORK_DAYS 天内的第一次提交（从没提交过的草稿取现在）
+        之前的改动算作同一份工作。只顺延到第一次提交：之后格式化、归档再提交记忆文件，不能把基准一路往后推。
         """
-        today = date.today()
         rels: dict[str, str] = {}
         for entry in entries:
             path = files.get(entry.id)
@@ -170,40 +171,40 @@ class AnchorChecker:
                     rels[entry.id] = path.relative_to(self.root).as_posix()
                 except ValueError:
                     pass
-        earliest = min((e.note_date for e in entries), default="")
-        try:
-            since = (date.fromisoformat(earliest) - timedelta(days=1)).isoformat()
-        except ValueError:
-            since = "1970-01-01"
-        committed = self._changed_after(sorted(set(rels.values())), since) if rels else {}
-        baselines: dict[str, str] = {}
+        checked = {e.id: checked_at(e) for e in entries}
+        # 从写入前一天查起，拿到记忆文件的全部提交：区分“从没提交过的草稿”和“已提交、之后只是没再提交”
+        since = min((written_at(e) for e in entries), default=0.0) - 86400
+        commits = self._cached("commits", sorted(set(rels.values())), since, self.vcs.commit_times) if rels else {}
+        now = time.time()
+        baselines: dict[str, float] = {}
         for entry in entries:
-            base = entry.checked_date
-            try:
-                written = date.fromisoformat(entry.note_date)
-            except ValueError:
-                baselines[entry.id] = base
-                continue
-            day = committed.get(rels.get(entry.id, ""))
-            if day is None and entry.id in rels:
-                day = today.isoformat()
-            if day and (date.fromisoformat(day) - written).days <= SAME_WORK_DAYS:
-                base = max(base, day)
+            base = checked[entry.id]
+            if entry.id in rels:
+                times = commits.get(rels[entry.id], [])
+                # 同一台机器写入和提交，时钟一致；留一分钟余量
+                later = [t for t in times if t >= base - 60]
+                first = later[0] if later else (None if times else now)
+                if first is not None and first - base <= SAME_WORK_DAYS * 86400:
+                    base = max(base, first)
             baselines[entry.id] = base
         return baselines
 
-    def _symbol_changed(self, rel: str, symbol: str, baseline: str, current: str) -> bool | None:
-        """符号所在代码块与基准日时相比是否改过；取不到旧版本或代码块时返回 None（只能按文件判断）。"""
-        now = symbol_block(current, symbol)
-        if now is None:
-            return None
+    def _symbol_problem(self, rel: str, symbol: str, baseline: float, current: str) -> str | None:
+        """符号所在代码块与基准时相比：没变返回空串，有问题返回说明；取不到旧版本时返回 None（只能按文件判断）。"""
         key = (rel, baseline)
         if key not in self._old_texts:
             if len(self._old_texts) >= MAX_CACHED:
                 self._old_texts.clear()
-            self._old_texts[key] = self.vcs.file_at(rel, baseline)
-        old = self._old_texts[key]
-        return None if old is None else symbol_block(old, symbol) != now
+            self._old_texts[key] = self.vcs.file_before(rel, baseline)
+        old_text = self._old_texts[key]
+        if old_text is None:
+            return None
+        now, old = symbol_block(current, symbol), symbol_block(old_text, symbol)
+        if now is None and old is None:
+            return None
+        if now is None:
+            return f"{rel} 中找不到 {symbol}"
+        return "" if now == old else f"{rel} 中 {symbol} 在 {_day(baseline)} 之后改过"
 
     def _worktree_state(self) -> str | None:
         if self._state and time.monotonic() - self._state[0] < CHANGE_CACHE_SECONDS:
@@ -253,7 +254,7 @@ class AnchorChecker:
         if state is None:
             return self._check(entries, files)
         cached = self._load_cache(state)
-        keys = {e.id: "|".join((e.id, e.note_date, e.checked_date, *e.anchors)) for e in entries}
+        keys = {e.id: "|".join((e.id, e.note_date, e.checked_date, e.verified_at or "", *e.anchors)) for e in entries}
         missing = [e for e in entries if keys[e.id] not in cached]
         if missing:
             found = self._check(missing, files)
@@ -281,17 +282,58 @@ class AnchorChecker:
         if alive:
             baselines = self._baselines([e for group in alive.values() for e, _ in group], files)
             since = min(baselines.values())
-            for rel, day in self._changed_after(sorted(alive), since).items():
+            for rel, moment in self._cached("changes", sorted(alive), since, self.vcs.changed_since).items():
                 for entry, symbol in alive.get(rel, []):
                     base = baselines[entry.id]
-                    if day <= base:
+                    if moment <= base:
                         continue
-                    changed = self._symbol_changed(rel, symbol, base, texts[rel] or "") if symbol else None
-                    if changed is None:
-                        _add(problems, entry.id, f"{rel} 于 {day} 改过")
-                    elif changed:
-                        _add(problems, entry.id, f"{rel} 中 {symbol} 在 {base} 之后改过")
+                    problem = self._symbol_problem(rel, symbol, base, texts[rel] or "") if symbol else None
+                    if problem is None:
+                        _add(problems, entry.id, f"{rel} 于 {_day(moment)} 改过")
+                    elif problem:
+                        _add(problems, entry.id, problem)
         return problems
+
+
+def _day(moment: float) -> str:
+    # Windows 上 1970 年附近或超出范围的时间戳会抛 OSError / OverflowError / ValueError
+    try:
+        return datetime.fromtimestamp(max(moment, 86400)).date().isoformat()
+    except (OSError, OverflowError, ValueError):
+        return ""
+
+
+def _end_of(day: str) -> float:
+    return datetime.combine(date.fromisoformat(day), dt_time.max).timestamp()
+
+
+def written_at(entry: Entry) -> float:
+    """写入时刻：ULID 的生成时间与写入日对得上就用它（精确到毫秒）；
+    对不上（导入的、手写 id 的）按写入日当天结束算；写入日也无效时取 0，之后的任何改动都算。"""
+    try:
+        end = _end_of(entry.note_date)
+    except ValueError:
+        return 0.0
+    ms = ulid_ms(entry.id)
+    return ms / 1000 if ms and _day(ms / 1000) == entry.note_date else end
+
+
+def checked_at(entry: Entry) -> float:
+    """最近一次确认成立的时刻：写入时刻与核对时刻取晚的；旧文件只有核对日期时按当天结束算。"""
+    base = written_at(entry)
+    verified = None
+    if entry.verified_at:
+        try:
+            stamp = datetime.fromisoformat(entry.verified_at)
+            verified = stamp.timestamp()
+        except ValueError:
+            verified = None
+    if verified is None and entry.verified:
+        try:
+            verified = _end_of(entry.verified)
+        except ValueError:
+            verified = None
+    return max(base, verified or 0.0)
 
 
 def _add(problems: dict[str, list[str]], entry_id: str, problem: str) -> None:

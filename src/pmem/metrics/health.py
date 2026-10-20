@@ -311,7 +311,7 @@ def render(h: dict) -> str:
     section("待确认的种子记忆", [f"{m}：{n} 条" for m, n in h["seeds"]],
             "pmem seed 查看，确认后 pmem seed --accept --module <模块>")
     section(f"零碎记忆可合并（每个议题 {COMPACT_MIN_GROUP} 条以上）", [f"{m} / {e}：{n} 条" for m, e, n in h["compact"]],
-            "在 Cursor 里说“按 pmem-compact 技能合并记忆”")
+            "对 Agent 说“按 pmem-compact 技能合并记忆”")
     section("同一模块里名字相近的议题", [f"{m}：{a} / {b}" for m, a, b in h["entity_pairs"]],
             "是同一议题时，以后写入统一用一个名字；旧记忆可按 pmem-compact 合并")
     if not problems:

@@ -3,7 +3,6 @@ from __future__ import annotations
 import getpass
 import os
 import subprocess
-from datetime import date
 from pathlib import Path
 
 
@@ -71,8 +70,8 @@ class VCS:
         dst.parent.mkdir(parents=True, exist_ok=True)
         src.replace(dst)
 
-    def file_at(self, rel: str, day: str) -> str | None:
-        """day（YYYY-MM-DD）当天结束时已提交的文件内容；不支持或取不到时返回 None。"""
+    def file_before(self, rel: str, moment: float) -> str | None:
+        """moment（Unix 秒）时已提交的文件内容；不支持或取不到时返回 None。"""
         return None
 
     def dirty_files(self) -> list[str] | None:
@@ -83,16 +82,25 @@ class VCS:
         """since（YYYY-MM-DD）以来的每次提交：(提交日期, 改动的文件)，路径相对项目根；取不到时返回空列表。"""
         return []
 
-    def changed_after(self, paths: list[str], since: str) -> dict[str, str]:
-        """since（YYYY-MM-DD）之后有改动的文件 → 最近改动日期；含未提交的修改（记为今天）。
+    def changed_since(self, paths: list[str], since: float) -> dict[str, float]:
+        """since（Unix 秒）之后有改动的文件 → 最近一次改动的时刻；未提交的修改取文件修改时间。
 
         paths 为相对项目根的路径。没有版本库时按文件修改时间判断。
         """
-        found: dict[str, str] = {}
+        found: dict[str, float] = {}
         for rel in paths:
-            path = self.root / rel
-            if path.is_file():
-                day = date.fromtimestamp(path.stat().st_mtime).isoformat()
-                if day > since:
-                    found[rel] = day
+            moment = file_mtime(self.root / rel)
+            if moment is not None and moment > since:
+                found[rel] = moment
         return found
+
+    def commit_times(self, paths: list[str], since: float) -> dict[str, list[float]]:
+        """since 之后每个文件的提交时刻（从早到晚）；未提交的改动不算。没有版本库时取文件修改时间。"""
+        return {rel: [moment] for rel, moment in self.changed_since(paths, since).items()}
+
+
+def file_mtime(path: Path) -> float | None:
+    try:
+        return path.stat().st_mtime if path.is_file() else None
+    except OSError:
+        return None

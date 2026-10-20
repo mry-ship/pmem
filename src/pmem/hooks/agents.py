@@ -1,7 +1,8 @@
 """各家 Agent 的 Hook 输入输出与闸门（按 Cursor 的形状编写）之间的转换。
 
 Claude Code 与 Codex 的 Hook 协议基本一致：输入带 session_id / tool_name / tool_input，
-PreToolUse 用 hookSpecificOutput.permissionDecision 拦截，Stop 用 decision=block 让 Agent 继续。
+PreToolUse 用 hookSpecificOutput.permissionDecision 拦截，Stop 用 decision=block 让 Agent 继续，
+UserPromptSubmit / PostToolUse 用 hookSpecificOutput.additionalContext 给模型补充上下文。
 """
 from __future__ import annotations
 
@@ -38,13 +39,14 @@ def normalize(agent: str, payload: dict) -> dict:
         return payload
     data = dict(payload)
     data["conversation_id"] = payload.get("session_id") or payload.get("conversation_id") or ""
-    # Claude Code 的 UserPromptSubmit 可以给这一轮加上下文；Cursor 的 beforeSubmitPrompt 不行
-    data["prompt_context"] = agent == "claude"
+    # Claude Code、Codex 的 UserPromptSubmit 可以给这一轮加上下文；Cursor 的 beforeSubmitPrompt 不行
+    data["prompt_context"] = True
     name = str(payload.get("tool_name") or "")
     args = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
     cwd = payload.get("cwd")
     lowered = name.lower()
-    if lowered == "bash":
+    # Claude Code 在 Windows 上另有 PowerShell 工具，和 Bash 一样按终端命令核对
+    if lowered in ("bash", "powershell"):
         data["tool_name"] = "Shell"
         data["tool_input"] = {"command": _command(args.get("command")), "cwd": cwd}
     elif lowered == "apply_patch":
@@ -93,7 +95,7 @@ def render(agent: str, event: str, result: dict) -> dict:
         # Claude Code 2.1.163 起 Stop 才认 hookSpecificOutput.additionalContext，更早的版本直接忽略；
         # decision=block 各版本都认（界面上标为 hook 反馈），与 Codex 同一写法
         return {"decision": "block", "reason": result["followup_message"]}
-    if event in ("prompt", "post-tool") and result.get("additional_context") and agent == "claude":
+    if event in ("prompt", "post-tool") and result.get("additional_context"):
         return {"hookSpecificOutput": {"hookEventName": _EVENT_NAMES[event],
                                        "additionalContext": result["additional_context"]}}
     return {}

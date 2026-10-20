@@ -20,6 +20,8 @@ aliases:
 - rm -rf
 - pmem record 登记
 - 并行命令
+verified: '2026-10-20'
+verified_at: '2026-10-20T18:57:28.399+08:00'
 source:
   conversation: b48c143a-9675-4a7b-97ea-8ee28f06840e
 ---

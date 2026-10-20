@@ -11,7 +11,8 @@ anchors:
 revision: git:a0936e7
 author: 1002378395@qq.com
 note_date: '2026-10-14'
-verified: '2026-10-19'
+verified: '2026-10-20'
+verified_at: '2026-10-20T18:57:28.399+08:00'
 ---
 根因：收益报告里的“新写记忆”原先只统计事件日志中的 record 事件。
 Agent 在终端里带 PMEM_NO_EVENTS=1 跑 pmem record 时不记事件，本仓库实测 17 条记忆，报告只显示其中一部分；

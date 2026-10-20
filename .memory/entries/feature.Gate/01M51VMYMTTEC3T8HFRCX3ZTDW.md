@@ -10,7 +10,7 @@ anchors:
 - src/pmem/hooks/gate.py#on_stop
 - src/pmem/hooks/gate.py#on_after_mcp
 - src/pmem/hooks/gate.py#memory_count
-- src/pmem/hooks/gate.py#cli_args
+- src/pmem/hooks/shell.py#cli_args
 revision: git:4479338
 author: 1002378395@qq.com
 note_date: '2026-10-16'

@@ -7,7 +7,7 @@ status: active
 supersedes:
 - 01M52HVPEXSNK7NTFNB9Y89B48
 anchors:
-- src/pmem/cli/anchors_cmd.py#FileIndex
+- src/pmem/scan/files.py#FileIndex
 - src/pmem/scan/lite.py#kept_dirs
 revision: git:a92221a
 author: 1002378395@qq.com
@@ -16,6 +16,8 @@ aliases:
 - 自动补关联代码
 - 跳过目录
 - 误关联第三方
+verified: '2026-10-20'
+verified_at: '2026-10-20T18:57:28.399+08:00'
 source:
   conversation: 6b540a20-0fb2-45fe-9ffb-9ce5b287b508
 ---

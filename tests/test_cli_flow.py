@@ -106,6 +106,9 @@ def test_init_wires_claude_and_codex_without_touching_their_other_settings(tmp_p
     stop = [h["command"] for g in settings["hooks"]["Stop"] for h in g["hooks"]]
     assert stop == ["notify.sh", "pmem hook stop --agent claude"]
     assert settings["hooks"]["PreToolUse"][0]["matcher"].startswith("^(Write|Edit")
+    assert all("PowerShell" in settings["hooks"][e][0]["matcher"] for e in ("PreToolUse", "PostToolUse"))
+    assert all(h["onFailure"] == "continue" for e in ("PreToolUse", "UserPromptSubmit")
+               for g in settings["hooks"][e] for h in g["hooks"])
     assert json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["pmem"]["args"] == ["serve"]
     assert (claude / "skills" / "pmem-normalize" / "SKILL.md").exists()
     consolidate = (claude / "skills" / "pmem-consolidate" / "SKILL.md").read_text(encoding="utf-8")
@@ -115,6 +118,8 @@ def test_init_wires_claude_and_codex_without_touching_their_other_settings(tmp_p
     assert toml.startswith('model = "gpt-5"\n') and toml.count("[mcp_servers.pmem]") == 1
     codex_hooks = json.loads((codex / "hooks.json").read_text(encoding="utf-8"))["hooks"]
     assert [h["command"] for g in codex_hooks["PreToolUse"] for h in g["hooks"]] == ["pmem hook pre-tool --agent codex"]
+    assert "onFailure" not in codex_hooks["PreToolUse"][0]["hooks"][0]
+    assert (tmp_path / ".agents" / "skills" / "pmem-consolidate" / "SKILL.md").exists()
     assert (tmp_path / "AGENTS.md").read_text(encoding="utf-8").count("<!-- pmem:end -->") == 1
     out = capsys.readouterr().out
     assert "Claude Code" in out and "/hooks" in out
@@ -169,6 +174,26 @@ def test_doctor_reports_coverage(tmp_path, capsys, monkeypatch):
                      encoding="utf-8")
     main(["doctor", "--root", str(tmp_path)])
     assert "Hooks 是旧版" in capsys.readouterr().out
+
+
+def test_doctor_checks_claude_and_codex_without_requiring_cursor(tmp_path, capsys, monkeypatch):
+    monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
+    main(["init", "--root", str(tmp_path), "--type", "generic", "--agents", "claude,codex"])
+    config = tmp_path / ".memory" / "config.yaml"
+    config.write_text(config.read_text(encoding="utf-8").replace("backend: auto", "backend: none"), encoding="utf-8")
+    capsys.readouterr()
+    main(["doctor", "--root", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert ".cursor/mcp.json" not in out
+    assert "Claude Code 已接入（Hooks、MCP 与技能）" in out and "Codex 已接入（Hooks、MCP 与技能）" in out
+
+    settings = tmp_path / ".claude" / "settings.json"
+    settings.write_text(settings.read_text(encoding="utf-8").replace("|PowerShell", ""), encoding="utf-8")
+    main(["doctor", "--root", str(tmp_path)])
+    assert "Claude Code 的 Hooks 是旧版" in capsys.readouterr().out
+    shutil.rmtree(tmp_path / ".agents")
+    main(["doctor", "--root", str(tmp_path)])
+    assert "Codex 缺少 pmem 技能（.agents/skills）" in capsys.readouterr().out
 
 
 def test_doctor_flags_uncommitted_and_scattered_entities(git_repo, capsys, monkeypatch):

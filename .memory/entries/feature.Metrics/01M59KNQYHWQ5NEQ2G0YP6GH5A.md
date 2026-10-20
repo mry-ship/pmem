@@ -16,6 +16,8 @@ aliases:
 - 提醒后查了
 - 终端检索关联对话
 - search_call
+verified: '2026-10-20'
+verified_at: '2026-10-20T18:57:28.399+08:00'
 source:
   conversation: 7e7aeed7-103b-4d87-bb8d-18765c815bd5
 ---

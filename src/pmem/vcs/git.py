@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import subprocess
-from datetime import date, timedelta
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
-from pmem.vcs.base import HISTORY_TIMEOUT, VCS, fallback_user, path_batches, run_tool
+from pmem.vcs.base import HISTORY_TIMEOUT, VCS, fallback_user, file_mtime, path_batches, run_tool
+
+
+def _iso(moment: float) -> str:
+    """git 的 --since/--before 参数：UTC 时间，精确到秒（含这一秒）。
+    Windows 上 1970 年附近的时间戳转本地时间会抛 OSError，所以用 UTC 并且不早于 1970-01-02。"""
+    return datetime.fromtimestamp(max(int(moment), 86400), tz=timezone.utc).isoformat(timespec="seconds")
 
 
 class GitVCS(VCS):
@@ -28,8 +35,8 @@ class GitVCS(VCS):
         out = self._git("status", "--porcelain", "--untracked-files=all", "--", str(path))
         return bool(out)
 
-    def file_at(self, rel: str, day: str) -> str | None:
-        rev = self._git("rev-list", "-1", f"--before={day} 23:59:59", "HEAD", "--", rel)
+    def file_before(self, rel: str, moment: float) -> str | None:
+        rev = self._git("rev-list", "-1", f"--before={_iso(moment)}", "HEAD", "--", rel)
         if not rev:
             return None
         # ./ 让路径相对项目根解析（项目可能是仓库的子目录）
@@ -39,27 +46,34 @@ class GitVCS(VCS):
     def is_committed(self, path: Path) -> bool:
         return bool(self._git("log", "-1", "--format=%h", "--", str(path)))
 
-    def changed_after(self, paths: list[str], since: str) -> dict[str, str]:
-        if not paths:
-            return {}
-        found: dict[str, str] = {}
-        start = (date.fromisoformat(since) + timedelta(days=1)).isoformat()
-        today = date.today().isoformat()
+    def commit_times(self, paths: list[str], since: float) -> dict[str, list[float]]:
+        found: dict[str, list[float]] = {}
         for batch in path_batches(paths):
             # 一次 git log 拿到这批文件在 since 之后的提交；--relative 让输出相对项目根（可能是仓库子目录）
-            out = self._git("log", f"--since={start} 00:00", "--format=@%cs", "--name-only", "--relative", "--",
+            out = self._git("log", f"--since={_iso(since)}", "--format=@%ct", "--name-only", "--relative", "--",
                             *batch)
-            day = ""
+            moment = 0.0
             for line in (out or "").splitlines():
                 if line.startswith("@"):
-                    day = line[1:].strip()
-                elif line.strip() and day > since:
-                    found.setdefault(line.strip(), day)
+                    moment = float(line[1:].strip() or 0)
+                elif line.strip() and moment > since:
+                    found.setdefault(line.strip(), []).append(moment)
+        wanted = {p.replace("\\", "/") for p in paths}
+        return {k: sorted(v) for k, v in found.items() if k in wanted}
+
+    def changed_since(self, paths: list[str], since: float) -> dict[str, float]:
+        if not paths:
+            return {}
+        found = {rel: times[-1] for rel, times in self.commit_times(paths, since).items()}
+        now = time.time()
+        for batch in path_batches(paths):
             # status --porcelain 的路径总是相对仓库根，这里用 diff --relative 保持与项目根一致
             dirty = self._git("diff", "HEAD", "--name-only", "--relative", "--", *batch) or ""
-            for rel in dirty.splitlines():
-                if rel.strip() and today > since:
-                    found[rel.strip()] = today
+            for rel in (r.strip() for r in dirty.splitlines()):
+                # 未提交的修改按文件修改时间算：写记忆之前就改好、还没提交的代码不算“之后改过”
+                moment = file_mtime(self.root / rel) or now
+                if rel and moment > since:
+                    found[rel] = max(found.get(rel, 0.0), moment)
         wanted = {p.replace("\\", "/") for p in paths}
         return {k: v for k, v in found.items() if k in wanted}
 

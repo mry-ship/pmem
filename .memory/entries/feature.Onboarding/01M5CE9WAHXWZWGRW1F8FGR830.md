@@ -13,6 +13,8 @@ revision: git:d6b5bd7
 author: 1002378395@qq.com
 note_date: '2026-10-20'
 summary: 收口技能处理跳过复查、清理候选、转正与召回偏低，归档须用户确认
+verified: '2026-10-20'
+verified_at: '2026-10-20T19:03:59.331+08:00'
 ---
 需求来源：v0.3.2、v0.4 给 pmem health 新增了跳过复查、清理候选、未登记模块的建议 paths、召回偏低（GitHub Issue #13、#14），收口技能要会处理。
 必须保持的行为：

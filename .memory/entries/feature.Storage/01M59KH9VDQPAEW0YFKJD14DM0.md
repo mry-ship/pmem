@@ -17,6 +17,8 @@ aliases:
 - 热度扫描
 - git log
 - svn log
+verified: '2026-10-20'
+verified_at: '2026-10-20T18:57:28.399+08:00'
 source:
   conversation: 7e7aeed7-103b-4d87-bb8d-18765c815bd5
 ---

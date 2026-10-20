@@ -268,6 +268,13 @@ def test_shell_write_is_gated(make_project):
         ("Remove-Item -Recurse src/D3", ["src/D3"]),
         ("Set-Content src/D4.cs 'value'", ["src/D4.cs"]),
         ("cp -t src/E1 tmp/a.cs", ["src/E1"]),
+        ("env A=1 rm src/F1.cs", ["src/F1.cs"]),
+        ("sudo -u root rm src/F2.cs", ["src/F2.cs"]),
+        ("command rm src/F3.cs", ["src/F3.cs"]),
+        ("nohup env -u X sed -i s/a/b/ src/F4.cs", ["src/F4.cs"]),
+        ("echo hi >| src/F5.cs", ["src/F5.cs"]),
+        ("env | grep PATH", []),
+        ("command -v rm", []),
     ],
 )
 def test_shell_write_targets(command, targets):
@@ -304,6 +311,9 @@ def test_git_checkout_without_dashes_restores_existing_files(tmp_path):
         ("svn revert -R src", True),
         ("/bin/rm src/B1.cs", False),
         ("C:\\Windows\\System32\\sed.exe -i s/a/b/ x.cs", False),
+        ("env", False),
+        ("env A=1 make", True),
+        ("timeout 10 rm src/x.cs", True),
     ],
 )
 def test_commands_that_may_change_unparsed_files(command, unseen):

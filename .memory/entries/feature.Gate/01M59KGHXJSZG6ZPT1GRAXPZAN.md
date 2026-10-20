@@ -20,8 +20,8 @@ aliases:
 - 闸门出错
 - hook-errors
 - 放行提示
-verified: '2026-10-19'
-verified_at: '2026-10-19T23:02:11.714+08:00'
+verified: '2026-10-20'
+verified_at: '2026-10-20T18:57:28.399+08:00'
 source:
   conversation: 7e7aeed7-103b-4d87-bb8d-18765c815bd5
 ---

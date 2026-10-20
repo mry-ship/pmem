@@ -8,7 +8,7 @@ supersedes: []
 anchors:
 - src/pmem/hooks/payload.py#_pua_bytes
 - src/pmem/hooks/payload.py#parse_payload
-- src/pmem/hooks/gate.py#cli_args
+- src/pmem/hooks/shell.py#cli_args
 revision: git:4479338
 author: 1002378395@qq.com
 note_date: '2026-10-16'
@@ -19,7 +19,8 @@ aliases:
 - 吞换行
 - 记了却提醒没写
 - 误提醒
-verified: '2026-10-19'
+verified: '2026-10-20'
+verified_at: '2026-10-20T18:57:28.399+08:00'
 ---
 根因：终端命令里的中文让 GBK 误解码吞掉了换行，同一条命令里的第一个 pmem record 没被登记，结束时误提醒“feature.Storage 还没写记忆”（记忆其实已写）。
 

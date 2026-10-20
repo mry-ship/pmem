@@ -7,7 +7,7 @@ status: active
 supersedes: []
 anchors:
 - src/pmem/index/graph.py#related
-- src/pmem/index/anchors.py#_changed_after
+- src/pmem/index/anchors.py#_cached
 - src/pmem/index/embedder.py#LazyOnnxEmbedder
 revision: git:df9b06c
 author: 1002378395@qq.com
@@ -18,6 +18,8 @@ aliases:
 - 缓存只增不减
 - 模型加载失败重试
 - 离线检索慢
+verified: '2026-10-20'
+verified_at: '2026-10-20T18:47:12.355+08:00'
 source:
   conversation: 7e7aeed7-103b-4d87-bb8d-18765c815bd5
 ---

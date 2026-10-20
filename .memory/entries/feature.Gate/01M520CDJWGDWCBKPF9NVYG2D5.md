@@ -14,6 +14,8 @@ aliases:
 - sessionStart
 - 新对话
 - hook事件
+verified: '2026-10-20'
+verified_at: '2026-10-20T18:57:28.399+08:00'
 ---
 决定：pmem hook 命令的事件列表增加 session，对应 Cursor 的 sessionStart（新对话开始时触发一次）。
 装了 pmem 时闸门对该事件什么都不做（返回 {}），它的作用在包装脚本 .memory/bin/pmem-hook 里：找不到 pmem 时由脚本直接返回提示，让 Agent 告诉用户安装 pmem。

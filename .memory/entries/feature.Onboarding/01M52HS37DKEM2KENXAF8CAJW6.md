@@ -8,7 +8,7 @@ supersedes: []
 anchors:
 - src/pmem/scan/lite.py#skip_dir
 - src/pmem/scan/lite.py#iter_code_files
-- src/pmem/cli/anchors_cmd.py#FileIndex
+- src/pmem/scan/files.py#FileIndex
 revision: git:5003560
 author: 1002378395@qq.com
 note_date: '2026-10-16'
@@ -18,7 +18,8 @@ aliases:
 - 覆盖率
 - vendor
 - 构建产物
-verified: '2026-10-19'
+verified: '2026-10-20'
+verified_at: '2026-10-20T18:57:28.399+08:00'
 source:
   conversation: 7e7aeed7-103b-4d87-bb8d-18765c815bd5
 ---

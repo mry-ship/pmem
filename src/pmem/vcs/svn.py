@@ -1,12 +1,21 @@
 from __future__ import annotations
 
 import subprocess
+import time
 import xml.etree.ElementTree as ET
-from datetime import date
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import unquote
 
-from pmem.vcs.base import HISTORY_TIMEOUT, VCS, path_batches, run_tool
+from pmem.vcs.base import HISTORY_TIMEOUT, VCS, file_mtime, path_batches, run_tool
+
+
+def _timestamp(text: str) -> float | None:
+    """svn 的提交时间（UTC，如 2026-10-20T03:04:05.123456Z）→ Unix 秒。"""
+    try:
+        return datetime.fromisoformat(text.strip().replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
 
 _UNCOMMITTED = {"unversioned", "added", "modified", "replaced"}
 _DIRTY = _UNCOMMITTED | {"deleted", "missing", "conflicted"}
@@ -85,26 +94,36 @@ class SvnVCS(VCS):
                 count += 1
         return count
 
-    def changed_after(self, paths: list[str], since: str) -> dict[str, str]:
-        if not paths:
-            return {}
-        found: dict[str, str] = {}
-        today = date.today().isoformat()
+    def commit_times(self, paths: list[str], since: float) -> dict[str, list[float]]:
+        """只有最后一次提交的时刻：svn info 不访问服务器，取完整历史要走 svn log。"""
+        found: dict[str, list[float]] = {}
         for batch in path_batches(paths):
             # svn info 读本地工作副本元数据，不访问服务器；commit/date 是该文件最后一次提交的时间（UTC）
             # 有路径未纳入版本库时退出码非 0，但其余路径的 XML 仍完整输出
             info = self._xml("info", *batch, partial=True)
             for entry in info.iter("entry") if info is not None else []:
-                node = entry.find("commit/date")
                 rel = (entry.get("path") or "").replace("\\", "/")
-                day = (node.text or "")[:10] if node is not None else ""
-                if rel and day > since:
-                    found[rel] = day
+                moment = _timestamp(entry.findtext("commit/date") or "")
+                if rel and moment is not None and moment > since:
+                    found[rel] = [moment]
+        wanted = {p.replace("\\", "/") for p in paths}
+        return {k: v for k, v in found.items() if k in wanted}
+
+    def changed_since(self, paths: list[str], since: float) -> dict[str, float]:
+        if not paths:
+            return {}
+        found = {rel: times[-1] for rel, times in self.commit_times(paths, since).items()}
+        now = time.time()
+        for batch in path_batches(paths):
             status = self._xml("status", *batch, partial=True)
             for entry in status.iter("entry") if status is not None else []:
                 node = entry.find("wc-status")
-                if node is not None and node.get("item") in ("modified", "replaced") and today > since:
-                    found[(entry.get("path") or "").replace("\\", "/")] = today
+                if node is None or node.get("item") not in ("modified", "replaced"):
+                    continue
+                rel = (entry.get("path") or "").replace("\\", "/")
+                moment = file_mtime(self.root / rel) or now
+                if rel and moment > since:
+                    found[rel] = max(found.get(rel, 0.0), moment)
         wanted = {p.replace("\\", "/") for p in paths}
         return {k: v for k, v in found.items() if k in wanted}
 

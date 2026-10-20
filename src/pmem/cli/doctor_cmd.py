@@ -22,6 +22,7 @@ OK, WARN, BAD = "✔", "!", "✘"
 MAX_LISTED_PAIRS = 10
 RECENT_ERROR_SECONDS = 24 * 3600
 _STAMP = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) ")
+_CODEX_MCP = re.compile(r'^\s*\[\s*mcp_servers\s*\.\s*"?pmem"?\s*\]', re.MULTILINE)
 
 
 def _recent_errors(path: Path, now: float | None = None) -> list[str]:
@@ -62,7 +63,7 @@ def run_doctor(root: Path) -> int:
     n_modules = len(registry.modules)
     line(OK if n_modules else WARN, f"模块 {n_modules} 个、候选 {len(registry.candidates)} 个、大类 {' / '.join(registry.categories)}")
     if n_modules == 0:
-        print("      还没有划分模块：在 Cursor 里对 Agent 说“按 pmem-bootstrap 技能划分模块”")
+        print("      还没有划分模块：对 Agent 说“按 pmem-bootstrap 技能划分模块”")
 
     cov = coverage_report(root, registry)
     pct = cov["coverage"] * 100
@@ -88,7 +89,7 @@ def run_doctor(root: Path) -> int:
     big = [n for n in Counter((e.module, e.entity.lower()) for e in visible).values() if n >= COMPACT_MIN_GROUP]
     if big:
         line(WARN, f"{len(big)} 个议题各积累了 {COMPACT_MIN_GROUP} 条以上记忆（共 {sum(big)} 条），检索时会互相挤占；"
-                   "在 Cursor 里对 Agent 说“按 pmem-compact 技能合并记忆”")
+                   "对 Agent 说“按 pmem-compact 技能合并记忆”")
     by_module: dict[str, list[str]] = {}
     for e in visible:
         by_module.setdefault(e.module, []).append(e.entity)
@@ -99,34 +100,44 @@ def run_doctor(root: Path) -> int:
             print(f"      {module}：{a} / {b}")
 
     cursor = root / ".cursor"
-    mcp = _load(cursor / "mcp.json").get("mcpServers", {})
-    line(OK if "pmem" in mcp else BAD, ".cursor/mcp.json 已注册 pmem" if "pmem" in mcp else ".cursor/mcp.json 缺少 pmem，请运行 pmem init")
-    hooks = json.dumps(_load(cursor / "hooks.json"))
-    line(OK if "pmem hook" in hooks else WARN, "Hooks 已接入" if "pmem hook" in hooks else "Hooks 未接入（闸门不生效），请运行 pmem init")
-    post = [h for h in _load(cursor / "hooks.json").get("hooks", {}).get("postToolUse", [])
-            if str(h.get("command", "")).startswith("pmem hook post-tool")]
-    if "pmem hook" in hooks and not post:
-        line(WARN, "读代码时的记忆摘要未接入（postToolUse），请重新运行 pmem init")
-    elif post and "Grep" not in str(post[0].get("matcher", "Grep")):
-        line(WARN, "Hooks 是旧版：搜索代码（Grep / Glob）时不附记忆摘要，请重新运行 pmem init 更新")
-    elif post and "Shell" not in str(post[0].get("matcher", "Shell")):
-        line(WARN, "Hooks 是旧版：终端命令改了文件时不做事后核对，请重新运行 pmem init 更新")
-    elif "pmem hook" in hooks and not (root / ".memory" / "bin" / "pmem-hook.cmd").exists():
-        line(WARN, "Hooks 是旧版：队友没装 pmem 时不会提醒（缺 .memory/bin/pmem-hook），请重新运行 pmem init 更新")
-    line(OK if (cursor / "rules" / "pmem.mdc").exists() else WARN, "规则文件 .cursor/rules/pmem.mdc")
-    for agent, label, hooks_path, wired_mcp in (
-        ("claude", "Claude Code", root / ".claude" / "settings.json", "pmem" in _load(root / ".mcp.json").get("mcpServers", {})),
-        ("codex", "Codex", root / ".codex" / "hooks.json", "mcp_servers.pmem" in _read(root / ".codex" / "config.toml")),
+    others = {"claude": root / ".claude" / "settings.json", "codex": root / ".codex" / "hooks.json"}
+    # 只接了 Claude Code / Codex 的项目不检查 Cursor 配置，免得报一堆用不上的错
+    if (cursor / "mcp.json").exists() or (cursor / "hooks.json").exists() or not any(p.exists() for p in others.values()):
+        mcp = _load(cursor / "mcp.json").get("mcpServers", {})
+        line(OK if "pmem" in mcp else BAD, ".cursor/mcp.json 已注册 pmem" if "pmem" in mcp else ".cursor/mcp.json 缺少 pmem，请运行 pmem init")
+        hooks = json.dumps(_load(cursor / "hooks.json"))
+        line(OK if "pmem hook" in hooks else WARN, "Hooks 已接入" if "pmem hook" in hooks else "Hooks 未接入（闸门不生效），请运行 pmem init")
+        post = [h for h in _load(cursor / "hooks.json").get("hooks", {}).get("postToolUse", [])
+                if str(h.get("command", "")).startswith("pmem hook post-tool")]
+        if "pmem hook" in hooks and not post:
+            line(WARN, "读代码时的记忆摘要未接入（postToolUse），请重新运行 pmem init")
+        elif post and "Grep" not in str(post[0].get("matcher", "Grep")):
+            line(WARN, "Hooks 是旧版：搜索代码（Grep / Glob）时不附记忆摘要，请重新运行 pmem init 更新")
+        elif post and "Shell" not in str(post[0].get("matcher", "Shell")):
+            line(WARN, "Hooks 是旧版：终端命令改了文件时不做事后核对，请重新运行 pmem init 更新")
+        elif "pmem hook" in hooks and not (root / ".memory" / "bin" / "pmem-hook.cmd").exists():
+            line(WARN, "Hooks 是旧版：队友没装 pmem 时不会提醒（缺 .memory/bin/pmem-hook），请重新运行 pmem init 更新")
+        line(OK if (cursor / "rules" / "pmem.mdc").exists() else WARN, "规则文件 .cursor/rules/pmem.mdc")
+    for agent, label, wired_mcp, skills in (
+        ("claude", "Claude Code", "pmem" in _load(root / ".mcp.json").get("mcpServers", {}), root / ".claude" / "skills"),
+        ("codex", "Codex", bool(_CODEX_MCP.search(_read(root / ".codex" / "config.toml"))), root / ".agents" / "skills"),
     ):
-        if not hooks_path.exists():
+        if not others[agent].exists():
             continue
-        wired_hooks = f"--agent {agent}" in json.dumps(_load(hooks_path))
-        if wired_hooks and wired_mcp:
-            line(OK, f"{label} 已接入（Hooks 与 MCP）")
-        else:
+        handlers = _agent_handlers(_load(others[agent]), agent)
+        wired_hooks = bool(handlers)
+        if not (wired_hooks and wired_mcp):
             missing = "、".join(x for x, ok in (("Hooks", wired_hooks), ("MCP", wired_mcp)) if not ok)
             line(WARN, f"{label} 缺少 {missing}，请运行 pmem init --agents {agent}")
-    line(OK if shutil.which("pmem") else BAD, "PATH 中可以找到 pmem 命令" if shutil.which("pmem") else "PATH 中找不到 pmem，Cursor 无法启动服务")
+        elif agent == "claude" and not all(
+                "PowerShell" in m and h.get("onFailure") == "continue" for m, h in handlers if "pre-tool" in h["command"]):
+            line(WARN, f"{label} 的 Hooks 是旧版：Windows 上 PowerShell 改文件不受闸门检查，没装 Git Bash 时 Hook "
+                       f"出错会拦下工具；请重新运行 pmem init --agents {agent} 更新")
+        elif not (skills / "pmem-bootstrap" / "SKILL.md").exists():
+            line(WARN, f"{label} 缺少 pmem 技能（{skills.relative_to(root).as_posix()}），请重新运行 pmem init --agents {agent}")
+        else:
+            line(OK, f"{label} 已接入（Hooks、MCP 与技能）")
+    line(OK if shutil.which("pmem") else BAD, "PATH 中可以找到 pmem 命令" if shutil.which("pmem") else "PATH 中找不到 pmem，Agent 无法启动服务和 Hook")
 
     backend = config.get("embedding.backend")
     has_fastembed = importlib.util.find_spec("fastembed") is not None
@@ -168,6 +179,18 @@ def run_doctor(root: Path) -> int:
 
     print("自检完成" + ("，有需要处理的问题" if problems else "，一切正常"))
     return 1 if problems else 0
+
+
+def _agent_handlers(data: dict, agent: str) -> list[tuple[str, dict]]:
+    """Claude Code / Codex 配置里 pmem 的处理器，连同所在匹配组的 matcher。"""
+    found = []
+    for groups in (data.get("hooks") or {}).values():
+        for group in groups if isinstance(groups, list) else []:
+            for handler in group.get("hooks") or [] if isinstance(group, dict) else []:
+                command = str(handler.get("command") or "") if isinstance(handler, dict) else ""
+                if command.startswith("pmem hook") and f"--agent {agent}" in command:
+                    found.append((str(group.get("matcher") or ""), handler))
+    return found
 
 
 def _read(path: Path) -> str:

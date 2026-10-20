@@ -1,11 +1,15 @@
 import os
 import subprocess
+import time
+from datetime import date, datetime
+from datetime import time as dt_time
 from pathlib import Path
 
 import pytest
 
 from pmem.core.entry import Entry
-from pmem.index.anchors import AnchorChecker, anchor_affinity, symbol_block
+from pmem.core.ids import new_ulid
+from pmem.index.anchors import AnchorChecker, anchor_affinity, checked_at, symbol_block
 from pmem.vcs.detect import detect_vcs
 
 PY = '''\
@@ -65,7 +69,8 @@ def test_calls_are_not_mistaken_for_definitions():
 
 
 def _commit(root: Path, message: str, day: str) -> None:
-    env = {**os.environ, "GIT_AUTHOR_DATE": f"{day}T12:00:00", "GIT_COMMITTER_DATE": f"{day}T12:00:00"}
+    moment = day if "T" in day else f"{day}T12:00:00"
+    env = {**os.environ, "GIT_AUTHOR_DATE": moment, "GIT_COMMITTER_DATE": moment}
     subprocess.run(["git", "add", "-A"], cwd=root, check=True, env=env)
     subprocess.run(["git", "commit", "-q", "-m", message], cwd=root, check=True, env=env)
 
@@ -87,6 +92,112 @@ def test_only_the_changed_function_makes_a_memory_stale(git_repo):
     assert "A" not in problems
     assert problems["B"] == ["calc.py 中 Box.size 在 2026-09-05 之后改过"]
     assert problems["C"] == ["calc.py 于 2026-09-10 改过"]
+
+
+def _ms(moment: str) -> int:
+    return int(datetime.fromisoformat(moment).timestamp() * 1000)
+
+
+def _memory(root: Path, moment: str, anchor: str) -> tuple[Entry, Path]:
+    entry = Entry(id=new_ulid(_ms(moment)), module="m.M", entity="E", kind="risk", content="x" * 30,
+                  note_date=moment[:10], author="a", anchors=[anchor])
+    path = root / ".memory" / "entries" / "m.M" / f"{entry.id}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(entry.to_markdown(), encoding="utf-8")
+    return entry, path
+
+
+def test_changes_later_on_the_same_day_make_a_memory_stale(git_repo):
+    """原先按天比较：上午核对、下午有人改了关联函数，这条仍显示已核对。"""
+    code = git_repo / "calc.py"
+    code.write_text(PY, encoding="utf-8")
+    _commit(git_repo, "calc", "2026-09-05")
+    entry = _entry("A", "calc.py#Box.size")
+    entry.verified, entry.verified_at = "2026-09-06", "2026-09-06T09:00:00"
+    code.write_text(PY.replace("return 1", "return 2"), encoding="utf-8")
+    _commit(git_repo, "size", "2026-09-06")
+    problems = AnchorChecker(git_repo, detect_vcs(git_repo)).check([entry], {})
+    assert problems["A"] == ["calc.py 中 Box.size 在 2026-09-06 之后改过"]
+    entry.verified_at = "2026-09-06T13:00:00"
+    assert AnchorChecker(git_repo, detect_vcs(git_repo)).check([entry], {}) == {}
+
+
+def test_baseline_moves_only_to_the_first_commit_of_the_memory(git_repo):
+    """记忆连同代码一起提交不算之后改过；之后再提交记忆文件（格式化、归档）不能把基准往后推。"""
+    def ago(hours: float) -> str:
+        return datetime.fromtimestamp(time.time() - hours * 3600).isoformat(timespec="seconds")
+
+    code = git_repo / "calc.py"
+    code.write_text(PY, encoding="utf-8")
+    _commit(git_repo, "calc", ago(5))
+    entry, path = _memory(git_repo, ago(4), "calc.py#Box.size")
+    code.write_text(PY.replace("return 1", "return 2"), encoding="utf-8")
+    vcs = detect_vcs(git_repo)
+    assert AnchorChecker(git_repo, vcs).check([entry], {entry.id: path}) == {}
+    together = ago(3)
+    _commit(git_repo, "fix with memory", together)
+    assert AnchorChecker(git_repo, vcs).check([entry], {entry.id: path}) == {}
+
+    code.write_text(PY.replace("return 1", "return 3"), encoding="utf-8")
+    _commit(git_repo, "someone else", ago(2))
+    path.write_text(path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    _commit(git_repo, "format memories", ago(1))
+    problems = AnchorChecker(git_repo, vcs).check([entry], {entry.id: path})
+    assert problems[entry.id] == [f"calc.py 中 Box.size 在 {together[:10]} 之后改过"]
+
+
+def test_committed_memory_without_later_commit_is_not_treated_as_draft(git_repo):
+    """只记了核对日期（按当天结束算）、核对当天下午就提交了：之后没有提交不等于还是草稿，基准不能取现在。"""
+    code = git_repo / "calc.py"
+    code.write_text(PY, encoding="utf-8")
+    _commit(git_repo, "calc", "2026-09-01")
+    entry, path = _memory(git_repo, "2026-09-05T09:00:00", "calc.py#Box.size")
+    entry.verified = "2026-09-05"
+    path.write_text(entry.to_markdown(), encoding="utf-8")
+    _commit(git_repo, "memory", "2026-09-05T10:00:00")
+    code.write_text(PY.replace("return 1", "return 2"), encoding="utf-8")
+    _commit(git_repo, "later change", "2026-09-08")
+    problems = AnchorChecker(git_repo, detect_vcs(git_repo)).check([entry], {entry.id: path})
+    assert problems[entry.id] == ["calc.py 中 Box.size 在 2026-09-05 之后改过"]
+
+
+def test_invalid_dates_do_not_silently_disable_the_check(git_repo):
+    """写入日无效时基准为 0：Windows 上 1970 年附近的时间戳转换会抛错，被吞掉就成了“都没改过”。"""
+    code = git_repo / "calc.py"
+    code.write_text(PY, encoding="utf-8")
+    _commit(git_repo, "calc", "2026-09-01")
+    entry = _entry("A", "calc.py")
+    entry.note_date = "unknown"
+    assert AnchorChecker(git_repo, detect_vcs(git_repo)).check([entry], {}) == {"A": ["calc.py 于 2026-09-01 改过"]}
+
+
+def test_removed_definition_is_reported_as_missing(git_repo):
+    code = git_repo / "calc.py"
+    code.write_text(PY, encoding="utf-8")
+    _commit(git_repo, "calc", "2026-09-01")
+    code.write_text(PY.replace("def first(a,\n          b) -> int:", "first = None\nif (a,\n          b):"),
+                    encoding="utf-8")
+    _commit(git_repo, "drop first", "2026-09-10")
+    problems = AnchorChecker(git_repo, detect_vcs(git_repo)).check([_entry("A", "calc.py#first")], {})
+    assert problems["A"] == ["calc.py 中找不到 first"]
+
+
+def test_checked_moment_prefers_precise_times():
+    entry = _entry("A", "calc.py")
+    assert _day_of(checked_at(entry)) == "2026-09-05"
+    entry.verified = "2026-09-07"
+    assert checked_at(entry) == datetime.combine(date(2026, 9, 7), dt_time.max).timestamp()
+    entry.verified_at = "2026-09-07T08:30:00"
+    assert checked_at(entry) == datetime(2026, 9, 7, 8, 30).timestamp()
+    stamped = Entry(id=new_ulid(_ms("2026-09-05T10:00:00")), module="m.M", entity="E", kind="risk",
+                    content="x" * 30, note_date="2026-09-05", author="a")
+    assert checked_at(stamped) == datetime(2026, 9, 5, 10).timestamp()
+    stamped.note_date = "2026-08-01"
+    assert _day_of(checked_at(stamped)) == "2026-08-01"
+
+
+def _day_of(moment: float) -> str:
+    return datetime.fromtimestamp(moment).date().isoformat()
 
 
 def test_results_are_shared_across_processes_until_code_changes(git_repo, tmp_path_factory, monkeypatch):

@@ -16,6 +16,8 @@ aliases:
 - 命令行
 - 按id取全文
 - 适用条件
+verified: '2026-10-20'
+verified_at: '2026-10-20T18:57:28.399+08:00'
 ---
 用户要求（2026-10-19）：命令行也要能写功能记录、按 id 取全文。
 必须保持：record 的 --kind 选项直接取 core/entry.py 的 KINDS（不再手写一份），新增 --applies；

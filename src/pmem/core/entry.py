@@ -22,7 +22,7 @@ SUMMARY_MAX = 60
 _FRONT_MATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
 KNOWN_KEYS = frozenset({"id", "module", "entity", "kind", "status", "supersedes", "anchors", "revision", "author",
                         "note_date", "aliases", "verified", "verified_at", "archived", "source",
-                        "summary", "scope", "verify", "applies"})
+                        "summary", "scope", "verify", "applies", "reverted"})
 # 正文开头常自带“决定：”“更正（2026-10-19）：”，和类型标签放在一起就成了“决定：决定：”
 _KIND_PREFIX = re.compile(
     r"^\s*(?:决定|结论|更正|排除项?|风险|根因|原因|注意|背景|现象|问题|坑|功能|规划|需求)(?:\s*[（(][^）)]{0,40}[）)])?\s*[：:]\s*"
@@ -74,6 +74,9 @@ class Entry:
     verify: str | None = None
     # 这条记忆成立的前提（平台、配置、版本、场景）：前提不满足时不适用
     applies: str | None = None
+    # 合并（替代）被撤销的日期与操作人：撤销后这条归档，且不再隐藏它替代过的记忆
+    reverted_on: str | None = None
+    reverted_by: str | None = None
     # 本版本不认识的 YAML 头字段（较新版本写的）：重写文件时原样带上，团队混用版本时不丢
     extra: dict = field(default_factory=dict)
 
@@ -90,6 +93,12 @@ class Entry:
     def checked_date(self) -> str:
         """最近一次确认成立的日期：核对过取核对日期，否则取写入日期。"""
         return max(self.note_date, self.verified or "")
+
+    def replaces(self, day: str | None = None) -> list[str]:
+        """这条记忆在某天（默认现在）让哪些旧记忆失效：归档的也算（整条演进线过时），撤销了的合并不算。"""
+        if self.status not in REPLACING_STATUSES or (self.reverted_on and (day is None or self.reverted_on <= day)):
+            return []
+        return self.supersedes
 
     def status_on(self, day: str | None) -> str:
         """某天的状态：那天之后才归档的，按归档前的状态算；没记归档日期的旧文件一律按已归档。"""
@@ -134,6 +143,8 @@ class Entry:
             meta["archived"] = {"on": self.archived_on, "from": self.archived_from or "active"}
             if self.archived_by:
                 meta["archived"]["by"] = self.archived_by
+        if self.reverted_on:
+            meta["reverted"] = {"on": self.reverted_on, "by": self.reverted_by or ""}
         if self.source_conversation:
             meta["source"] = {"conversation": self.source_conversation}
         meta.update({k: v for k, v in self.extra.items() if k not in KNOWN_KEYS})
@@ -153,6 +164,7 @@ class Entry:
         source = meta.get("source") or {}
         archived = meta.get("archived") if isinstance(meta.get("archived"), dict) else {}
         restored = str(archived.get("from") or "")
+        reverted = meta.get("reverted") if isinstance(meta.get("reverted"), dict) else {}
         return cls(
             id=str(meta["id"]),
             module=str(meta["module"]),
@@ -176,5 +188,7 @@ class Entry:
             scope=_text(meta.get("scope")),
             verify=str(meta["verify"]).strip() or None if meta.get("verify") else None,
             applies=_text(meta.get("applies")),
+            reverted_on=str(reverted["on"]) if reverted.get("on") else None,
+            reverted_by=str(reverted["by"]) if reverted.get("by") else None,
             extra={k: v for k, v in meta.items() if k not in KNOWN_KEYS},
         )

@@ -168,16 +168,20 @@ def _feature_coverage(events: list[dict], convs: dict[str, dict], mine: list) ->
             required[e["conv"]].update(e["required"])
     features = [(e, ulid_ms(e.id) / 1000) for e in mine if e.kind == "feature"]
     total = covered = 0
+    missed: list[dict] = []
     for conv, modules in required.items():
         c = convs.get(conv)
-        for module in modules:
+        for module in sorted(modules):
             total += 1
-            covered += any(
+            hit = any(
                 f.module == module and (f.source_conversation == conv or (
                     c is not None and c["start"] - OWN_WRITE_SLACK <= ts <= c["end"] + OWN_WRITE_SLACK))
                 for f, ts in features
             )
-    return {"required": total, "covered": covered}
+            covered += hit
+            if not hit:
+                missed.append({"conv": conv, "module": module})
+    return {"required": total, "covered": covered, "missed": missed}
 
 
 def _compare(convs: dict[str, dict]) -> dict:

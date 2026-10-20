@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime
 
 from pmem.core.fileio import write_atomic
-from pmem.service.base import ServiceBase, returns_errors
+from pmem.service.base import ServiceBase, fail, returns_errors
 
 # 动作 → (允许的原状态, 新状态)；记忆文件写入后只有这些状态变更由负责人通过命令行发起。
 # restore 回到归档前的状态，没记录时才用 active
@@ -67,6 +67,8 @@ class StatusOps(ServiceBase):
             else:
                 entry.status = (entry.archived_from or target) if action == "restore" else target
                 entry.archived_on = entry.archived_from = entry.archived_by = None
+                # 恢复撤销过的合并产物 = 重做这次合并，它替代的记忆重新隐藏
+                entry.reverted_on = entry.reverted_by = None
             write_atomic(path, entry.to_markdown())
             changed.append(entry_id)
             statuses[entry_id] = entry.status
@@ -84,6 +86,46 @@ class StatusOps(ServiceBase):
         if changed:
             self.index.refresh(force=True)
             self._refresh_wiki(response)
+        return response
+
+    def revert(self, entry_id: str) -> dict:
+        """撤销一次合并（或替代）：这条归档并标为已撤销，它替代的原记忆重新现行。
+        只归档不能做到这一点：归档记忆的替代关系仍然算数（归档表示整条演进线过时）。"""
+        path = self.storage.find_path(entry_id)
+        if path is None:
+            return fail(f"找不到记忆 {entry_id}")
+        entry = self.storage.read(path)
+        if entry.reverted_on:
+            return fail(f"{entry_id} 已在 {entry.reverted_on} 撤销过；要重做这次合并用 pmem archive --restore {entry_id}")
+        if not entry.supersedes:
+            return fail(f"{entry_id} 没有替代任何记忆，不是合并产物；只想停用它用 pmem archive {entry_id}")
+        newer = sorted(e.id for e in self.index.entries() if entry.id in e.replaces())
+        if newer:
+            return fail(f"{entry_id} 已被 {'、'.join(newer)} 替代，撤销它也不会让原记忆复现；先撤销或处理这几条")
+        today = date.today().isoformat()
+        if entry.status != "archived":
+            entry.archived_on, entry.archived_from, entry.archived_by = today, entry.status, self.user
+            entry.status = "archived"
+        entry.reverted_on, entry.reverted_by = today, self.user
+        write_atomic(path, entry.to_markdown())
+        self._log("status", action="revert", ids=[entry_id])
+        self.index.refresh(force=True)
+        hidden = self.index.superseded()
+        restored, kept = [], []
+        for old_id in entry.supersedes:
+            old = self.index.find(old_id)
+            if old is None:
+                kept.append({"id": old_id, "reason": "找不到这条记忆"})
+            elif old.status == "archived":
+                kept.append({"id": old_id, "reason": f"已归档，需要时 pmem archive --restore {old_id}"})
+            elif old_id in hidden:
+                kept.append({"id": old_id, "reason": "仍被别的记忆替代"})
+            else:
+                restored.append(old_id)
+        response: dict = {"ok": True, "id": entry_id, "status": "archived", "restored": restored}
+        if kept:
+            response["not_restored"] = kept
+        self._refresh_wiki(response)
         return response
 
     @returns_errors

@@ -52,11 +52,11 @@ flowchart LR
 | `service` | 五个 MCP 工具背后的规则：长度、类型、密钥、每日上限、新模块提示、检索参数归一、同义词扩展；模块和存储错误统一转成 `ok: false` 返回，被拒绝的写入记 `record_rejected` 事件；状态变更（`change_status`：archive / restore / accept / reject）只开放给命令行，归档时在 YAML 头记下日期、原状态和归档人（`archived: {on, from, by}`），供 `as_of` 回看与恢复；废弃模块（`status: deprecated`）拒绝写入；MCP 与 CLI 共用。按职责分文件：`base`（依赖懒加载、错误返回形状、共用小工具）、`search`（检索、图谱、模块列表，只读）、`record`（写入规则）、`status`（核对、归档、种子转正）、`curation`（高频词、可合并议题）；`MemoryService` 由各 `*Ops` 组合而成，新增一类操作加一个文件即可 |
 | `server` | MCP stdio 服务，只做参数转发：工具调用加锁串行执行（框架在线程池里并发跑同步工具），任何异常都转成带 `"server": "pmem"` 的 `ok: false`，配置写错时每次调用返回具体原因、改好即恢复；`config.yaml` 改动（按修改时间和大小判断）后下一次调用重建服务，新配置即时生效，只有 `server.*` 由看门狗在启动时读取、要重启服务；`pmem serve` 默认先起看门狗（`server/watchdog.py`，不导入 mcp 和服务层），真正的服务跑在 `serve --worker` 子进程里。子进程崩溃、单次调用超过 `server.request_timeout`（默认 120 秒，每超时一次放宽一倍、最多 8 倍，有调用成功即恢复）或 pmem 代码更新时换新子进程，并用缓存的 `initialize` 替客户端重新握手，客户端连接不断；进行中的调用返回错误提示重试，连续失败按 0/1/2/5/10/30 秒退避，退避期间的调用直接返回错误并提示改用终端 `pmem search`。重启记 `server_restart` 事件，进 `pmem health` |
 | `hooks` | Hook 输入解析（兼容 Windows 转码，提问原文从对话记录读取）、按对话隔离的状态（读改写加文件锁，并行的 Hook 进程不会互相覆盖；摘要里的“需核实”在释放锁之后才核对，避免并行的 Hook 排队等版本库查询）、终端命令解析（`hooks/shell.py`：写到哪些文件、是否在跑脚本、命令里的 pmem 调用）、记忆审查、闸门与结束提醒；事件有 prompt、pre-tool、after-mcp、edited、post-tool、compact、stop（before-mcp 只为兼容旧配置保留，直接放行） |
-| `metrics` | 事件日志（`events.py`，多进程追加时加跨进程锁）、收益报告、引用识别、健康报告（`pmem health`，含按议题找“一正一反、用词高度相似”的疑似矛盾记忆，被拒写入按错误码归类） |
+| `metrics` | 事件日志（`events.py`，多进程追加时加跨进程锁）、收益报告、引用识别、健康报告（`pmem health`，含按议题找“一正一反、用词高度相似”的疑似矛盾记忆，被拒写入按错误码归类，改了代码却没写功能记录的模块，严格的清理候选 `cleanup.py`）、记忆图自检（`memmap.py`：漏记、断链、悬而未决、过期与总评；渲染交给 `generate.memmap`，由 `cli/map_cmd.py` 拼起来，因为 `metrics` 不能依赖 `generate`） |
 | `importers` | 从既有记忆系统（LanceDB 参考实现）只读导入：复制后再读、按来源 id 幂等、保留原时间、套用项目的敏感信息规则 |
 | `bench` | 基于 Cursor SDK 的有/无记忆对照实验 |
-| `generate` | `templates`（规则、技能、Hook、配置模板）、`integrations`（按 Agent 写入规则和技能，合并 hooks / MCP 配置时只替换 pmem 自己的条目）、`wiki` |
-| `cli` / `scan` | 命令入口（两张分发表：search、record、confirm、graph、list、terms、archive 直接调 `MemoryService`；init、scan、sync、doctor、compact、anchors、format、import、reindex、report、health、seed、migrate、wiki、bench、serve、hook 各自实现；代码搬家后 `anchors --rename 旧=新` 改写所有记忆的关联代码；`init_cmd` 只建配置和打印结果，接入文件交给 `generate.integrations`）、目录与提交热度扫描（供 Agent 划分模块；`sync` 读一次提交历史同时算 180 天热度和 90 天是否有改动） |
+| `generate` | `templates`（规则、技能、Hook、配置模板）、`integrations`（按 Agent 写入规则和技能，合并 hooks / MCP 配置时只替换 pmem 自己的条目）、`wiki`（模块页附 Mermaid 演化图）、`memmap`（`pmem map` 的本地 HTML 与 Mermaid；图的数据由 `index/memmap.py` 从记忆文件推出） |
+| `cli` / `scan` | 命令入口（两张分发表：search、record、confirm、graph、list、terms、archive 直接调 `MemoryService`；init、scan、sync、doctor、compact、anchors、format、import、reindex、report、health、seed、migrate、wiki、map、bench、serve、hook 各自实现；`compact --undo` 调 `MemoryService.revert` 撤销合并；代码搬家后 `anchors --rename 旧=新` 改写所有记忆的关联代码；`init_cmd` 只建配置和打印结果，接入文件交给 `generate.integrations`）、目录与提交热度扫描（供 Agent 划分模块；`sync` 读一次提交历史同时算 180 天热度和 90 天是否有改动）、代码文件索引（`scan/files.py`，`anchors` 补关联代码和清理候选共用） |
 
 ## 分层
 

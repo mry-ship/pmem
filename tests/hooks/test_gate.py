@@ -540,6 +540,32 @@ def test_parallel_command_does_not_take_pending_cli_search(make_project):
     assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
 
 
+def test_cli_search_matched_by_module_when_command_text_changes(make_project):
+    root = make_project("block")
+    search = {"conversation_id": "c1", "tool_name": "Shell",
+              "tool_input": {"command": "pmem search --module gameplay.Jigsaw 奖励", "cwd": ""}}
+    handle("pre-tool", search, root)
+    garbled = {**search, "tool_input": {"command": "pmem search --module gameplay.Jigsaw 濂栧姳", "cwd": ""}}
+    handle("post-tool", {**garbled, "tool_output": "gameplay.Jigsaw：1 条"}, root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+
+
+def test_parallel_cli_searches_each_unlock_their_module(make_project):
+    root = make_project("block")
+    jigsaw = {"conversation_id": "c1", "tool_name": "Shell",
+              "tool_input": {"command": "pmem search --module gameplay.Jigsaw 甲", "cwd": ""}}
+    shop = {"conversation_id": "c1", "tool_name": "Shell",
+            "tool_input": {"command": "pmem search --module economy.Shop 乙", "cwd": ""}}
+    handle("pre-tool", jigsaw, root)
+    handle("pre-tool", shop, root)
+    handle("post-tool", {**shop, "tool_input": {"command": "pmem search --module economy.Shop ?", "cwd": ""},
+                         "tool_output": "economy.Shop：1 条"}, root)
+    handle("post-tool", {**jigsaw, "tool_input": {"command": "pmem search --module gameplay.Jigsaw ?", "cwd": ""},
+                         "tool_output": "gameplay.Jigsaw：1 条"}, root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+    assert handle("pre-tool", write_payload(root, "src/Shop/Shop.cs"), root)["permission"] == "allow"
+
+
 def test_record_injection_adds_files_edited_in_module(make_project):
     root = make_project()
     for path in ("src/Shop/Shop.cs", "src/Jigsaw/Board.cs", "src/Shop/Price.cs"):

@@ -252,7 +252,7 @@ def test_feature_coverage_counts_by_conversation_or_time_window():
     convs = {"c1": {"start": now - 600, "end": now}, "c2": {"start": now - 600, "end": now}}
     mine = [_mk("feature", "m.A", conv="c1"), _mk("feature", "m.C", ts=now - 300), _mk("risk", "m.B", conv="c1")]
     coverage = _feature_coverage(events, convs, mine)
-    assert coverage == {"required": 3, "covered": 2}
+    assert coverage == {"required": 3, "covered": 2, "missed": [{"conv": "c1", "module": "m.B"}]}
     line = _render_quality(None, None, coverage)[0]
     assert "67%" in line and "偏低" in line
 

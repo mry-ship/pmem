@@ -173,10 +173,18 @@ def build_parser():
     p.add_argument("--out", default=None, help="输出目录，默认 .memory/wiki")
     p.add_argument("--root", default=".")
 
+    p = sub.add_parser("map", help="记忆演化图（本地 HTML）与图上自检：漏记、断链、悬而未决、过期")
+    p.add_argument("--out", default=None, help="HTML 输出路径，默认 Wiki 目录下的 map.html")
+    p.add_argument("--days", type=int, default=30, help="漏记检查看近几天的提交")
+    p.add_argument("--json", action="store_true", help="只输出图数据与自检结果（JSON），不生成 HTML")
+    p.add_argument("--root", default=".")
+
     p = sub.add_parser("compact", help="列出积累了多条零碎记忆的议题；指定议题时输出全部正文，供 Agent 合并成一条")
     p.add_argument("--module", default="")
     p.add_argument("--entity", default="")
     p.add_argument("--min", type=int, default=5, help="一个议题至少积累多少条才列出")
+    p.add_argument("--undo", default="", metavar="记忆id",
+                   help="撤销一次合并：合并后的那条归档，它替代的原记忆重新现行（重做用 pmem archive --restore）")
     p.add_argument("--json", action="store_true")
     p.add_argument("--root", default=".")
 
@@ -299,7 +307,7 @@ def _import(args) -> int:
 def _compact(args) -> int:
     from pmem.cli.compact_cmd import run_compact
 
-    return run_compact(_project_root(args.root), args.module, args.entity, args.min, args.json)
+    return run_compact(_project_root(args.root), args.module, args.entity, args.min, args.json, args.undo)
 
 
 def _reindex(args) -> int:
@@ -351,6 +359,12 @@ def _wiki(args) -> int:
     return run_wiki(_project_root(args.root), args.out)
 
 
+def _map(args) -> int:
+    from pmem.cli.map_cmd import run_map
+
+    return run_map(_project_root(args.root), args.out, args.days, args.json)
+
+
 def _seed(args) -> int:
     from pmem.cli.seed_cmd import run_seed
 
@@ -393,6 +407,7 @@ COMMANDS = {
     "anchors": _anchors,
     "format": _format,
     "wiki": _wiki,
+    "map": _map,
     "seed": _seed,
     "migrate": _migrate,
     "health": _health,

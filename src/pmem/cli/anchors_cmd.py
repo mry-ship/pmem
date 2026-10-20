@@ -4,72 +4,18 @@
 """
 from __future__ import annotations
 
-import os
 import re
-from collections import defaultdict
 from pathlib import Path
 
 from pmem.core.config import Config
 from pmem.core.fileio import write_atomic
 from pmem.core.registry import ModuleRegistry, RegistryError
-from pmem.scan.lite import THIRD_PARTY_NAMES, kept_dirs
+from pmem.scan.files import DATA_EXT, MEMBER_MENTION, PATH_MENTION, SOURCE_EXT, FileIndex
 from pmem.storage.files import FilesStorage
 from pmem.vcs.detect import detect_vcs
 
-SOURCE_EXT = ("cs", "lua", "py", "ts", "tsx", "js", "jsx", "go", "java", "kt", "swift", "m", "mm", "cpp", "cc",
-              "c", "h", "hpp", "rs", "shader")
-DATA_EXT = ("json", "yaml", "yml", "prefab", "asset", "xml", "csv")
-UNITY_PACKAGES = "Packages"
 MAX_ANCHORS = 5
-_EXT = "|".join(SOURCE_EXT + DATA_EXT)
-_PATH = re.compile(rf"(?<![A-Za-z0-9_./\\-])([A-Za-z0-9_][A-Za-z0-9_./\\-]*\.(?:{_EXT}))(?![A-Za-z0-9_])")
-_MEMBER = re.compile(r"(?<![A-Za-z0-9_.])([A-Z][A-Za-z0-9_]{2,})\.([A-Za-z_][A-Za-z0-9_]{2,})(?![A-Za-z0-9_])")
-
-
-class FileIndex:
-    def __init__(self, root: Path, registry: ModuleRegistry):
-        self.root = root
-        self.registry = registry
-        self.by_name: dict[str, list[str]] = defaultdict(list)
-        self.by_stem: dict[str, list[str]] = defaultdict(list)
-        for folder, dirs, files in os.walk(root):
-            # 第三方代码里的同名类（Menu、Initialize 之类）会被误认成记忆说的那个；com.xxx 是内嵌的 UPM 包
-            dirs[:] = [d for d in kept_dirs(dirs) if d != UNITY_PACKAGES and not d.startswith("com.")
-                       and not THIRD_PARTY_NAMES.match(d)]
-            base = Path(folder).relative_to(root).as_posix()
-            for name in files:
-                ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
-                if ext not in SOURCE_EXT and ext not in DATA_EXT:
-                    continue
-                rel = name if base == "." else f"{base}/{name}"
-                if registry.is_excluded(rel):
-                    continue
-                self.by_name[name.lower()].append(rel)
-                if ext in SOURCE_EXT:
-                    self.by_stem[name.rsplit(".", 1)[0]].append(rel)
-
-    def _owner(self, rel: str) -> str | None:
-        try:
-            match = self.registry.module_for_path(rel)
-        except RegistryError:
-            return None
-        return match.module_id if match else None
-
-    def _pick(self, candidates: list[str], module: str) -> str | None:
-        if len(candidates) == 1:
-            return candidates[0]
-        mine = [c for c in candidates if self._owner(c) == module]
-        return mine[0] if len(mine) == 1 else None
-
-    def resolve_path(self, raw: str, module: str) -> str | None:
-        wanted = raw.replace("\\", "/").lstrip("./")
-        candidates = self.by_name.get(wanted.rsplit("/", 1)[-1].lower(), [])
-        if "/" in wanted:
-            candidates = [c for c in candidates if c.lower().endswith(wanted.lower())]
-        return self._pick(candidates, module)
-
-    def resolve_class(self, name: str, module: str) -> str | None:
-        return self._pick(self.by_stem.get(name, []), module)
+__all__ = ["FileIndex", "find_anchors", "parse_renames", "rename_anchor", "run_anchors", "run_rename"]
 
 
 def find_anchors(content: str, module: str, files: FileIndex) -> list[str]:
@@ -79,9 +25,9 @@ def find_anchors(content: str, module: str, files: FileIndex) -> list[str]:
         if anchor and anchor not in anchors and anchor.partition("#")[0] not in [a.partition("#")[0] for a in anchors]:
             anchors.append(anchor)
 
-    for raw in _PATH.findall(content):
+    for raw in PATH_MENTION.findall(content):
         add(files.resolve_path(raw, module))
-    for cls, member in _MEMBER.findall(content):
+    for cls, member in MEMBER_MENTION.findall(content):
         if member.lower() in SOURCE_EXT + DATA_EXT:
             continue
         rel = files.resolve_class(cls, module)

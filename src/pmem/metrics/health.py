@@ -15,7 +15,9 @@ from pmem.core.ids import ulid_ms
 from pmem.core.quality import similar_entity_pairs
 from pmem.core.registry import RegistryError
 from pmem.index.tokenize import tokenize
+from pmem.metrics.cleanup import cleanup_candidates
 from pmem.metrics.events import MIN_SEARCHES_FOR_IDLE, read_events
+from pmem.metrics.report import _conversations, _feature_coverage
 from pmem.service import COMPACT_MIN_GROUP, MemoryService
 
 TOP = 10
@@ -152,6 +154,13 @@ def _repeat_corrections(entries: list, since: float) -> list[tuple[str, str, int
     return sorted(rows, key=lambda r: (-r[2], r[0], r[1]))[:TOP]
 
 
+def _skipped(events: list[dict], entries: list, user: str, since: float) -> list[tuple[str, int]]:
+    """改了代码却没写功能记录（含回复“无需记录”）的模块，按对话数排；需要记录的模块以 stop 事件的 required 为准。"""
+    mine = [e for e in entries if e.author == user and ulid_ms(e.id) / 1000 >= since]
+    missed = _feature_coverage(events, _conversations(events), mine)["missed"]
+    return Counter(m["module"] for m in missed).most_common(TOP)
+
+
 def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
     now = now or time.time()
     since = now - days * 86400
@@ -169,8 +178,14 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
             # 合并冲突后同一个记忆文件在新旧模块目录各留一份：作为一节列出，不让整份报告变成异常
             strays, stray_problem = [], str(exc)
         unmapped = coverage_report(service.root, registry)["unmapped"]
+        user = service.user
     finally:
         service.close()
+    searches_total = sum(1 for e in events if e["type"] == "search" and e.get("ok"))
+    used = {i for e in events if e["type"] in ("search", "mcp_search") for i in e.get("ids") or []}
+    used.update(i for e in events if e["type"] == "stop" for i in e.get("returned") or [])
+    cleanup = cleanup_candidates(service.root, registry, all_entries,
+                                 used if searches_total >= MIN_SEARCHES_FOR_IDLE else None)
 
     registered = [mid for mid, m in registry.modules.items() if not m.merged_into]
     counts = Counter(e.module for e in visible)
@@ -211,6 +226,8 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
                   "ids": sorted(stale)[:TOP]},
         "contradictions": _contradictions(visible),
         "repeat_corrections": _repeat_corrections(all_entries, since),
+        "skipped_records": _skipped(events, all_entries, user, since),
+        "cleanup": cleanup,
         "idle_modules": idle,
         "rejected": {"total": len(rejected),
                      "by_reason": Counter(reject_reason(e.get("error") or "", e.get("code")) for e in rejected).most_common(),
@@ -263,6 +280,19 @@ def render(h: dict) -> str:
             [f"{m} / {e}：{n} 条更正" for m, e, n in h.get("repeat_corrections") or []],
             "用 pmem graph --module <模块> --entity <议题> 看演变：缺排除项或风险就补一条（全项目都会踩的加 scope: project），"
             "零碎的按 pmem-compact 合并成一条现状")
+    section("改了代码却没写功能记录（含回复“无需记录”的）",
+            [f"{m}：{n} 次对话" for m, n in h.get("skipped_records") or []],
+            "抽查这些对话：是用户要求的行为就补一条 feature（需求来源、必须保持的行为），免得以后被当冗余改回去；"
+            "确实只是测试、配置、重构的，把这类文件加进 gate.record_exempt")
+    cleanup = h.get("cleanup") or {"archive": [], "review": []}
+    section("建议归档（和代码已对不上，且满足全部条件）", [
+        f"{r['module']} / {r['entity']} {r['id']}：{r['title']}｜{'；'.join(r['basis'])}" for r in cleanup["archive"][:TOP]
+    ] + ([f"……另有 {len(cleanup['archive']) - TOP} 条"] if len(cleanup["archive"]) > TOP else []),
+            "逐条确认后 pmem archive <id>（只归档不删除，pmem archive --restore 可恢复）")
+    section("清理待核对（和代码对不上，但不满足全部归档条件）", [
+        f"{r['module']} / {r['entity']} {r['id']}：{r['title']}｜{'；'.join(r['basis'])}" for r in cleanup["review"][:TOP]
+    ] + ([f"……另有 {len(cleanup['review']) - TOP} 条"] if len(cleanup["review"]) > TOP else []),
+            "打开记忆和当前代码对照：仍成立 pmem confirm <id>；代码搬家了用 pmem anchors --rename；不成立写 correction 替代")
     if h["idle_modules"]:
         section(f"统计期内本机没检索过的模块（{len(h['idle_modules'])} 个）", ["、".join(h["idle_modules"][:20])],
                 "可能是没人改这些模块，也可能是路径没登记全导致闸门没提醒；对照 pmem doctor 的覆盖率看")

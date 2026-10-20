@@ -11,13 +11,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from pmem.core.entry import KIND_LABELS, Entry
+from pmem.generate.memmap import SELF_IGNORE, render_mermaid
 from pmem.index.anchors import STALE_LABEL
 from pmem.index.graph import MemoryGraph
+from pmem.index.memmap import build_map
 
 MARKER = "<!-- 由 pmem wiki 从 .memory/entries 生成，重新运行会覆盖；要修改请改记忆本身 -->"
 RECENT = 15
-# 首次生成时放进目录：Wiki 是派生视图，默认不进版本库；删掉它就会被提交，之后也不会再生成
-SELF_IGNORE = "*\n"
+__all__ = ["MARKER", "SELF_IGNORE", "render_wiki", "write_wiki"]
 
 
 @dataclass
@@ -68,7 +69,7 @@ def _entry_block(entry: Entry, to_root: str, problems: list[str] | None) -> list
 
 
 def _module_page(module_id: str, entries: list[Entry], graph: MemoryGraph, registry, to_root: str,
-                 stale: dict[str, list[str]]) -> str:
+                 stale: dict[str, list[str]], diagram: str | None = None) -> str:
     module = registry.modules.get(module_id)
     topics = graph.topics(module_id)
     current = [e for e in entries if e.id not in graph.superseded_by]
@@ -93,6 +94,10 @@ def _module_page(module_id: str, entries: list[Entry], graph: MemoryGraph, regis
             topics_hint = f"（对方议题：{'、'.join(row['entities'])}）" if row["entities"] else ""
             lines.append(f"- [{row['module']}]({_page(row['module'])})：{row['via']}{topics_hint}")
         lines.append("")
+    if diagram:
+        lines += ["## 演化图", "",
+                  "红：失败或纠错，绿：落地，黄：注意，蓝：未实现，灰虚框：已被替代或归档；“推断”是排除项之后的落地，没写替代关系。",
+                  "", diagram, ""]
 
     by_topic: dict[str, list[Entry]] = defaultdict(list)
     for entry in entries:
@@ -160,7 +165,8 @@ def render_wiki(service, out_dir: Path) -> dict[str, str]:
         to_root = Path(os.path.relpath(service.root, out_dir)).as_posix()
     except ValueError:  # 不在同一个盘
         to_root = service.root.as_posix()
-    pages = {_page(mid): _module_page(mid, entries, graph, service.registry, to_root, stale)
+    diagrams = {m["module"]: render_mermaid(m) for m in build_map(service.index.entries(), full=False)["modules"]}
+    pages = {_page(mid): _module_page(mid, entries, graph, service.registry, to_root, stale, diagrams.get(mid))
              for mid, entries in sorted(by_module.items())}
     title = service.config.get("project.name") or service.root.name
     pages["index.md"] = _index_page(title, by_module, graph, service.registry.categories, stale)

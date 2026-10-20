@@ -78,8 +78,10 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 | 代码文件改名、搬家后记忆都标“需核实” | `pmem anchors --rename <旧路径>=<新路径>`：改写所有记忆的关联代码，文件、目录或 `路径#函数名` 都行（默认预览） |
 | 业务下线、模块不再维护 | `pmem migrate deprecate <模块> --apply`：旧记忆照常可查，拒绝新写入；`--undo` 撤销 |
 | 去掉过时的记忆 | `pmem archive <id>`：不再出现在检索里，文件保留可追溯；`--restore` 恢复到归档前的状态 |
+| 合并错了，要撤销 | `pmem compact --undo <合并后的 id>`：合并记忆归档并标为已撤销，被它替代的原记忆重新现行；`pmem archive --restore <id>` 重做这次合并 |
+| 看记忆怎么演变、有没有漏 | `pmem map`：生成本地网页 `.memory/wiki/map.html`，按模块分区、议题排时间线，可缩放、点开看全文；顶部自检列出漏记、断链、悬而未决、过期。Wiki 每个模块页也附一张演化图 |
 | 体检 | `pmem doctor`：提示没提交的记忆、可以合并的议题 |
-| 定期收口（模块负责人） | 对 AI 说“按 pmem-consolidate 技能整理记忆库”，它按 `pmem health` 逐节处理：疑似互相矛盾的记忆、可能过时的记忆、零碎记忆、反复查不到的问题、待确认的种子、未登记或重复的模块 |
+| 定期收口（模块负责人） | 对 AI 说“按 pmem-consolidate 技能整理记忆库”，它按 `pmem health` 逐节处理：疑似互相矛盾的记忆、可能过时的记忆、零碎记忆、反复查不到的问题、待确认的种子、未登记或重复的模块、改了代码却没写功能记录的模块、清理候选（只建议归档、不删除，逐条附依据，由你确认） |
 | 看收益 | `pmem report`：命中率、避坑次数、跨人复用，功能记录覆盖率，防错类记忆（排除项、风险、更正）占教训的比例，对话内重复返回率 |
 | 通读全部结论 | 打开 `.memory/wiki/index.md`，每个模块一页，写入记忆后自动更新 |
 | 升级 | `uv tool upgrade pmem`，再在项目里运行一次 `pmem init`（不会覆盖已有配置；这时给的 `--gate`、`--type` 不生效，会单独提示，直接改 `.memory/config.yaml`） |
@@ -184,6 +186,8 @@ pmem report                            # 本机收益报告
 pmem health                            # 健康报告（负责人收口用）
 pmem seed                              # 待确认的种子记忆；--accept / --reject 处理
 pmem archive <id>                      # 归档过时记忆；--restore 撤销
+pmem compact --undo <id>               # 撤销一次合并，原记忆重新现行
+pmem map                               # 记忆演化图（本地网页）和自检；--json 输出数据，--days 改漏记统计天数
 pmem migrate tidy                      # 把还在旧模块名下的记忆搬到新名下（加 --apply 执行）
 pmem sync                              # 对照代码目录列出新模块、要追加的路径（加 --apply 执行）
 pmem wiki                              # 生成浏览用的模块 Wiki
@@ -206,6 +210,8 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 - 按函数判断过期只支持 Git；SVN 和找不到函数时按文件判断。
 - Windows PowerShell 5 里把 pmem 输出再接给 `Select-String` 等命令会乱码（它按 GBK 解码），直接看输出或用 `--brief`。
 - 功能记录（`feature` / `plan`）和 `applies` 字段需要较新的 pmem：团队里还在用旧版的人读到这类记忆文件会跳过它，请一起升级。
+- 撤销合并（`compact --undo`）写的 `reverted` 字段旧版不认：旧版仍把撤销的合并当作替代，原记忆在旧版里还是隐藏的。
+- 清理候选里“统计期内没被用过”只看本机检索记录，本机检索太少时不判断这一条；“建议归档”也只是建议，确认后用 `pmem archive` 执行。
 
 </details>
 

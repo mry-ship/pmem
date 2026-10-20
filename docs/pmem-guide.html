@@ -185,6 +185,8 @@ pmem doctor</code></pre>
     <tr><td>个别记忆写错了模块</td><td><code>pmem migrate move &lt;id&gt; ... --to &lt;模块&gt;</code>（默认预览，<code>--apply</code> 执行）</td></tr>
     <tr><td>代码文件改名、搬家后记忆都标“需核实”</td><td><code>pmem anchors --rename &lt;旧路径&gt;=&lt;新路径&gt;</code> 改写关联代码，再核对后 <code>pmem confirm</code></td></tr>
     <tr><td>某条记忆已过时、又没有替代结论</td><td><code>pmem archive &lt;id&gt;</code>，<code>--restore</code> 撤销</td></tr>
+    <tr><td>合并错了，要撤销</td><td><code>pmem compact --undo &lt;合并后的 id&gt;</code>：原记忆重新现行；<code>pmem archive --restore &lt;id&gt;</code> 重做合并</td></tr>
+    <tr><td>看记忆怎么演变、有没有漏记</td><td><code>pmem map</code>，打开生成的 <code>.memory/wiki/map.html</code></td></tr>
     <tr><td>业务下线、模块不再维护</td><td><code>pmem migrate deprecate &lt;模块&gt; --apply</code>，<code>--undo</code> 撤销</td></tr>
     <tr><td>定期收口（模块负责人）</td><td>对 AI 说“按 pmem-consolidate 技能整理记忆库”（按 <code>pmem health</code> 逐节处理）</td></tr>
     <tr><td>想看效果</td><td><code>pmem report</code></td></tr>
@@ -510,12 +512,13 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem archive &lt;id&gt;...</code></td><td>归档：不再出现在检索里，文件保留；<code>--restore</code> 恢复到归档前的状态</td></tr>
     <tr><td><code>pmem migrate rename|merge|split|deprecate|tidy</code></td><td>模块改名、合并、拆分，把记忆文件搬到新模块名下；<code>split A --to 新模块=路径[,路径]</code> 可写多次，<code>--by entity</code> 按议题拆，<code>--assign id=模块</code> 指定个别记忆的去向；<code>deprecate</code> 把模块标为只读（<code>--undo</code> 撤销）；<code>tidy</code> 只搬还在旧名下的记忆。默认预览，<code>--apply</code> 执行；<code>--root</code>、<code>--apply</code> 写在子命令之后</td></tr>
     <tr><td><code>pmem sync</code></td><td>对照代码目录列出新模块、新冷候选、要给已有模块追加的路径、新的第三方目录和可转正的冷候选；默认预览，<code>--apply</code> 只追加、不改已有模块名</td></tr>
-    <tr><td><code>pmem health [--days 60]</code></td><td>健康报告：未登记和疑似重复的模块、还在旧模块名下的记忆、无归属的代码目录、检索落空热点、可能过时的记忆、疑似互相矛盾的记忆、没人检索的模块、被拒绝的写入、待确认的种子</td></tr>
+    <tr><td><code>pmem health [--days 60]</code></td><td>健康报告：未登记和疑似重复的模块、还在旧模块名下的记忆、无归属的代码目录、检索落空热点、可能过时的记忆、疑似互相矛盾的记忆、没人检索的模块、被拒绝的写入、待确认的种子、改了代码却没写功能记录的模块、建议归档与清理待核对</td></tr>
+    <tr><td><code>pmem map [--out 文件] [--days 30] [--json]</code></td><td>记忆演化图：默认写 Wiki 目录下的 <code>map.html</code>（单文件、不联网，可缩放、拖动、按类型筛选、只看现行，点节点看全文），终端打印总评和自检（漏记、断链、悬而未决、过期）；<code>--days</code> 是漏记统计的天数，<code>--json</code> 输出图数据</td></tr>
     <tr><td><code>pmem graph --module X</code></td><td>模块全貌，或某议题的时间线</td></tr>
     <tr><td><code>pmem wiki [--out 目录]</code></td><td>生成每模块一页的 Markdown Wiki（默认 <code>.memory/wiki/</code>）：议题、现行结论、历史、相关模块、代码链接，过期的标“需核实”；只覆盖它自己生成的页面。写入或确认记忆后会自动运行（<code>wiki.auto</code>）</td></tr>
     <tr><td><code>pmem list</code></td><td>模块与记忆数量</td></tr>
     <tr><td><code>pmem terms</code></td><td>记忆里的高频词，用于整理同义词</td></tr>
-    <tr><td><code>pmem compact</code></td><td>列出零碎记忆较多的议题；指定议题时输出全部正文供合并</td></tr>
+    <tr><td><code>pmem compact</code></td><td>列出零碎记忆较多的议题；指定议题时输出全部正文供合并；<code>--undo &lt;id&gt;</code> 撤销一次合并（合并产物归档并标为已撤销，原记忆重新现行）</td></tr>
     <tr><td><code>pmem anchors [--apply]</code></td><td>给没有关联代码的旧记忆补 anchors（默认只预览）</td></tr>
     <tr><td><code>pmem anchors --rename 旧=新 [--apply]</code></td><td>代码改名、搬家后批量改写记忆的关联代码</td></tr>
     <tr><td><code>pmem migrate move &lt;id&gt;... --to &lt;模块&gt; [--apply]</code></td><td>把归错模块的记忆搬到正确的模块</td></tr>
@@ -683,6 +686,13 @@ server:
       <h4>健康报告（pmem health）</h4>
       <p>给模块负责人定期收口用，只列有问题的段落并附处理办法；按 pmem-consolidate 技能可以让 Agent 逐节处理。检索、拒绝等数据只来自本机事件日志；“没人检索的模块”在本机检索少于 20 次时不统计。</p>
       <p>“疑似互相矛盾的记忆”：同模块同议题、都还现行、一条是结论或决定而另一条是排除项或更正、正文用词高度相似（不比较风险类）。确实冲突就写更正替代过时的那条；两条都成立就 <code>pmem confirm</code> 较早那条，之后不再提示。</p>
+      <p>“改了代码却没写功能记录”：按结束时需要记录的模块统计，回复“无需记录”的也列出，由负责人判断是否真的不用记。</p>
+      <p>清理候选只建议归档、从不删除，每条附判断依据（✓ 满足、✗ 不满足）。“建议归档”要同时满足：关联代码全部不存在（没写关联代码的看正文提到的文件和类，找到的不到 20%）、同议题没有其他现行记忆、没被其他记忆引用、统计期内本机没被用过（本机检索太少时不看这一条）。只满足一部分的列为“待核对”；排除项、风险、更正、全项目级和种子记忆最多到“待核对”。关联代码还有一处在的记忆不会成为候选。</p>
+    </div>
+    <div class="card">
+      <h4>记忆图（pmem map）</h4>
+      <p>按模块分区、议题排时间线。红色是失败或纠错（排除项、更正），绿色是落地（结论、决定、功能），黄色是注意（风险），蓝色是未实现（规划），灰色虚框是已被替代或归档。实线是记忆里写明的替代，虚线是推断（同议题里排除项之后第一条落地的记忆，没写替代关系），“已撤销”是撤销过的合并。</p>
+      <p>顶部总评衡量存储结构是否完整：功能记录覆盖率、漏记（近期有提交、同期没有功能记录的模块）、断链（更正没写替代哪条，或同议题一正一反却没有替代关系）、悬而未决（只有排除项、后面没有落地）、过期。它不衡量记忆对 AI 有没有用，那要看 <code>pmem report</code> 和 <code>pmem bench</code>。Wiki 每个模块页也附一张 Mermaid 演化图（最多 40 个节点）。</p>
     </div>
   </div>
 </section>

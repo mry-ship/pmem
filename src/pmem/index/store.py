@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pmem.core.entry import RECORD_KINDS, REPLACING_STATUSES, VISIBLE_STATUSES, Entry
+from pmem.core.entry import RECORD_KINDS, VISIBLE_STATUSES, Entry
 from pmem.core.ids import ulid_ms
 from pmem.index.anchors import ANCHOR_CACHE, AnchorChecker, anchor_affinity
 from pmem.index.embedder import Embedder
@@ -179,8 +179,8 @@ class MemoryIndex:
         """被替代的记忆 id；给出 as_of 时只算那天及之前写下的替代关系。"""
         hidden: set[str] = set()
         for item in self._items.values():
-            if item.entry.status in REPLACING_STATUSES and (as_of is None or item.entry.note_date <= as_of):
-                hidden.update(item.entry.supersedes)
+            if as_of is None or item.entry.note_date <= as_of:
+                hidden.update(item.entry.replaces(as_of))
         return hidden
 
     def _visible_items(self, as_of: str | None = None) -> list[Indexed]:

@@ -10,7 +10,6 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
 from pmem.core.entry import KIND_LABELS, PITFALL_KINDS, RECORD_KINDS, Entry
-from pmem.core.entry import REPLACING_STATUSES as REPLACING
 from pmem.core.entry import VISIBLE_STATUSES as VISIBLE
 from pmem.core.registry import ModuleRegistry, RegistryError
 from pmem.index.anchors import anchor_affinity
@@ -28,7 +27,7 @@ def preview(text: str, limit: int = PREVIEW_CHARS) -> str:
 def current_entries(entries: list[Entry]) -> list[Entry]:
     """可见且没有被替代的记忆，从新到旧。"""
     visible = [e for e in entries if e.status in VISIBLE]
-    replaced = {old for e in entries if e.status in REPLACING for old in e.supersedes}
+    replaced = {old for e in entries for old in e.replaces()}
     return sorted((e for e in visible if e.id not in replaced), key=lambda e: (e.note_date, e.id), reverse=True)
 
 
@@ -84,9 +83,9 @@ class MemoryGraph:
         self.registry = registry
         self.entries = sorted((e for e in entries if e.status in VISIBLE), key=lambda e: (e.note_date, e.id))
         self.superseded_by: dict[str, Entry] = {}
-        replacing = sorted((e for e in entries if e.status in REPLACING), key=lambda e: (e.note_date, e.id))
+        replacing = sorted((e for e in entries if e.replaces()), key=lambda e: (e.note_date, e.id))
         for entry in replacing:
-            for old in entry.supersedes:
+            for old in entry.replaces():
                 self.superseded_by.setdefault(old, entry)
         self.current = [e for e in self.entries if e.id not in self.superseded_by]
         self._patterns = registry.name_patterns()

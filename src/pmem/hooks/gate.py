@@ -624,13 +624,19 @@ class Gate:
             seen.note_handoff(self.config.cache_dir, self.conversation, [module] if module else [])
         return {m for m in map(self.module_from_args, searches) if m}
 
-    def _pop_cli_pending(self, field: str, command: str, has_calls: bool) -> list[dict] | None:
+    def _pop_cli_pending(self, field: str, command: str, calls: list[dict]) -> list[dict] | None:
         pending = self.state.data[field]
         key = _command_key(command)
-        if key not in pending and len(pending) == 1 and has_calls:
-            # 前后两次拿到的命令文本可能因转码不同；只有一条在等、且这条命令本身也调了 pmem 时才认作同一条，
-            # 并行的 ls 这类命令先结束时不能把别的命令挂起的调用拿走
-            key = next(iter(pending))
+        if key not in pending and calls:
+            # 前后两次拿到的命令文本可能因转码不同（中文检索词）：按命令里的模块名（ASCII，不受转码影响）认领，
+            # 认不出时只有一条在等才认作同一条；并行的 ls 这类命令没调 pmem，不能把别的命令挂起的调用拿走。
+            # 并行检索留下的没认领的旧条目不能挡住之后的认领
+            wanted = sorted(filter(None, map(self.module_from_args, calls)))
+            same = [k for k, v in pending.items() if sorted(filter(None, map(self.module_from_args, v))) == wanted]
+            if same:
+                key = same[-1]
+            elif len(pending) == 1:
+                key = next(iter(pending))
         return pending.pop(key, None)
 
     def _confirm_cli_calls(self) -> None:
@@ -639,9 +645,8 @@ class Gate:
         if self.state is None:
             return
         command = str(tool_input(self.payload).get("command") or "")
-        searches = self._pop_cli_pending("cli_pending", command,
-                                         bool(cli_args(command, "search") or cli_args(command, "graph")))
-        records = self._pop_cli_pending("cli_record_pending", command, bool(cli_args(command, "record")))
+        searches = self._pop_cli_pending("cli_pending", command, cli_args(command, "search") + cli_args(command, "graph"))
+        records = self._pop_cli_pending("cli_record_pending", command, cli_args(command, "record"))
         if searches is None and records is None:
             return
         self.save()

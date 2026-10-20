@@ -15,6 +15,7 @@ from pmem.core.ids import ulid_ms
 from pmem.core.quality import similar_entity_pairs
 from pmem.core.registry import RegistryError
 from pmem.index.tokenize import tokenize
+from pmem.metrics.audit import promotion_hints, recall_audit, render_recall, render_unregistered
 from pmem.metrics.cleanup import cleanup_candidates
 from pmem.metrics.events import MIN_SEARCHES_FOR_IDLE, read_events
 from pmem.metrics.report import _conversations, _feature_coverage
@@ -198,11 +199,13 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
             "module": mid, "memories": n, "candidate": mid in registry.candidates,
             "similar": difflib.get_close_matches(mid, registered, n=2, cutoff=0.6),
         })
+    promotion_hints(service.root, registry, visible, unregistered)
 
     searches = [e for e in events if e["type"] == "search" and e.get("ok")]
     searched = {e.get("module") for e in events if e["type"] in SEARCH_EVENTS}
+    enough = len(searches) >= MIN_SEARCHES_FOR_IDLE
     idle = sorted(m for m in registered if counts[m] and m not in searched and not registry.modules[m].deprecated) \
-        if len(searches) >= MIN_SEARCHES_FOR_IDLE else None
+        if enough else None
 
     rejected = [e for e in events if e["type"] == "record_rejected"]
     restarts = [e for e in events if e["type"] == "server_restart" and e.get("kind") != "reload"]
@@ -229,6 +232,7 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
         "skipped_records": _skipped(events, all_entries, user, since),
         "cleanup": cleanup,
         "idle_modules": idle,
+        "recall": recall_audit(registry, visible, searches) if enough else None,
         "rejected": {"total": len(rejected),
                      "by_reason": Counter(reject_reason(e.get("error") or "", e.get("code")) for e in rejected).most_common(),
                      "by_module": Counter(e.get("module") or "？" for e in rejected).most_common(5)},
@@ -251,11 +255,9 @@ def render(h: dict) -> str:
         problems += 1
         lines.extend(["", f"【{title}】", *[f"  {r}" for r in rows], f"  → {action}"])
 
-    section("未登记模块（写入时自动新建）", [
-        f"{u['module']}：{u['memories']} 条" + ("（冷候选，可转正）" if u["candidate"] else "")
-        + (f"，相近：{'、'.join(u['similar'])}" if u["similar"] else "")
-        for u in h["unregistered"]
-    ], "笔误或归错就 pmem migrate merge <未登记模块> <正确模块>；确属新业务就在 modules.yaml 登记它的 paths")
+    section("未登记模块（写入时自动新建）", [render_unregistered(u) for u in h["unregistered"]],
+            "笔误或归错（关联代码都归同一个已登记模块、其实是同一业务）就 pmem migrate merge <未登记模块> <正确模块>；"
+            "确属新业务就把建议的 paths 登记到 modules.yaml，比原模块的路径更具体时自动优先；冷候选用 pmem sync --apply 转正")
     section("疑似重复模块", ["、".join(g) for g in h["duplicates"]],
             "确认是同一业务后 pmem migrate merge <被并入> <保留>")
     section("记忆还在旧模块名下", [f"{s['id']}：{s['from']} → {s['to']}" for s in h["strays"][:TOP]]
@@ -296,6 +298,9 @@ def render(h: dict) -> str:
     if h["idle_modules"]:
         section(f"统计期内本机没检索过的模块（{len(h['idle_modules'])} 个）", ["、".join(h["idle_modules"][:20])],
                 "可能是没人改这些模块，也可能是路径没登记全导致闸门没提醒；对照 pmem doctor 的覆盖率看")
+    section("召回偏低（记忆多、常被检索，但大部分教训从没被返回过）", [render_recall(r) for r in h.get("recall") or []],
+            "用 pmem search --module <模块> --entity <议题> 看从没返回的议题：常问却查不到的给记忆补 aliases、"
+            "按 pmem-normalize 登记同义词；模块管得太宽就 pmem migrate split <模块> --by entity 拆开；已过时的按清理候选处理")
     r = h["rejected"]
     section(f"被拒绝的写入（{r['total']} 次）", [f"{label}：{n} 次" for label, n in r["by_reason"]]
             + ([f"集中在：{'、'.join(f'{m} {n} 次' for m, n in r['by_module'])}"] if r["by_module"] else []),

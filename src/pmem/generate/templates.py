@@ -312,7 +312,8 @@ description: 按 pmem health 健康报告定期收口记忆库：核对过时记
    - 待核对的：仍成立就 `pmem confirm <id>`，代码搬了就 `pmem anchors --rename`，不成立写 correction 替代；
      排除项、风险、更正即使代码删了也可能仍有价值（防止有人再走老路），默认保留。
 7. 模块目录相关的几节，先预览、给用户确认后再加 `--apply`：
-   - 【未登记模块】【疑似重复模块】：`pmem migrate merge <被并入> <保留>`；
+   - 【未登记模块】【疑似重复模块】：`pmem migrate merge <被并入> <保留>`；未登记模块确属新业务时，把报告建议的 paths 登记进 modules.yaml，冷候选用 `pmem sync --apply` 转正；
+   - 【召回偏低】：用 `pmem search --module <模块> --entity <议题> --brief` 看从没返回的议题，常问却查不到的补 aliases 或按 pmem-normalize 登记同义词；议题太杂的给用户看 `pmem migrate split <模块> --by entity` 的预览；
    - 【记忆还在旧模块名下】：`pmem migrate tidy`；
    - 【没有归属模块的代码目录】：`pmem sync` 预览新模块和要追加的路径；
    - 一个模块管得太宽、需要拆开时：`pmem migrate split <模块> --to <新模块>=<路径>`，预览里列出的“跨模块”“无法判断”的记忆用 `--assign <id>=<模块>` 指定去向；

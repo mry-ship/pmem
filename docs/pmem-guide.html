@@ -512,7 +512,7 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem archive &lt;id&gt;...</code></td><td>归档：不再出现在检索里，文件保留；<code>--restore</code> 恢复到归档前的状态</td></tr>
     <tr><td><code>pmem migrate rename|merge|split|deprecate|tidy</code></td><td>模块改名、合并、拆分，把记忆文件搬到新模块名下；<code>split A --to 新模块=路径[,路径]</code> 可写多次，<code>--by entity</code> 按议题拆，<code>--assign id=模块</code> 指定个别记忆的去向；<code>deprecate</code> 把模块标为只读（<code>--undo</code> 撤销）；<code>tidy</code> 只搬还在旧名下的记忆。默认预览，<code>--apply</code> 执行；<code>--root</code>、<code>--apply</code> 写在子命令之后</td></tr>
     <tr><td><code>pmem sync</code></td><td>对照代码目录列出新模块、新冷候选、要给已有模块追加的路径、新的第三方目录和可转正的冷候选；默认预览，<code>--apply</code> 只追加、不改已有模块名</td></tr>
-    <tr><td><code>pmem health [--days 60]</code></td><td>健康报告：未登记和疑似重复的模块、还在旧模块名下的记忆、无归属的代码目录、检索落空热点、可能过时的记忆、疑似互相矛盾的记忆、没人检索的模块、被拒绝的写入、待确认的种子、改了代码却没写功能记录的模块、建议归档与清理待核对</td></tr>
+    <tr><td><code>pmem health [--days 60]</code></td><td>健康报告：未登记和疑似重复的模块、还在旧模块名下的记忆、无归属的代码目录、检索落空热点、可能过时的记忆、疑似互相矛盾的记忆、没人检索的模块、被拒绝的写入、待确认的种子、改了代码却没写功能记录的模块、建议归档与清理待核对、召回偏低的模块</td></tr>
     <tr><td><code>pmem map [--out 文件] [--days 30] [--json]</code></td><td>记忆演化图：默认写 Wiki 目录下的 <code>map.html</code>（单文件、不联网，可缩放、拖动、按类型筛选、只看现行，点节点看全文），终端打印总评和自检（漏记、断链、悬而未决、过期）；<code>--days</code> 是漏记统计的天数，<code>--json</code> 输出图数据</td></tr>
     <tr><td><code>pmem graph --module X</code></td><td>模块全貌，或某议题的时间线</td></tr>
     <tr><td><code>pmem wiki [--out 目录]</code></td><td>生成每模块一页的 Markdown Wiki（默认 <code>.memory/wiki/</code>）：议题、现行结论、历史、相关模块、代码链接，过期的标“需核实”；只覆盖它自己生成的页面。写入或确认记忆后会自动运行（<code>wiki.auto</code>）</td></tr>
@@ -686,6 +686,8 @@ server:
       <h4>健康报告（pmem health）</h4>
       <p>给模块负责人定期收口用，只列有问题的段落并附处理办法；按 pmem-consolidate 技能可以让 Agent 逐节处理。检索、拒绝等数据只来自本机事件日志；“没人检索的模块”在本机检索少于 20 次时不统计。</p>
       <p>“疑似互相矛盾的记忆”：同模块同议题、都还现行、一条是结论或决定而另一条是排除项或更正、正文用词高度相似（不比较风险类）。确实冲突就写更正替代过时的那条；两条都成立就 <code>pmem confirm</code> 较早那条，之后不再提示。</p>
+      <p>“未登记模块”：写入时用了 <code>modules.yaml</code> 里没有的模块名会自动新建。报告按这些记忆的关联代码给出建议登记的 paths（同一目录有 2 个以上文件的登记整个目录），并说明这些代码现在归哪个模块：都归同一个已登记模块的多半是写错了名字，用 <code>pmem migrate merge</code> 并过去；冷候选模块已有记忆的用 <code>pmem sync --apply</code> 转正。</p>
+      <p>“召回偏低”：现行教训 10 条以上、本机按模块检索 10 次以上，但被返回过的教训不到 30% 的模块（本机检索少于 20 次时不统计）。列出从没返回过的议题；常问却查不到的补 aliases 或登记同义词，议题太杂的用 <code>pmem migrate split --by entity</code> 拆开。功能记录在检索里只给标题，不参与这项统计。</p>
       <p>“改了代码却没写功能记录”：按结束时需要记录的模块统计，回复“无需记录”的也列出，由负责人判断是否真的不用记。</p>
       <p>清理候选只建议归档、从不删除，每条附判断依据（✓ 满足、✗ 不满足）。“建议归档”要同时满足：关联代码全部不存在（没写关联代码的看正文提到的文件和类，找到的不到 20%）、同议题没有其他现行记忆、没被其他记忆引用、统计期内本机没被用过（本机检索太少时不看这一条）。只满足一部分的列为“待核对”；排除项、风险、更正、全项目级和种子记忆最多到“待核对”。关联代码还有一处在的记忆不会成为候选。</p>
     </div>

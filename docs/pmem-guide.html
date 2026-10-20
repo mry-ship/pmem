@@ -220,18 +220,22 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
   <table>
     <tr><th></th><th>被用户纠正的比例</th><th>每次改代码的耗时</th><th>读写 token</th><th>长对话全程不回退</th></tr>
     <tr><th>上一代系统</th><td><strong>−54% ~ −69%</strong></td><td><strong>−36% ~ −44%</strong></td><td><strong>−18%</strong></td><td>27% → 52%</td></tr>
-    <tr><th>pmem</th><td>待实测（正确结论排进前 3：6 → 16 个）</td><td>待实测（单次检索 300~400 ms → 9 ms）</td><td>待实测（自身开销见下文）</td><td>待实测（终端写命令也拦）</td></tr>
+    <tr><th>pmem</th><td>端到端待实测（正确结论排进前 3：人工核对 16/18，本仓库真实检索 82/91）</td><td>端到端待实测（单次检索 300~400 ms → 中位 9 ms）</td><td>端到端待实测（自身开销见下文）</td><td>端到端待实测（终端写命令也拦）</td></tr>
   </table>
 
   <h3>上一代记忆服务 → pmem（853 条真实记忆离线回放）</h3>
   <table>
     <tr><th>指标</th><th>上一代服务</th><th>pmem</th></tr>
     <tr><td>18 个人工核对的查询，正确结论排进前 3 条</td><td>6 / 18</td><td><strong>16 / 18</strong></td></tr>
+    <tr><td>本仓库真实检索，当时用到的结论排进前 3（91 题，2026-10-20）</td><td></td><td><strong>82 / 91（90%）</strong>，排第一 40 / 91</td></tr>
+    <tr><td>只传文件路径，锚点在该文件的教训排进前 3（120 题）</td><td></td><td><strong>118 / 120（98%）</strong></td></tr>
+    <tr><td>用没写进正文的别名检索，排进前 3（126 题）</td><td></td><td><strong>122 / 126（97%）</strong></td></tr>
     <tr><td>写进去后被悄悄删掉的记忆</td><td>19%</td><td><strong>0</strong></td></tr>
     <tr><td>搜“闪退”排进前 3 的“崩溃”记忆</td><td>0 条</td><td><strong>2 条</strong></td></tr>
     <tr><td>单次检索耗时</td><td>300–400 毫秒</td><td>中位 <strong>9 毫秒</strong></td></tr>
     <tr><td>换电脑 / 换嵌入模型</td><td>本机库丢失 / 要重建</td><td>随仓库保存 / 自动重算</td></tr>
   </table>
+  <p class="muted">后三行检索数字来自 <code>scripts/eval_real_queries.py</code> 在本仓库现行记忆上的回放。真实检索的答案是当时回复确实用到的记忆，用来看现在还能不能把那条结论排回来，不是绝对召回率。同一套题只用关键词时，前 3 为 73/91。</p>
   <div class="callout warn">还没测：pmem 对改代码质量的端到端提升。可以用 <code>pmem bench</code> 做对照实验，或真实使用 2–4 周后看 <code>pmem report</code>。</div>
 
   <div class="grid2">

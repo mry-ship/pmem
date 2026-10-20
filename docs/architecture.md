@@ -89,6 +89,8 @@ flowchart LR
 
 **标题、全项目级坑与去重**：记忆可带 `summary`（一句话标题，没填时取正文第一句、去掉“决定：”这类前缀自动生成）、`scope: project`（全项目都会踩的坑）、`verify`（怎么验证）。读代码摘要、拦截提示、Wiki 只显示标题；读任何模块时附上本对话还没给过的至多 3 条全项目级排除项、风险、更正。同一对话里检索到已给过全文的记忆只返回标题，`full=true`（命令行 `--full`）取全文；读代码摘要只给标题，不计入去重。
 
+**教训与功能记录分层**：类型分两层。教训（`exclusion`、`risk`、`correction`、`decision`、`conclusion`，`core/entry.py` 的 `LESSON_KINDS`）和功能记录（`feature`、`plan`，`RECORD_KINDS`）放在同一模块目录、靠类型区分，不分物理目录。`MemoryIndex.search` 带 `feature_limit` 时两层各自排序：`items` 只放教训全文，`features` 只放功能记录标题（`title_row`），默认 3 条，所以功能记录再多也挤不掉教训；`search(ids=[...])` 按 id 取全文。读代码摘要（`graph.digest`）只从教训里挑，末尾附至多 2 条锚点就是当前文件的功能记录（`file_features`）；拦截提示同样列出目标文件上的功能记录。结束提醒按模块要求功能记录，只改了 `gate.record_exempt` 里文件的模块不提醒；stop 事件记下 `required`（需要记录的模块），`pmem report` 据此算功能记录覆盖率。可选字段 `applies` 写适用条件，参与检索文本，结果里出现时附 `applies_hint`。
+
 **度量**：服务和 Hooks 把事件追加到用户缓存目录的 `events.jsonl`。`pmem report` 按对话聚合；“记忆被采用”在报告时离线比对对话记录，不在 Hook 里计算。
 
 ## 存储布局

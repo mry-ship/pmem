@@ -44,11 +44,25 @@ def _search(result: dict) -> list[str]:
         scope = "（全项目）" if item.get("scope") == "project" else ""
         lines.append(f"- {where}{_kind(item['kind'])}{seed}{scope}｜{item['entity']}｜{item['date']}｜{item['id']}："
                      f"{text}")
+        if item.get("applies"):
+            lines.append(f"    适用：{item['applies']}")
         if item.get("verify"):
             lines.append(f"    验证：{preview(item['verify'], PREVIEW)}")
         lines += _stale(item)
-    if result.get("seen_hint"):
-        lines.append(f"提示：{result['seen_hint']}")
+    features = result.get("features") or []
+    if features:
+        lines.append(f"功能记录与规划 {len(features)} 条（只列标题；改动会改变这些行为时先用 --id 取全文核对，规划还没实现）：")
+        for row in features:
+            where = f"{row['module']} · " if row.get("module") else ""
+            lines.append(f"- {where}{_kind(row['kind'])}｜{row['entity']}｜{row['date']}｜{row['id']}：{row['summary']}")
+            if row.get("applies"):
+                lines.append(f"    适用：{row['applies']}")
+            lines += _stale(row)
+    for key in ("seen_hint", "applies_hint"):
+        if result.get(key):
+            lines.append(f"提示：{result[key]}")
+    if result.get("missing"):
+        lines.append(f"! 找不到：{'、'.join(result['missing'])}")
     return lines + _tail(result)
 
 

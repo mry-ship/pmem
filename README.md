@@ -35,10 +35,11 @@
 
 - **改前先查**：AI 要改某个文件，pmem 找到它所属的业务模块（如 `gameplay.Jigsaw`），把以前的根因、排除过的方向和风险交给 AI。
 - **问答也查**：AI 读到某个模块的代码时，自动附上该模块现行结论的摘要。
-- **有教训才记**：试过不行的方向、确认的根因和坑、看代码看不出的约束、方案取舍，AI 自动按模块写一条，附一句话标题和验证方法；照常实现、没有教训的改动不记，记忆库不会变成变更日志。
+- **做了功能就记**：改了哪个模块，AI 就为它写一条功能记录：谁要求的、为什么、哪些行为必须保持、在什么条件下成立。以后有人（包括 AI）要改这个文件，会先看到这些约定，不会把你要求的功能当成冗余代码改回去。只改测试、生成代码、配置的不用记。
+- **教训另外记、优先给**：试过不行的方向、确认的根因和坑、看代码看不出的约束、方案取舍，各写一条教训。检索时教训给全文、排在前面，功能记录只列标题，记得再多也不会把教训挤掉。
 - **全项目的坑人人看到**：编码、环境、跨模块约定这类改哪里都会踩的坑标为全项目通用，读任何模块的代码时都会附上。
 - **不重复占上下文**：同一对话里已经给过全文的记忆，再查到只给一句话标题。
-- **自动兜底**：AI 忘了查就去改，会被拦下直到查过为止；改了代码却没记，回合结束时追问一次有没有新教训（没有就回复“无新教训”）。这条提醒以“[pmem] 以下是 pmem 自动发给 AI 的提醒”开头，由 AI 自己处理，你不用回复。
+- **自动兜底**：AI 忘了查就去改，会被拦下直到查过为止；改了代码却没记，回合结束时提醒补上功能记录和教训（确实不用记时说明原因）。这条提醒以“[pmem] 以下是 pmem 自动发给 AI 的提醒”开头，由 AI 自己处理，你不用回复。
 - **不用过期结论**：记忆关联的代码后来改过或被删了，会自动标出“需核实”。
 
 ![一次对话的流程：接手 → ①改前查 → 改代码 → ②写结论 → ③提交共享](docs/images/pmem-flow.svg)
@@ -79,7 +80,7 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 | 去掉过时的记忆 | `pmem archive <id>`：不再出现在检索里，文件保留可追溯；`--restore` 恢复到归档前的状态 |
 | 体检 | `pmem doctor`：提示没提交的记忆、可以合并的议题 |
 | 定期收口（模块负责人） | 对 AI 说“按 pmem-consolidate 技能整理记忆库”，它按 `pmem health` 逐节处理：疑似互相矛盾的记忆、可能过时的记忆、零碎记忆、反复查不到的问题、待确认的种子、未登记或重复的模块 |
-| 看收益 | `pmem report`：命中率、避坑次数、跨人复用，以及防错类记忆（排除项、风险、更正）占比和对话内重复返回率 |
+| 看收益 | `pmem report`：命中率、避坑次数、跨人复用，功能记录覆盖率，防错类记忆（排除项、风险、更正）占教训的比例，对话内重复返回率 |
 | 通读全部结论 | 打开 `.memory/wiki/index.md`，每个模块一页，写入记忆后自动更新 |
 | 升级 | `uv tool upgrade pmem`，再在项目里运行一次 `pmem init`（不会覆盖已有配置；这时给的 `--gate`、`--type` 不生效，会单独提示，直接改 `.memory/config.yaml`） |
 
@@ -92,14 +93,18 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 ---
 module: gameplay.Jigsaw
 entity: Reward
-kind: exclusion          # conclusion 结论 / exclusion 排除项 / correction 更正 / risk 风险 / decision 决定
+kind: exclusion          # 教训：conclusion 结论 / exclusion 排除项 / correction 更正 / risk 风险 / decision 决定
+                         # 功能记录：feature 功能 / plan 规划（还没实现的需求）
 anchors: [Assets/Game/Jigsaw/JigsawReward.cs#Claim]
 summary: 断线重连重复发奖的根因在服务端，不要在客户端去重   # 一句话标题，摘要和 Wiki 只显示它
 verify: 断线重连后领取，服务端日志只有一次发奖            # 可选：怎么验证
+applies: 开启断线重连的版本                              # 可选：在什么前提下成立，前提不同不要套用
 # scope: project         # 可选：全项目都会踩的坑，读任何模块的代码时都会附上
 ---
 断线重连时奖励重复发放：根因是服务端 Claim 没有按关卡做幂等校验，不要在客户端去重。
 ```
+
+功能记录同样是一个文件，`kind: feature`，正文写需求来源、必须保持的行为和入口，例如“用户要求：拼图完成后必须弹出分享面板，审核期间也要保持；入口在 Board.Finish”。
 
 </details>
 
@@ -171,6 +176,8 @@ verify: 断线重连后领取，服务端日志只有一次发奖            # �
 ```bash
 pmem search --path <文件>              # 查某个文件所属模块的记忆
 pmem search --module <模块> "关键词"    # 按模块和关键词查；加 --brief 每条一行；同一对话里给过的只显示标题，--full 取全文
+pmem search --id <id> ...              # 按 id 取全文（功能记录在检索结果里只列标题）
+pmem record ... --kind feature         # 命令行写功能记录；--applies 写适用条件
 pmem list                              # 模块和记忆数量
 pmem doctor                            # 体检
 pmem report                            # 本机收益报告
@@ -198,5 +205,10 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 - Hook 自身出错时那次直接放行、不做记忆检查；之后闸门会让 AI 在回复里提醒一次，原因用 `pmem doctor` 查看。
 - 按函数判断过期只支持 Git；SVN 和找不到函数时按文件判断。
 - Windows PowerShell 5 里把 pmem 输出再接给 `Select-String` 等命令会乱码（它按 GBK 解码），直接看输出或用 `--brief`。
+- 功能记录（`feature` / `plan`）和 `applies` 字段需要较新的 pmem：团队里还在用旧版的人读到这类记忆文件会跳过它，请一起升级。
 
 </details>
+
+## 路线
+
+后续版本的计划和进度记在 GitHub：[v0.3.1 功能记录与分层检索](https://github.com/mry-ship/pmem/issues/12)、[v0.3.2 记忆图与严格清理](https://github.com/mry-ship/pmem/issues/13)、[v0.4 治理闭环与团队化](https://github.com/mry-ship/pmem/issues/14)；设计细节见 [设计文档第 14 节](docs/superpowers/specs/2026-10-14-pmem-design.md)。

@@ -139,7 +139,7 @@
     <div class="arrow">→</div>
     <div class="node"><b>② 改前自动查</b>AI 要改某个文件，Hook 定位所属模块；没查过记忆就拦下，直到查过</div>
     <div class="arrow">→</div>
-    <div class="node"><b>③ 有教训就记</b>排除的方向、根因和坑、约束、方案取舍按模块写成 <code>.md</code>，附一句话标题</div>
+    <div class="node"><b>③ 按模块记</b>改了模块就写功能记录（需求来源、必须保持的行为）；有排除的方向、根因和坑、约束、方案取舍再写教训，都是 <code>.md</code>，附一句话标题</div>
     <div class="arrow">→</div>
     <div class="node"><b>④ 结束自动追问</b>改了模块却没写记忆，Hook 追问一次有没有新教训</div>
     <div class="arrow">→</div>
@@ -296,7 +296,10 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
     <tr><td class="kind">correction</td><td>更正</td><td>旧结论已不成立，配合 <code>supersedes</code>（检索时略微加分）</td></tr>
     <tr><td class="kind">risk</td><td>风险</td><td>改动这里要注意的坑</td></tr>
     <tr><td class="kind">decision</td><td>决定</td><td>方案选型和取舍理由</td></tr>
+    <tr><td class="kind">feature</td><td>功能</td><td>功能记录：改了模块就写。需求来源、必须保持的行为、适用条件、入口；检索时只列标题</td></tr>
+    <tr><td class="kind">plan</td><td>规划</td><td>还没实现的需求，不当现状；实现后由功能记录替代</td></tr>
   </table>
+  <p>前五种是<b>教训</b>，检索时给全文、排在前面；后两种是<b>功能记录</b>，检索时单独一组、只给标题（默认最多 3 条，<code>search.feature_limit</code> 可调），要全文按 id 取。这样功能记录写得再多也不会挤掉教训。</p>
 
   <h3>一条记忆长什么样</h3>
   <pre><code>---
@@ -311,13 +314,14 @@ summary: 断线重连重复发奖的根因在服务端，不要在客户端去�
 verify: 断线重连后领取，服务端日志只有一次发奖
 ---
 拼图奖励在断线重连时会重复发放：服务端 Claim 接口没有按关卡做幂等校验……不要在客户端做去重。</code></pre>
-  <p>三个可选字段：</p>
+  <p>四个可选字段：</p>
   <ul>
     <li><code>summary</code>：一句话标题（60 字以内）。读代码摘要、拦截提示、Wiki 和同一对话里的重复检索只显示它；没填时取正文第一句并去掉“决定：”这类前缀。</li>
     <li><code>verify</code>：怎么确认问题已解决或结论仍成立（命令、测试名、现象），下次遇到同样的问题直接验证。</li>
+    <li><code>applies</code>：这条在什么前提下成立（平台、配置、版本、场景，120 字以内）。检索结果会提醒 AI 先判断前提是否满足，不满足就不套用。</li>
     <li><code>scope: project</code>：全项目都会踩的坑（编码、环境、跨模块约定）。读任何模块的代码时，都会附上本对话还没给过的至多 3 条全项目级排除项、风险、更正，Wiki 首页单列“全项目通用”。</li>
   </ul>
-  <p class="muted">旧版 pmem 读写带这些字段的文件不会丢字段。</p>
+  <p class="muted">旧版 pmem 读写带这些字段的文件不会丢字段；但 <code>feature</code>、<code>plan</code> 两种类型需要新版本才认得，旧版会跳过这类文件，团队请一起升级。</p>
 </section>
 
 <!-- ============ 接入 ============ -->
@@ -413,18 +417,19 @@ git commit -m "接入 pmem"</code></pre>
     <div class="arrow">→</div>
     <div class="node"><b>2. 用之前核对</b>结果带 <code>stale: true</code> 的，打开关联代码核对；仍成立就 <code>confirm_memory</code>，不成立写 correction。</div>
     <div class="arrow">→</div>
-    <div class="node"><b>3. 有教训才写</b>试过不行的方向；确认的根因和坑；看代码看不出的约束和风险；方案取舍。照常实现、没有教训的改动不写。</div>
+    <div class="node"><b>3. 按模块写</b>每个改过的模块写一条功能记录（谁要求的、为什么、必须保持的行为）；另有试过不行的方向、根因和坑、看代码看不出的约束、方案取舍时，各写一条教训。只改测试、生成代码、配置的不用写。</div>
     <div class="arrow">→</div>
-    <div class="node"><b>4. 结束追问</b>改了模块却没写记忆，回合结束时逐项追问一次有没有上面这些教训，有就由 AI 补写，没有就回复“无新教训”，不需要你回复。Cursor 会把它显示成一条用户消息，首行写着“以下是 pmem 自动发给 AI 的提醒，由 AI 处理，你无需操作”。</div>
+    <div class="node"><b>4. 结束追问</b>改了模块却没写记忆，回合结束时提醒 AI 补写功能记录和教训；确实不用记（只改了注释、格式、重命名）时，AI 回复“无需记录：原因”。不需要你回复。Cursor 会把它显示成一条用户消息，首行写着“以下是 pmem 自动发给 AI 的提醒，由 AI 处理，你无需操作”。</div>
   </div>
 
   <h3>写记忆的约定</h3>
   <ul>
-    <li>正文自包含：现象、原因、证据、影响范围。不写“改了哪个方法”这类版本库已有的信息，也不为了留记录写“现在代码怎么做”。</li>
-    <li>写一句 <code>summary</code>；结论和更正尽量写 <code>verify</code>；改哪里都会踩的坑加 <code>scope: project</code>。没填 summary、决定没写取舍、读起来像变更记录时，写入会返回提示（不拒绝）。</li>
+    <li>正文自包含：教训写现象、原因、证据、影响范围；功能记录写需求来源、必须保持的行为、适用条件、入口。都不写“改了哪个方法”这类版本库已有的信息。</li>
+    <li>写一句 <code>summary</code>（教训写结论，功能记录写“什么行为必须保持”）；结论和更正尽量写 <code>verify</code>；有前提的写 <code>applies</code>；改哪里都会踩的坑加 <code>scope: project</code>。没填 summary、决定没写取舍、读起来像变更记录、功能记录没写需求来源时，写入会返回提示（不拒绝）。</li>
+    <li>还没实现的需求写成 <code>plan</code>；实现后写功能记录并在 <code>supersedes</code> 填那条规划的 id。</li>
     <li>正文 20～1200 字，超过 600 字会提示精简。不写密码、密钥、个人信息，含疑似密钥会被拒绝。</li>
     <li>写入会返回 <code>similar</code>（同模块最相近的已有记忆）：重复或推翻了某条，就带 <code>draft_id</code> 重写并在 <code>supersedes</code> 填旧 id。</li>
-    <li>同一任务对同一模块只留一条：再次写入时带上次返回的 <code>draft_id</code> 覆盖。覆盖时没填的 <code>supersedes</code>、<code>anchors</code>、<code>aliases</code>、<code>summary</code>、<code>verify</code>、<code>scope</code> 沿用原值。</li>
+    <li>同一任务对同一模块只留一条：再次写入时带上次返回的 <code>draft_id</code> 覆盖。覆盖时没填的 <code>supersedes</code>、<code>anchors</code>、<code>aliases</code>、<code>summary</code>、<code>verify</code>、<code>applies</code>、<code>scope</code> 沿用原值。</li>
     <li>同一议题每天最多写 5 条，防止刷屏。</li>
   </ul>
 
@@ -455,12 +460,12 @@ git commit -m "接入 pmem"</code></pre>
     <li>拦截范围：写文件类工具（Write / StrReplace / Edit / Delete 等）和终端里的写命令：重定向、<code>Set-Content</code>、<code>cp</code>/<code>mv</code>/<code>Copy-Item</code>、<code>git checkout/restore/apply</code>、<code>python -c</code> 及所运行脚本里写文件时的字面路径，先 <code>cd</code> 再写相对路径也能认出。同一条命令里带 <code>pmem search</code> 只放行查过的模块。</li>
     <li>事后比对：脚本里拼出来的路径、格式化工具、<code>git stash</code>/<code>reset</code> 这类事前看不出写了什么的命令，执行前后各比对一次未提交文件（Git、SVN 都支持），改到没查过的模块时立即提醒 AI 补查。命令已经执行完，所以只能提醒、拦不住；仓库大到单次比对超过 1 秒时暂停 24 小时；<code>git</code>、<code>svn</code> 的只读子命令（status、log、diff 等）不做比对。</li>
     <li>别的记忆服务也叫 <code>search_memory</code> 时，它的结果不算“查过 pmem”。</li>
-    <li>拦截提示里直接列出该模块现行的排除项、风险和更正（最多 5 条），以及本对话还没给过的全项目级坑，即使 AI 检索时关键词没对上，也能先看到这些坑。</li>
+    <li>拦截提示里直接列出该模块现行的排除项、风险和更正（最多 5 条）、关联代码就是要改的这个文件的功能记录，以及本对话还没给过的全项目级坑，即使 AI 检索时关键词没对上，也能先看到这些坑和必须保持的行为。</li>
     <li>“查过”的判定：MCP 的 <code>search_memory</code>，或终端里运行 <code>pmem search --module &lt;模块&gt;</code>。MCP 不可用时用终端也行，不会把 Agent 卡死。</li>
-    <li>结束提醒：改了模块却没写记忆，逐项追问一次有没有新教训（被排除的方向、根因或坑、约束、方案取舍），没有就回复“无新教训”；整个对话只查了记忆、没改也没写，也提醒一次（<code>gate.analysis_reminder</code> 可关）。中断结束的回合和说了“跳过记忆”的对话不提醒。提醒以“[pmem] 以下是 pmem 自动发给 AI 的提醒”开头，用户不用处理；Claude Code、Codex 下以 Hook 反馈的形式出现（各版本都支持）。</li>
+    <li>结束提醒：改了模块却没写记忆，提醒每个模块写一条功能记录，另有被排除的方向、根因或坑、约束、方案取舍时再写教训；确实不用记时回复“无需记录：原因”。只改了 <code>gate.record_exempt</code> 里的文件（默认是测试、生成代码、json/yaml/toml 等配置）的模块不提醒。整个对话只查了记忆、没改也没写，也提醒一次（<code>gate.analysis_reminder</code> 可关）。中断结束的回合和说了“跳过记忆”的对话不提醒。提醒以“[pmem] 以下是 pmem 自动发给 AI 的提醒”开头，用户不用处理；Claude Code、Codex 下以 Hook 反馈的形式出现（各版本都支持）。</li>
     <li>记忆审查（不改代码也生效，每个模块每个对话一次）：
       <ul>
-        <li>读代码时，附上该文件所属模块的现行结论摘要（每条只列一句话标题，排除项、风险优先，最多 6 条；关联代码之后改过的标“需核实”），再附上本对话还没给过的全项目级坑（至多 3 条，模块还没有记忆时也附），<code>gate.read_digest</code> 可关。</li>
+        <li>读代码时，附上该文件所属模块的现行教训摘要（每条只列一句话标题，排除项、风险优先，最多 6 条；关联代码之后改过的标“需核实”），另附至多 2 条关联代码就是这个文件的功能记录，再附上本对话还没给过的全项目级坑（至多 3 条，模块还没有记忆时也附），<code>gate.read_digest</code> 可关。</li>
         <li>在某个模块的文件或目录里 Grep、Glob、语义搜索时，同样附上摘要。</li>
         <li>回合结束时，本轮问题提到的、或本轮看过代码的模块有记忆、却既没查也没看过摘要，要求 AI 查过后核对回答，<code>gate.question_review</code> 可关。</li>
         <li>Claude Code 在提问时就直接附上摘要；Cursor 不允许提问时注入内容，所以只能在结束时追问。</li>
@@ -481,13 +486,13 @@ git commit -m "接入 pmem"</code></pre>
   <p>MCP（Model Context Protocol，AI 调用外部工具的协议）服务由 <code>pmem serve</code> 提供，Agent 通过下面 5 个工具读写记忆。服务自带看门狗：崩溃、卡死（单次调用超过 <code>server.request_timeout</code>，默认 120 秒）或 pmem 升级后自动重启并重新握手，Cursor 不用手动重连；当时正在进行的调用会返回错误，重试即可。</p>
   <table>
     <tr><th>工具</th><th>用途</th><th>主要参数</th></tr>
-    <tr><td><code>search_memory</code></td><td>检索记忆。改代码前按文件或模块查一次</td><td><code>path</code> 或 <code>module</code>；可选 <code>entity</code>、<code>query</code>、<code>limit</code>（默认 5，上限 10）、<code>as_of</code>（按某天视角查）、<code>full</code>（本对话给过的也返回全文）</td></tr>
-    <tr><td><code>record_memory</code></td><td>写入一条记忆</td><td><code>module</code>、<code>entity</code>、<code>kind</code>、<code>content</code>；可选 <code>summary</code>、<code>verify</code>、<code>scope</code>、<code>supersedes</code>、<code>anchors</code>、<code>aliases</code>、<code>draft_id</code></td></tr>
+    <tr><td><code>search_memory</code></td><td>检索记忆。改代码前按文件或模块查一次</td><td><code>path</code> 或 <code>module</code>；可选 <code>entity</code>、<code>query</code>、<code>limit</code>（默认 5，上限 10）、<code>as_of</code>（按某天视角查）、<code>full</code>（本对话给过的也返回全文）、<code>ids</code>（按 id 取全文，给了就忽略其他条件）</td></tr>
+    <tr><td><code>record_memory</code></td><td>写入一条记忆</td><td><code>module</code>、<code>entity</code>、<code>kind</code>、<code>content</code>；可选 <code>summary</code>、<code>verify</code>、<code>applies</code>、<code>scope</code>、<code>supersedes</code>、<code>anchors</code>、<code>aliases</code>、<code>draft_id</code></td></tr>
     <tr><td><code>confirm_memory</code></td><td>核对后确认仍然成立，刷新核对日期</td><td><code>ids</code></td></tr>
     <tr><td><code>memory_graph</code></td><td>模块全貌：每个议题的最新两条结论（过期的带 <code>stale</code>）和相关模块；带 <code>entity</code> 时看该议题的时间线（谁哪天替代了谁）</td><td><code>module</code>；可选 <code>entity</code></td></tr>
     <tr><td><code>list_modules</code></td><td>列出模块、记忆数量和常用议题</td><td>可选 <code>category</code></td></tr>
   </table>
-  <p>检索结果里几个关键字段：<code>stale</code>（关联代码已变）、<code>check</code>（具体哪些文件变了）、<code>fallback: module</code>（议题内没命中，退回整个模块）、<code>related</code>（相关模块）、<code>status</code>（只在不是正式记忆时出现，如 <code>seed</code>）、<code>seen</code>（本对话已返回过全文，这次只给标题；上下文里找不到原文时带 <code>full=true</code> 重查）。同一对话的去重记录在上下文压缩后清空；终端里的 <code>pmem search</code> 由 Hook 在执行前交接对话 id，同样参与去重。MCP 不提供改状态的工具，转正、退回、归档只能由人在命令行操作。</p>
+  <p>检索结果里几个关键字段：<code>items</code>（教训，全文）、<code>features</code>（功能记录和规划，只有标题；改动会改变这些行为时先用 <code>ids</code> 取全文核对）、<code>applies</code>（适用条件）、<code>stale</code>（关联代码已变）、<code>check</code>（具体哪些文件变了）、<code>fallback: module</code>（议题内没命中，退回整个模块）、<code>related</code>（相关模块）、<code>status</code>（只在不是正式记忆时出现，如 <code>seed</code>）、<code>seen</code>（本对话已返回过全文，这次只给标题；上下文里找不到原文时带 <code>full=true</code> 重查）。同一对话的去重记录在上下文压缩后清空；终端里的 <code>pmem search</code> 由 Hook 在执行前交接对话 id，同样参与去重。MCP 不提供改状态的工具，转正、退回、归档只能由人在命令行操作。</p>
 </section>
 
 <!-- ============ CLI ============ -->
@@ -498,8 +503,8 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem init</code></td><td>在项目中接入（生成 <code>.memory/</code> 和各工具配置）</td></tr>
     <tr><td><code>pmem doctor</code></td><td>自检：配置、模块覆盖率、路径重叠、各工具接入、语义模型、可合并议题、最近 Hook 错误</td></tr>
     <tr><td><code>pmem scan</code></td><td>输出目录概览和提交热度，供 Agent 划分模块</td></tr>
-    <tr><td><code>pmem search</code></td><td>检索：<code>--path</code> / <code>--module</code> / <code>--entity</code> / <code>--as-of</code>，加关键词；<code>--brief</code> 每条一行（<code>graph</code>、<code>record</code> 同样支持）；同一对话里给过全文的记忆再查到只显示标题，<code>--full</code> 取全文</td></tr>
-    <tr><td><code>pmem record</code></td><td>写入一条记忆，规则与 MCP 相同；长正文用 <code>--content-file</code>；<code>--alias</code>、<code>--anchor</code>、<code>--supersedes</code> 可跟多个值；<code>--seed</code> 写成种子记忆；<code>--summary</code> 一句话标题，<code>--verify</code> 怎么验证，<code>--scope project</code> 标为全项目都会踩的坑（读任何模块的代码时都会附上）</td></tr>
+    <tr><td><code>pmem search</code></td><td>检索：<code>--path</code> / <code>--module</code> / <code>--entity</code> / <code>--as-of</code>，加关键词；<code>--brief</code> 每条一行（<code>graph</code>、<code>record</code> 同样支持）；同一对话里给过全文的记忆再查到只显示标题，<code>--full</code> 取全文；<code>--id</code> 按 id 取全文</td></tr>
+    <tr><td><code>pmem record</code></td><td>写入一条记忆，规则与 MCP 相同；长正文用 <code>--content-file</code>；<code>--alias</code>、<code>--anchor</code>、<code>--supersedes</code> 可跟多个值；<code>--seed</code> 写成种子记忆；<code>--kind feature</code> 写功能记录，<code>--summary</code> 一句话标题，<code>--verify</code> 怎么验证，<code>--applies</code> 适用条件，<code>--scope project</code> 标为全项目都会踩的坑（读任何模块的代码时都会附上）</td></tr>
     <tr><td><code>pmem confirm &lt;id&gt;...</code></td><td>核对后确认仍然成立</td></tr>
     <tr><td><code>pmem seed</code></td><td>列出待确认的种子记忆；<code>--plan</code> 看候选模块；<code>--accept</code>（给 id、<code>--module</code> 或 <code>--all</code>）转正；<code>--reject &lt;id&gt;</code> 退回（归档）</td></tr>
     <tr><td><code>pmem archive &lt;id&gt;...</code></td><td>归档：不再出现在检索里，文件保留；<code>--restore</code> 恢复到归档前的状态</td></tr>
@@ -549,6 +554,7 @@ gate:
   analysis_markers: [...]   <span class="c"># 判断“排查类提问”的用语（为什么、报错、根因……），默认值见 core/config.py</span>
   read_digest: true         <span class="c"># 读代码时附上该模块的记忆摘要</span>
   question_review: true     <span class="c"># 问题提到的模块没查过时，结束时要求核对</span>
+  record_exempt: [...]      <span class="c"># 只改了这些文件的模块不提醒写功能记录；默认是测试、生成代码、json/yaml/toml 等配置，写了就整个替换默认值</span>
 wiki:
   auto: true                <span class="c"># 写入或确认记忆后自动重新生成 Wiki</span>
   dir: .memory/wiki         <span class="c"># 首次生成时自带 .gitignore，不进版本库；想提交就删掉它</span>
@@ -560,7 +566,8 @@ write:
   max_per_day_per_entity: 5 <span class="c"># 同一议题每天最多几条；替代仍现行的旧记忆、覆盖草稿不计</span>
   secret_patterns: []       <span class="c"># 额外的敏感信息正则，正文、议题名、别名命中就拒绝写入</span>
 search:
-  limit: 5                  <span class="c"># 默认返回条数</span>
+  limit: 5                  <span class="c"># 默认返回几条教训</span>
+  feature_limit: 3          <span class="c"># 另外最多列几条功能记录和规划的标题；0 不列</span>
   max_per_batch: 2          <span class="c"># 同一批写入的记忆最多返回几条</span>
   recency_half_life_days: 90  <span class="c"># 时效加分的半衰期</span>
 embedding:
@@ -690,7 +697,8 @@ server:
     <tr><td>检索命中率</td><td>改代码前查记忆，有多少次查到了相关结论</td></tr>
     <tr><td>避坑提示</td><td>命中结果里有多少次是排除项、风险或更正</td></tr>
     <tr><td>跨人复用</td><td>有多少次用上了同事写的记忆</td></tr>
-    <tr><td>防错类占比</td><td>本期新写记忆里排除项、风险、更正的占比（目标不低于 30%），偏低说明记忆在变成变更记录</td></tr>
+    <tr><td>功能记录覆盖</td><td>改过代码、需要记录的模块里，同一对话写了功能记录的比例（目标不低于 80%），偏低说明用户要求的行为没留下记录</td></tr>
+    <tr><td>防错类占比</td><td>本期新写教训里排除项、风险、更正的占比（功能记录不算，目标不低于 30%），偏低说明教训在变成变更记录</td></tr>
     <tr><td>对话内重复</td><td>同一对话里给过全文又整条再给的条数，以及已折叠成标题的条数</td></tr>
     <tr><td>记忆被采用</td><td>返回的记忆有多少条在 Agent 回复里被明确用到（保守下限）</td></tr>
     <tr><td>闸门 / 提醒转化</td><td>被提醒后有多少次真的照做了</td></tr>
@@ -736,7 +744,9 @@ pmem reindex</code></pre>
   <h3>用 SVN 可以吗？</h3>
   <p>可以。作者和版本号取自 SVN，新记忆会自动 <code>svn add</code>，终端命令的事后比对也支持。按函数判断“需核实”目前只支持 Git。</p>
   <h3>对话里出现一条“[pmem] 以下是 pmem 自动发给 AI 的提醒”，要我处理吗？</h3>
-  <p>不用。这是回合结束时 pmem 自动发给 AI 的提醒（比如改了代码还没写记忆），Cursor 把它显示成一条用户消息。AI 会回顾本轮有没有被排除的方向、根因或坑、约束、方案取舍，有就补写记忆，没有就回复“无新教训”，不需要你提供原因。</p>
+  <p>不用。这是回合结束时 pmem 自动发给 AI 的提醒（比如改了代码还没写记忆），Cursor 把它显示成一条用户消息。AI 会为改过的模块补写功能记录，再看本轮有没有被排除的方向、根因或坑、约束、方案取舍，有就补写教训；确实不用记时回复“无需记录：原因”，不需要你提供原因。</p>
+  <h3>为什么做了功能也要记？不会变成变更日志吗？</h3>
+  <p>功能记录写的是“谁要求的、哪些行为必须保持”，不是“改了哪个方法”。没有它，用户要求的行为看起来就像普通实现，后来的人（包括 AI）可能当成冗余改回去。功能记录在检索里只列标题、单独一组，教训照样优先、给全文，所以不会被挤掉；改某个文件时，关联到这个文件的功能记录会出现在读代码摘要和拦截提示里。</p>
   <h3>Hook 出错会卡住我吗？</h3>
   <p>不会。任何异常都直接放行，错误记在本机日志里；随后 AI 会在回复里提醒你一次“那次没做记忆检查”，用 <code>pmem doctor</code> 看原因。</p>
   <h3>队友没装 pmem 会怎样？</h3>

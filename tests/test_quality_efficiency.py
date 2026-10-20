@@ -295,11 +295,11 @@ def test_shell_pmem_search_registers_handoff(gate_root):
     assert seen.claim_handoff(Config.load(gate_root).cache_dir, "gameplay.Jigsaw") == "c7"
 
 
-def test_stop_reminder_asks_for_lessons_not_changelog(gate_root):
+def test_stop_reminder_asks_for_feature_record_plus_lessons(gate_root):
     handle("edited", {"conversation_id": "c1", "file_path": str(gate_root / "src/Shop/Shop.cs")}, gate_root)
     message = handle("stop", {"conversation_id": "c1", "status": "completed"}, gate_root)["followup_message"]
-    assert message.startswith("[pmem]") and "无新教训" in message and "被排除的方向" in message
-    assert "为每个模块写一条" not in message
+    assert message.startswith("[pmem]") and "kind=feature" in message and "被排除的方向" in message
+    assert "无需记录：" in message and "不写“改了哪个方法”" in message
 
 
 # ---- 度量 ----

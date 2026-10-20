@@ -34,7 +34,7 @@ from pmem.hooks.shell import (  # noqa: F401
 )
 from pmem.hooks.state import SessionState
 from pmem.index.anchors import ANCHOR_CACHE, STALE_LABEL, AnchorChecker
-from pmem.index.graph import current_entries, digest, project_pitfalls
+from pmem.index.graph import current_entries, digest, file_features, project_pitfalls
 from pmem.metrics.events import log_event
 
 WRITE_TOOLS = {"write", "strreplace", "edit", "multiedit", "editnotebook", "delete", "search_replace"}
@@ -543,23 +543,31 @@ class Gate:
                 "（输出不能丢弃，如 > $null、| Out-Null）；检索要真正返回结果才算查过。"
                 "确实不需要记忆时，请用户回复“跳过记忆”。"
             )
-        text, total = self._pitfalls(module)
+        text, total = self._pitfalls(module, rel)
         message += text
         self.log("gate", module=module, file=rel, mode=mode, pitfalls=total or None)
         return {"permission": "deny", "user_message": message, "agent_message": message}
 
-    def _pitfalls(self, module: str) -> tuple[str, int]:
-        """检索按关键词排序，可能漏掉与这次修改相关的坑；排除项、风险、更正直接列出来，按这个顺序。"""
-        pitfalls = sorted((e for e in current_entries(self.module_entries(module)) if e.kind in PITFALL_KINDS),
+    def _pitfalls(self, module: str, rel: str | None = None) -> tuple[str, int]:
+        """检索按关键词排序，可能漏掉与这次修改相关的坑；排除项、风险、更正直接列出来，按这个顺序。
+        锚点就是要改的文件的功能记录也列出来：改回用户要求的行为最常发生在这里。"""
+        entries = self.module_entries(module)
+        pitfalls = sorted((e for e in current_entries(entries) if e.kind in PITFALL_KINDS),
                           key=lambda e: PITFALL_KINDS.index(e.kind))
         shown = pitfalls[:MAX_GUARD_PITFALLS]
+        features = file_features(entries, rel) if rel else []
         project = self.take_project_pitfalls(module, skip={e.id for e in shown})
-        if not shown and not project:
+        if not shown and not project and not features:
             return "", 0
         self.save()
-        more = f"（另有 {len(pitfalls) - len(shown)} 条，检索时可见）" if len(pitfalls) > len(shown) else ""
-        head = "\n该模块已知的排除项、风险和更正，改之前先对照" + more + "：\n" if shown else "\n"
-        text = head + "\n".join(self.lines_with_project(shown, project))
+        text = ""
+        if shown or project:
+            more = f"（另有 {len(pitfalls) - len(shown)} 条，检索时可见）" if len(pitfalls) > len(shown) else ""
+            head = "\n该模块已知的排除项、风险和更正，改之前先对照" + more + "：\n" if shown else "\n"
+            text = head + "\n".join(self.lines_with_project(shown, project))
+        if features:
+            text += ("\n这个文件上的功能记录（用户要求、必须保持的行为），改动不要把它们改回去：\n"
+                     + "\n".join(self.memory_lines(features)))
         return text, len(pitfalls)
 
     def on_pre_tool(self) -> dict:
@@ -936,8 +944,21 @@ class Gate:
         if not self._reminders_on("gate.stop_reminder", True):
             return []
         written = self._written()
-        return [m for m in self.state.data["edited"]
-                if m not in written and not self.state.has("nudged", m) and not self._deprecated(m)]
+        return [m for m in self._record_required() if m not in written and not self.state.has("nudged", m)]
+
+    def _record_required(self) -> list[str]:
+        """改过、需要写功能记录的模块：只改了测试、生成代码、配置（gate.record_exempt）的不算，废弃模块不算。"""
+        exempt = [str(p) for p in self.config.get("gate.record_exempt") or []]
+        files: dict[str, list[str]] = {}
+        for item in self.state.data["edited_files"]:
+            module, _, rel = item.partition("|")
+            files.setdefault(module, []).append(rel)
+
+        def needed(module: str) -> bool:
+            own = files.get(module)
+            return not own or any(not any(wglob.globmatch(f, p, flags=_GLOB) for p in exempt) for f in own)
+
+        return [m for m in self.state.data["edited"] if not self._deprecated(m) and needed(m)]
 
     def _deprecated(self, module_id: str) -> bool:
         """废弃模块只读，写记忆会被拒绝，所以不提醒写。"""
@@ -985,6 +1006,7 @@ class Gate:
             returned=self.state.data["returned"] or None,
             recorded=self.state.data["recorded"] or None,
             edited=self.state.data["edited"] or None,
+            required=self._record_required() or None,
             analyzed=analyzed or None,
             review=review or None,
             nudged=(pending + consulted_pending) or None,
@@ -1008,11 +1030,14 @@ class Gate:
             )
         if pending:
             messages.append(
-                f"[pmem] 本轮修改了 {'、'.join(pending)}，还没有写研发记忆。回顾本轮，逐项看有没有："
-                "1) 试过不行、被排除的方向（exclusion）；2) 确认的根因或踩到的坑（conclusion / correction）；"
-                "3) 看代码看不出的约束或风险（risk）；4) 为什么选这个方案而不是别的（decision）。"
-                "有就用 record_memory 每个模块写一条，summary 写一句结论（已有记忆说的就是这件事时用 supersedes 更新它）；"
-                "只是照常实现、没有以上内容，就回复“无新教训”，不要为了记录而写“改了什么”。不要询问用户。"
+                f"[pmem] 本轮修改了 {'、'.join(pending)}，还没有写研发记忆。"
+                "1) 每个模块用 record_memory 写一条功能记录（kind=feature）：需求来源（谁要求的、为什么）、"
+                "必须保持的行为、适用条件（applies）、入口在哪；summary 写一句“什么行为必须保持”，不写“改了哪个方法”；"
+                "已有功能记录说的就是这件事时用 supersedes 更新它，实现了某条规划（plan）也用 supersedes 替代它。"
+                "2) 本轮另有以下内容时，再各写一条对应类型的教训：试过不行、被排除的方向（exclusion）；"
+                "确认的根因或踩到的坑（conclusion / correction）；看代码看不出的约束或风险（risk）；"
+                "为什么选这个方案而不是别的（decision）。"
+                "确实不需要记录（只改了注释、格式、重命名等，行为没变）时，回复“无需记录：<一句原因>”。不要询问用户。"
             )
         if consulted_pending:
             messages.append(

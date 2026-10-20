@@ -9,7 +9,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 
-from pmem.core.entry import KIND_LABELS, PITFALL_KINDS, Entry
+from pmem.core.entry import KIND_LABELS, PITFALL_KINDS, RECORD_KINDS, Entry
 from pmem.core.entry import REPLACING_STATUSES as REPLACING
 from pmem.core.entry import VISIBLE_STATUSES as VISIBLE
 from pmem.core.registry import ModuleRegistry, RegistryError
@@ -32,10 +32,18 @@ def current_entries(entries: list[Entry]) -> list[Entry]:
     return sorted((e for e in visible if e.id not in replaced), key=lambda e: (e.note_date, e.id), reverse=True)
 
 
-def digest(entries: list[Entry], limit: int = 6, per_topic: int = 2, path: str | None = None) -> list[Entry]:
-    """一个模块最值得先看的现行记忆：排除项、风险、更正、决定在前，同类从新到旧，每个议题最多 per_topic 条。
-    给了 path（正在看的文件）时，锚点就是它的记忆先占至多一半名额，其余照旧，模块层面的坑仍排得进来。"""
-    ordered = sorted(current_entries(entries), key=lambda e: KIND_ORDER.get(e.kind, len(KIND_ORDER)))
+def file_features(entries: list[Entry], path: str, limit: int = 2) -> list[Entry]:
+    """锚点就是这个文件的现行功能记录：改这个文件时最容易把用户要求的行为改回去。"""
+    return [e for e in current_entries(entries) if e.kind == "feature" and anchor_affinity(e.anchors, path) == 2][:limit]
+
+
+def digest(entries: list[Entry], limit: int = 6, per_topic: int = 2, path: str | None = None,
+           feature_slots: int = 2) -> list[Entry]:
+    """一个模块最值得先看的现行教训：排除项、风险、更正、决定在前，同类从新到旧，每个议题最多 per_topic 条。
+    给了 path（正在看的文件）时，锚点就是它的记忆先占至多一半名额，其余照旧，模块层面的坑仍排得进来；
+    功能记录、规划不占教训名额，只在末尾附至多 feature_slots 条锚点就是该文件的功能记录。"""
+    lessons = [e for e in current_entries(entries) if e.kind not in RECORD_KINDS]
+    ordered = sorted(lessons, key=lambda e: KIND_ORDER.get(e.kind, len(KIND_ORDER)))
     if path:
         near = [e for e in ordered if anchor_affinity(e.anchors, path) == 2][:limit // 2]
         first = {e.id for e in near}
@@ -48,7 +56,7 @@ def digest(entries: list[Entry], limit: int = 6, per_topic: int = 2, path: str |
             per[entry.entity.lower()] += 1
         if len(picked) == limit:
             break
-    return picked
+    return picked + (file_features(entries, path, feature_slots) if path and feature_slots else [])
 
 
 def project_pitfalls(entries: list[Entry], exclude_module: str | None = None, limit: int = 3) -> list[Entry]:

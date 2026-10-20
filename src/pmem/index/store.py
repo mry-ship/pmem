@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pmem.core.entry import REPLACING_STATUSES, VISIBLE_STATUSES, Entry
+from pmem.core.entry import RECORD_KINDS, REPLACING_STATUSES, VISIBLE_STATUSES, Entry
 from pmem.core.ids import ulid_ms
 from pmem.index.anchors import ANCHOR_CACHE, AnchorChecker, anchor_affinity
 from pmem.index.embedder import Embedder
@@ -28,7 +28,8 @@ SYNONYM_WEIGHT = 0.8
 
 def entry_text(entry: Entry) -> str:
     """参与检索的文本：议题名 + 标题 + 正文 + 验证方法 + 常用叫法。"""
-    parts = [entry.entity, entry.summary or "", entry.content, entry.verify or "", " ".join(entry.aliases)]
+    parts = [entry.entity, entry.summary or "", entry.content, entry.verify or "", entry.applies or "",
+             " ".join(entry.aliases)]
     return " ".join(p for p in parts if p)
 
 
@@ -45,6 +46,8 @@ class Indexed:
 @dataclass
 class SearchResult:
     items: list[dict] = field(default_factory=list)
+    # 分层检索时的功能记录与规划：只有标题
+    features: list[dict] = field(default_factory=list)
     fallback: str | None = None
     degraded: str | None = None
     warnings: list[str] = field(default_factory=list)
@@ -277,9 +280,12 @@ class MemoryIndex:
         verify: bool = True,
         semantic: bool = True,
         path: str | None = None,
+        feature_limit: int | None = None,
     ) -> SearchResult:
         """排序 = (相关度 + 加分) × 时效；相关度 = 0.6 × 语义 + 0.4 × 关键词（无语义时只用关键词）。
-        path 是要改的文件（项目相对路径）：锚点就是它的记忆加分，免得只按新旧排、被模块里别的方面挤掉。"""
+        path 是要改的文件（项目相对路径）：锚点就是它的记忆加分，免得只按新旧排、被模块里别的方面挤掉。
+        给了 feature_limit 时分层：items 只放教训（limit 条全文），功能记录与规划另排、放进 features（只有标题），
+        这样每次改模块都写的功能记录不会挤掉教训。"""
         pool = [i for i in self._visible_items(as_of) if module is None or _same(i.entry.module, module)]
         result = SearchResult(warnings=list(self.warnings))
         if entity:
@@ -304,10 +310,17 @@ class MemoryIndex:
             key=lambda t: (t[0], t[1]),
             reverse=True,
         )
+        records: list[Entry] = []
+        if feature_limit is not None:
+            if feature_limit > 0:
+                records = _spread_batches([t for t in ranked if t[2].kind in RECORD_KINDS], feature_limit,
+                                          max_per_batch)
+            ranked = [t for t in ranked if t[2].kind not in RECORD_KINDS]
         chosen = _spread_batches(ranked, limit, max_per_batch)
         # 回看历史时代码早已变化，核对没有意义
-        problems = self.check_anchors(chosen) if verify and not as_of else {}
-        result.items = [_row(e, problems.get(e.id), with_module=module is None) for e in chosen]
+        problems = self.check_anchors(chosen + records) if verify and not as_of else {}
+        result.items = [entry_row(e, problems.get(e.id), with_module=module is None) for e in chosen]
+        result.features = [title_row(e, problems.get(e.id), with_module=module is None) for e in records]
         return result
 
     def _relevance(self, pool: list[Indexed], query: str, weights: dict[str, float], result: SearchResult) -> list[float]:
@@ -361,7 +374,22 @@ def _spread_batches(ranked: list[tuple[float, int, Entry]], limit: int, max_per_
     return chosen
 
 
-def _row(entry: Entry, problems: list[str] | None, with_module: bool) -> dict:
+def title_row(entry: Entry, problems: list[str] | None, with_module: bool) -> dict:
+    """只有标题的一行：功能记录、规划在检索里的样子。"""
+    row = {"id": entry.id, "entity": entry.entity, "kind": entry.kind, "date": entry.note_date,
+           "summary": entry.title, "stale": problems is not None}
+    if entry.applies:
+        row["applies"] = entry.applies
+    if with_module:
+        row = {"module": entry.module, **row}
+    if problems is not None:
+        row["check"] = problems
+    if entry.status != "active":
+        row["status"] = entry.status
+    return row
+
+
+def entry_row(entry: Entry, problems: list[str] | None, with_module: bool) -> dict:
     row = {
         "id": entry.id,
         "entity": entry.entity,
@@ -375,6 +403,8 @@ def _row(entry: Entry, problems: list[str] | None, with_module: bool) -> dict:
     row["content"] = entry.content
     if entry.verify:
         row["verify"] = entry.verify
+    if entry.applies:
+        row["applies"] = entry.applies
     if entry.project_wide:
         row["scope"] = entry.scope
     if with_module:

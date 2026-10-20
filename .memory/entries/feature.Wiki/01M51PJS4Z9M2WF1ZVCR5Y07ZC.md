@@ -15,6 +15,8 @@ aliases:
 - 知识图谱
 - 需核实
 - gitignore
+verified: '2026-10-20'
+verified_at: '2026-10-20T17:34:02.183+08:00'
 ---
 决定：Wiki 生成逻辑放在 src/pmem/generate/wiki.py，命令行 pmem wiki 和写入后自动生成共用。
 

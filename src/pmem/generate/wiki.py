@@ -52,6 +52,8 @@ def _entry_block(entry: Entry, to_root: str, problems: list[str] | None) -> list
         lines += [f"> ⚠ {STALE_LABEL}：{'；'.join(problems)}。核对后仍成立就 confirm_memory，不成立就写 correction 替代。",
                   ""]
     lines += [entry.content.strip(), ""]
+    if entry.applies:
+        lines += [f"**适用条件**：{entry.applies}", ""]
     if entry.verify:
         lines += [f"**怎么验证**：{entry.verify}", ""]
     meta = [f"id `{entry.id}`"]

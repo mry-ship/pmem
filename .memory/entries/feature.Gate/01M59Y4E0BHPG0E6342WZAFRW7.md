@@ -16,6 +16,8 @@ aliases:
 - 要我自己写吗
 - 自动提醒像用户消息
 - followup
+verified: '2026-10-20'
+verified_at: '2026-10-20T17:39:46.419+08:00'
 source:
   conversation: 6b540a20-0fb2-45fe-9ffb-9ce5b287b508
 ---

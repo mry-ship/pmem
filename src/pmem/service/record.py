@@ -32,6 +32,7 @@ SUMMARY_HINT = ("没填 summary：已按正文第一句生成标题“{title}”
                 "不准确就带 draft_id 补一句 {limit} 字以内、说清结论的 summary。")
 SUMMARY_LONG_HINT = "summary 有 {n} 字，超过建议的 {limit} 字：标题只写一句结论，细节放正文。"
 MAX_VERIFY_CHARS = 300
+MAX_APPLIES_CHARS = 120
 
 
 def _one_line(text: str | None) -> str:
@@ -79,9 +80,10 @@ class RecordOps(ServiceBase):
         summary: str | None = None,
         scope: str | None = None,
         verify: str | None = None,
+        applies: str | None = None,
     ) -> dict:
         response = self._record(module, entity, kind, content, supersedes, anchors, draft_id,
-                                source_conversation, aliases, status, summary, scope, verify)
+                                source_conversation, aliases, status, summary, scope, verify, applies)
         if not response.get("ok"):
             self._log("record_rejected", conv=source_conversation, module=module, entity=entity or None,
                       code=response.get("code"), error=str(response.get("error") or "")[:200])
@@ -89,7 +91,7 @@ class RecordOps(ServiceBase):
 
     @returns_errors
     def _record(self, module, entity, kind, content, supersedes, anchors, draft_id, source_conversation, aliases,
-                status, summary=None, scope=None, verify=None) -> dict:
+                status, summary=None, scope=None, verify=None, applies=None) -> dict:
         given_anchors = set(anchors or [])
         resolved = self.registry.resolve_module(module)
         target = self.registry.modules.get(resolved.id)
@@ -102,6 +104,10 @@ class RecordOps(ServiceBase):
         if scope and scope not in SCOPES:
             return fail(f"scope 只能是 {' / '.join(SCOPES)}，当前为 {scope!r}", "scope_invalid")
         summary = _one_line(summary) or None
+        applies = _one_line(applies) or None
+        if applies and len(applies) > MAX_APPLIES_CHARS:
+            return fail(f"applies 最多 {MAX_APPLIES_CHARS} 字（写这条在什么前提下成立），当前 {len(applies)} 字",
+                        "content_length")
         verify = str(verify or "").strip() or None
         if verify and len(verify) > MAX_VERIFY_CHARS:
             return fail(f"verify 最多 {MAX_VERIFY_CHARS} 字（写怎么确认：命令、测试、现象），当前 {len(verify)} 字",
@@ -129,6 +135,7 @@ class RecordOps(ServiceBase):
             summary = summary or old.summary
             scope = scope or old.scope
             verify = verify or old.verify
+            applies = applies or old.applies
             if status is None and old.status in WRITABLE_STATUSES:
                 status = old.status
 
@@ -139,10 +146,11 @@ class RecordOps(ServiceBase):
             return fail(f"supersedes 会和 {old.id} 已有的替代关系连成环，两条记忆都会从检索里消失；"
                         "请新建一条（不带 draft_id）替代它们", "supersede_cycle")
         aliases = _clean_aliases(aliases)
-        hits = find_secrets(" ".join([entity_id, *aliases, summary or "", verify or ""]),
+        hits = find_secrets(" ".join([entity_id, *aliases, summary or "", verify or "", applies or ""]),
                             self.config.get("write.secret_patterns") or [])
         if hits:
-            return fail("entity、aliases、summary 或 verify 疑似包含敏感信息，已拒绝写入：" + "；".join(hits), "secret")
+            return fail("entity、aliases、summary、verify 或 applies 疑似包含敏感信息，已拒绝写入：" + "；".join(hits),
+                        "secret")
         hints = self._write_hints(resolved.id, entity_id, kind, content, aliases, merging=len(replaced) >= 2)
         hints += self._field_hints(kind, content, summary, verify)
         if anchors and not any("#" in a for a in anchors):
@@ -178,6 +186,7 @@ class RecordOps(ServiceBase):
             summary=summary,
             scope=scope if scope != "module" else None,
             verify=verify,
+            applies=applies,
         )
         written = self.storage.write(entry, draft_id=draft_id or None)
         self.index.refresh(force=True)

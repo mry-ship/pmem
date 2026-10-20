@@ -5,12 +5,17 @@ import time
 
 from pmem.core import seen
 from pmem.core.entry import auto_summary
+from pmem.index.store import entry_row
 from pmem.service.base import MAX_LIMIT, VERIFY_HINT, ServiceBase, fail, returns_errors, valid_date
 
 MAX_RELATED = 3
 SEEN_HINT = ("标 seen 的 {n} 条本对话已经返回过全文，这次只列标题；上下文里找不到原文时，"
              "带 full=true（命令行 --full）重查。")
-_KEPT_ON_COLLAPSE = ("module", "id", "entity", "kind", "date", "stale", "check", "status", "scope")
+FEATURES_HINT = ("features 是本模块已实现的功能（feature）和未实现的规划（plan），只列标题：功能里写的是用户要求、"
+                 "必须保持的行为，改动会改变这些行为时先用 ids=[...]（命令行 --id）取全文核对，不要把它们当冗余代码改回去；"
+                 "规划还没实现，不是现状。")
+APPLIES_HINT = "带 applies 的记忆只在该前提下成立：先判断当前情况是否满足，不满足就不要套用。"
+_KEPT_ON_COLLAPSE = ("module", "id", "entity", "kind", "date", "stale", "check", "status", "scope", "applies")
 
 
 class SearchOps(ServiceBase):
@@ -26,10 +31,14 @@ class SearchOps(ServiceBase):
         source_conversation: str | None = None,
         as_of: str | None = None,
         full: bool = False,
+        ids: list[str] | None = None,
     ) -> dict:
         started = time.perf_counter()
         try:
-            response = self._search(module, path, entity, query, limit, valid_date(as_of))
+            if ids:
+                response, full = self._by_ids(ids), True
+            else:
+                response = self._search(module, path, entity, query, limit, valid_date(as_of))
         except ValueError as exc:  # 含 RegistryError
             response = fail(str(exc))
         conversation = source_conversation or self._claim_conversation(response)
@@ -82,6 +91,21 @@ class SearchOps(ServiceBase):
             response["seen_hint"] = SEEN_HINT.format(n=len(collapsed))
         return collapsed
 
+    def _by_ids(self, ids: list[str]) -> dict:
+        """按 id 取全文（功能记录、去重后的标题都可以这样展开）；被替代、归档的也给，并标出状态。"""
+        wanted = list(dict.fromkeys(str(i).strip() for i in ids if str(i).strip()))[:MAX_LIMIT]
+        entries = [e for e in (self.index.find(i) for i in wanted) if e is not None]
+        problems = self.index.check_anchors(entries)
+        modules = {e.module for e in entries}
+        response: dict = {"ok": True, "module": next(iter(modules)) if len(modules) == 1 else None,
+                          "items": [entry_row(e, problems.get(e.id), with_module=True) for e in entries]}
+        missing = [i for i in wanted if i not in {e.id for e in entries}]
+        if missing:
+            response["missing"] = missing
+        if problems:
+            response["verify_hint"] = VERIFY_HINT
+        return response
+
     def _search(self, module, path, entity, query, limit, as_of=None) -> dict:
         limit = max(1, min(int(limit or self.config.get("search.limit")), MAX_LIMIT))
         response: dict = {"ok": True}
@@ -114,13 +138,19 @@ class SearchOps(ServiceBase):
             half_life_days=float(self.config.get("search.recency_half_life_days")),
             as_of=as_of,
             path=self._relative(path) if path else None,
+            feature_limit=max(0, int(self.config.get("search.feature_limit", 3))),
         )
         response.update({"module": module_id, "items": result.items})
+        if result.features:
+            response["features"] = result.features
+            response["features_hint"] = FEATURES_HINT
+        if any(i.get("applies") for i in result.items + result.features):
+            response["applies_hint"] = APPLIES_HINT
         if as_of:
             response["as_of"] = as_of
         if result.expanded:
             response["expanded"] = result.expanded
-        if any(i.get("stale") for i in result.items):
+        if any(i.get("stale") for i in result.items + result.features):
             response["verify_hint"] = VERIFY_HINT
         if module_id and not as_of:
             related = self.graph_model().related(module_id, entity_id, limit=MAX_RELATED)

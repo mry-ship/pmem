@@ -27,6 +27,12 @@ DEFAULTS: dict = {
         "analysis_reminder": True,
         "read_digest": True,
         "question_review": True,
+        # 只改了这些文件的模块，结束时不提醒写功能记录（改前的记忆检查照旧）
+        "record_exempt": [
+            "**/test/**", "**/tests/**", "**/__tests__/**", "**/test_*.*", "**/*_test.*", "**/*.test.*",
+            "**/*.spec.*", "**/generated/**", "**/*.generated.*", "**/*.g.cs", "**/*_pb2.py", "**/*.pb.*",
+            "**/*.json", "**/*.yaml", "**/*.yml", "**/*.toml", "**/*.ini", "**/*.cfg", "**/*.lock", "**/*.meta",
+        ],
         "analysis_markers": [
             "为什么", "原因", "根因", "排查", "定位", "分析", "怎么回事", "复现", "报错", "崩溃", "闪退",
             "卡死", "不生效", "异常", "bug", "why", "debug", "investigate",
@@ -40,7 +46,7 @@ DEFAULTS: dict = {
         "max_per_day_per_entity": 5,
         "secret_patterns": [],
     },
-    "search": {"limit": 5, "max_per_batch": 2, "recency_half_life_days": 90},
+    "search": {"limit": 5, "max_per_batch": 2, "recency_half_life_days": 90, "feature_limit": 3},
     "wiki": {"auto": True, "dir": ".memory/wiki"},
     "server": {"watchdog": True, "request_timeout": 120},
 }
@@ -123,6 +129,8 @@ class Config:
             value = self.get(key)
             if value not in allowed:
                 raise ConfigError(f"配置项 {key} 只能是 {' / '.join(allowed)}，当前为 {value!r}")
+        if not isinstance(self.get("gate.record_exempt") or [], list):
+            raise ConfigError("配置项 gate.record_exempt 应是 glob 列表")
         patterns = self.get("write.secret_patterns") or []
         if not isinstance(patterns, list):
             raise ConfigError("配置项 write.secret_patterns 应是正则表达式列表")

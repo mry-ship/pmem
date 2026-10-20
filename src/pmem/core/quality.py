@@ -20,6 +20,12 @@ _WHY = re.compile(
     r"|because|instead|trade-?off|otherwise"
 )
 VERIFY_KINDS = ("conclusion", "correction")
+RECORD_KINDS = ("feature", "plan")
+# 功能记录要能回答“谁要的、哪些行为不能被改掉”，否则后来的人会把它当冗余代码改回去
+_REQUIREMENT = re.compile(
+    r"需求|要求|用户|产品|策划|设计|必须|保持|不能|不要|不可|约定|规则|为了|以便|目的|期望|应当|应该|只在|仅在"
+    r"|require|must|should|expect"
+)
 _LABEL_PREFIX = re.compile(r"^\s*(?:决定|结论)(?:\s*[（(][^）)]{0,40}[）)])?\s*[：:]\s*")
 
 
@@ -29,7 +35,11 @@ def content_hints(content: str, recommend_max: int, kind: str | None = None) -> 
     # 正文开头的“决定：”“结论：”只是类型标签，却会命中原因词，先去掉再判断；“根因：”“风险：”本身就是原因，保留
     body = _LABEL_PREFIX.sub("", text, count=1).lower()
     has_reason = bool(_REASON.search(body))
-    if _CHANGELOG_START.match(body) and not has_reason:
+    if kind in RECORD_KINDS:
+        if not _REQUIREMENT.search(body):
+            hints.append("功能记录要写需求来源和必须保持的行为：谁要求的、为什么，哪些行为以后不能改掉、在什么条件下成立；"
+                         "不写改了哪个方法。")
+    elif _CHANGELOG_START.match(body) and not has_reason:
         hints.append("读起来像变更记录：改了什么版本库里都有，记忆应写为什么这么改、排除了哪些方向、留下什么风险。")
     elif not has_reason:
         hints.append("没看到原因、结论或风险：下一个人最需要的是“为什么”和“别怎么做”。")

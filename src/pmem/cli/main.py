@@ -13,6 +13,8 @@ BRIEF_HELP = "输出精简文本（每条一行）而不是 JSON，免得再用�
 def build_parser():
     import argparse
 
+    from pmem.core.entry import KINDS
+
     parser = argparse.ArgumentParser(prog="pmem", description="面向项目与团队的 AI 研发记忆系统")
     parser.add_argument("--version", action="version", version=f"pmem {__version__}")
     sub = parser.add_subparsers(dest="command")
@@ -54,6 +56,8 @@ def build_parser():
     p.add_argument("--limit", type=int, default=5)
     p.add_argument("--as-of", default="", help="只看这一天（YYYY-MM-DD）有效的记忆")
     p.add_argument("--full", action="store_true", help="本对话已返回过的记忆也给全文（默认只列标题）")
+    p.add_argument("--id", dest="ids", action="extend", nargs="+", default=None,
+                   help="按 id 取全文（功能记录只列标题时用），给了就忽略其他条件")
     p.add_argument("--brief", action="store_true", help=BRIEF_HELP)
     p.add_argument("--root", default=".")
 
@@ -88,7 +92,8 @@ def build_parser():
     p = sub.add_parser("record", help="命令行写入一条记忆（规则与 MCP 的 record_memory 相同）")
     p.add_argument("--module", required=True)
     p.add_argument("--entity", required=True)
-    p.add_argument("--kind", required=True, choices=("conclusion", "exclusion", "correction", "risk", "decision"))
+    p.add_argument("--kind", required=True, choices=KINDS,
+                   help="feature 功能记录（改了模块就写）、plan 规划；其余是教训")
     body = p.add_mutually_exclusive_group(required=True)
     body.add_argument("--content", help="正文；传 - 表示从标准输入读取")
     body.add_argument("--content-file", help="从 UTF-8 文件读取正文（正文含引号或较长时推荐）")
@@ -101,6 +106,7 @@ def build_parser():
                    help="常用的其他叫法，如 --alias 闪退 崩溃；含空格的叫法要加引号" + keep)
     p.add_argument("--summary", default="", help="一句话标题（60 字以内）；不写时取正文第一句")
     p.add_argument("--verify", default="", help="怎么确认问题已解决或结论仍成立：命令、测试名、现象")
+    p.add_argument("--applies", default="", help="这条在什么前提下成立：平台、配置、版本、场景（120 字以内）")
     p.add_argument("--scope", default="", choices=("", "module", "project"),
                    help="project：全项目都会踩的坑，任何模块的摘要都带上；默认只属于本模块")
     p.add_argument("--draft-id", default="", help="上次写入返回的 draft_id：同一任务再次写入时覆盖那一条")
@@ -427,13 +433,14 @@ SERVICE_COMMANDS = {
     "list": lambda s, a: s.list_modules(),
     "record": lambda s, a: s.record(a.module, a.entity, a.kind, _record_content(a), a.supersedes, a.anchor,
                                     a.draft_id or None, aliases=a.alias, status="seed" if a.seed else None,
-                                    summary=a.summary or None, scope=a.scope or None, verify=a.verify or None),
+                                    summary=a.summary or None, scope=a.scope or None, verify=a.verify or None,
+                                    applies=a.applies or None),
     "archive": lambda s, a: s.change_status(a.ids, "restore" if a.restore else "archive"),
     "confirm": lambda s, a: s.confirm(a.ids),
     "graph": lambda s, a: s.graph(a.module, a.entity or None),
     "terms": lambda s, a: s.terms(a.module or None, a.top, a.min),
     "search": lambda s, a: s.search(a.module or None, a.path or None, a.entity or None, a.query or None, a.limit,
-                                    as_of=a.as_of or None, full=a.full),
+                                    as_of=a.as_of or None, full=a.full, ids=a.ids or None),
 }
 
 

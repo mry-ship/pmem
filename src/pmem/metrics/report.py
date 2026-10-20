@@ -8,7 +8,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from pmem.catalog.coverage import module_heat
-from pmem.core.entry import KIND_LABELS, VISIBLE_STATUSES
+from pmem.core.entry import KIND_LABELS, LESSON_KINDS, VISIBLE_STATUSES
 from pmem.core.ids import ulid_ms
 from pmem.metrics.cite import assistant_text, judge
 from pmem.metrics.events import MIN_SEARCHES_FOR_IDLE, read_events
@@ -24,6 +24,7 @@ USAGE_TOP = 5
 MIN_RETURNS_TO_REVIEW = 3
 # 新写记忆里防错类（排除项、风险、更正）的目标占比：低于它说明记忆在往“变更记录”漂
 PITFALL_SHARE_TARGET = 0.3
+FEATURE_COVERAGE_TARGET = 0.8
 
 
 def _median(values: list[float]) -> float | None:
@@ -150,11 +151,33 @@ def _repeats(events: list[dict]) -> dict:
 
 
 def _pitfall_share(entries: list, since: float) -> dict:
-    """防错类记忆在本期新写和之前已有记忆里的占比（按记忆文件，含已被替代的）。"""
-    new = [e for e in entries if ulid_ms(e.id) / 1000 >= since]
-    old = [e for e in entries if ulid_ms(e.id) / 1000 < since]
+    """防错类记忆在本期新写和之前已有教训里的占比（按记忆文件，含已被替代的）；功能记录、规划不算分母。"""
+    lessons = [e for e in entries if e.kind in LESSON_KINDS]
+    new = [e for e in lessons if ulid_ms(e.id) / 1000 >= since]
+    old = [e for e in lessons if ulid_ms(e.id) / 1000 < since]
     return {"new": len(new), "new_pitfalls": sum(e.kind in AVOID_KINDS for e in new),
             "old": len(old), "old_pitfalls": sum(e.kind in AVOID_KINDS for e in old)}
+
+
+def _feature_coverage(events: list[dict], convs: dict[str, dict], mine: list) -> dict:
+    """改过代码、需要写功能记录的模块（stop 事件的 required）里，同一对话写了功能记录的比例。
+    终端写入可能不带对话 id，对话期间（首尾放宽）本机新写的同模块功能记录也算。"""
+    required: dict[str, set] = defaultdict(set)
+    for e in events:
+        if e["type"] == "stop" and e.get("conv") and e.get("required"):
+            required[e["conv"]].update(e["required"])
+    features = [(e, ulid_ms(e.id) / 1000) for e in mine if e.kind == "feature"]
+    total = covered = 0
+    for conv, modules in required.items():
+        c = convs.get(conv)
+        for module in modules:
+            total += 1
+            covered += any(
+                f.module == module and (f.source_conversation == conv or (
+                    c is not None and c["start"] - OWN_WRITE_SLACK <= ts <= c["end"] + OWN_WRITE_SLACK))
+                for f, ts in features
+            )
+    return {"required": total, "covered": covered}
 
 
 def _compare(convs: dict[str, dict]) -> dict:
@@ -264,6 +287,7 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
         "records": {"total": sum(record_kinds.values()), "by_kind": dict(record_kinds)},
         "pitfall_share": _pitfall_share(entries, since),
         "repeats": _repeats(events),
+        "feature_coverage": _feature_coverage(events, convs, mine),
         "habits": {
             "gates": len(gates), "gate_converted": gate_converted,
             "nudges": len(nudges), "nudge_converted": nudge_converted,
@@ -322,12 +346,19 @@ def _render_usage(u: dict, memories: int, searches: int) -> list[str]:
     return lines
 
 
-def _render_quality(share: dict | None, repeats: dict | None) -> list[str]:
+def _render_quality(share: dict | None, repeats: dict | None, coverage: dict | None = None) -> list[str]:
     lines = []
+    if coverage and coverage["required"]:
+        ratio = coverage["covered"] / coverage["required"]
+        line = (f"  功能记录覆盖：改过代码的模块 {coverage['required']} 个次，写了功能记录的 {coverage['covered']} 个次"
+                f"（{_pct(coverage['covered'], coverage['required'])}）；目标不低于 {FEATURE_COVERAGE_TARGET:.0%}")
+        if ratio < FEATURE_COVERAGE_TARGET:
+            line += "，偏低：用户要求的行为没留下记录，以后容易被当成冗余改回去"
+        lines.append(line)
     if share and share["new"]:
         ratio = share["new_pitfalls"] / share["new"]
         before = f"，之前 {_pct(share['old_pitfalls'], share['old'])}" if share["old"] else ""
-        line = (f"  防错类记忆（排除项、风险、更正）占本期新增 {_pct(share['new_pitfalls'], share['new'])}{before}；"
+        line = (f"  防错类记忆（排除项、风险、更正）占本期新增教训 {_pct(share['new_pitfalls'], share['new'])}{before}；"
                 f"目标不低于 {PITFALL_SHARE_TARGET:.0%}")
         if ratio < PITFALL_SHARE_TARGET:
             line += "，偏低：记忆可能在变成“改了什么”的记录，排查中排除的方向、踩的坑要记下来"
@@ -355,7 +386,7 @@ def render(report: dict) -> str:
          f"（{_pct(c['cited'], c['returned'])}，按字面重合计，是保守下限）"),
         f"  新写记忆 {r['total']} 条" + (f"（{kinds}）" if kinds else ""),
     ]
-    lines += _render_quality(report.get("pitfall_share"), report.get("repeats"))
+    lines += _render_quality(report.get("pitfall_share"), report.get("repeats"), report.get("feature_coverage"))
     lines += [
         "",
         "【习惯】",

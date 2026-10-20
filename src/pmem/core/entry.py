@@ -3,9 +3,13 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-KINDS = ("conclusion", "exclusion", "correction", "risk", "decision")
+KINDS = ("conclusion", "exclusion", "correction", "risk", "decision", "feature", "plan")
 # 展示顺序即先看的顺序：排除项、风险最能避免走弯路
-KIND_LABELS = {"exclusion": "排除项", "risk": "风险", "correction": "更正", "decision": "决定", "conclusion": "结论"}
+KIND_LABELS = {"exclusion": "排除项", "risk": "风险", "correction": "更正", "decision": "决定", "conclusion": "结论",
+               "feature": "功能", "plan": "规划"}
+# 教训：检索给全文、读代码摘要只从这里挑；功能记录（改了模块就写）与规划（还没实现的需求）只给标题
+LESSON_KINDS = ("exclusion", "risk", "correction", "decision", "conclusion")
+RECORD_KINDS = ("feature", "plan")
 STATUSES = ("draft", "seed", "active", "archived")
 VISIBLE_STATUSES = ("active", "seed", "draft")
 # 归档记忆不再被检索到，但它的 supersedes 仍然算数：归档表示这条演进线整体过时
@@ -18,10 +22,10 @@ SUMMARY_MAX = 60
 _FRONT_MATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
 KNOWN_KEYS = frozenset({"id", "module", "entity", "kind", "status", "supersedes", "anchors", "revision", "author",
                         "note_date", "aliases", "verified", "verified_at", "archived", "source",
-                        "summary", "scope", "verify"})
+                        "summary", "scope", "verify", "applies"})
 # 正文开头常自带“决定：”“更正（2026-10-19）：”，和类型标签放在一起就成了“决定：决定：”
 _KIND_PREFIX = re.compile(
-    r"^\s*(?:决定|结论|更正|排除项?|风险|根因|原因|注意|背景|现象|问题|坑)(?:\s*[（(][^）)]{0,40}[）)])?\s*[：:]\s*"
+    r"^\s*(?:决定|结论|更正|排除项?|风险|根因|原因|注意|背景|现象|问题|坑|功能|规划|需求)(?:\s*[（(][^）)]{0,40}[）)])?\s*[：:]\s*"
 )
 _SENTENCE_END = re.compile(r"[。；;！!？?\n]")
 
@@ -68,6 +72,8 @@ class Entry:
     scope: str | None = None
     # 怎么确认问题已解决或结论仍成立：命令、测试、现象
     verify: str | None = None
+    # 这条记忆成立的前提（平台、配置、版本、场景）：前提不满足时不适用
+    applies: str | None = None
     # 本版本不认识的 YAML 头字段（较新版本写的）：重写文件时原样带上，团队混用版本时不丢
     extra: dict = field(default_factory=dict)
 
@@ -116,6 +122,8 @@ class Entry:
             meta["scope"] = self.scope
         if self.verify:
             meta["verify"] = self.verify
+        if self.applies:
+            meta["applies"] = self.applies
         if self.aliases:
             meta["aliases"] = list(self.aliases)
         if self.verified:
@@ -167,5 +175,6 @@ class Entry:
             summary=_text(meta.get("summary")),
             scope=_text(meta.get("scope")),
             verify=str(meta["verify"]).strip() or None if meta.get("verify") else None,
+            applies=_text(meta.get("applies")),
             extra={k: v for k, v in meta.items() if k not in KNOWN_KEYS},
         )

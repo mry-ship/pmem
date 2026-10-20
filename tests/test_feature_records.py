@@ -184,6 +184,25 @@ def test_guard_lists_feature_records_of_target_file(gate_root):
     assert denied["permission"] == "deny" and "这个文件上的功能记录" in message and "完成后弹分享面板" in message
 
 
+def test_digest_for_module_with_only_unrelated_features(gate_root):
+    _entry(gate_root, "gameplay.Jigsaw", "feature", "用户要求：设置页有静音开关。", "anchors: [src/Jigsaw/Settings.cs]\n",
+           entity="Mute")
+    _entry(gate_root, "economy.Shop", "risk", "风险：全项目都会踩。", "scope: project\n")
+    text = _read(gate_root, "src/Jigsaw/Board.cs")
+    assert "都是功能记录" in text and "还没有研发记忆" not in text and "静音" not in text
+
+
+def test_after_mcp_registers_feature_rows(gate_root):
+    fid = _entry(gate_root, "gameplay.Jigsaw", "feature", "用户要求：完成后弹分享面板。", entity="Share")
+    response = {"ok": True, "server": "pmem", "items": [], "features": [{"id": fid, "module": "gameplay.Jigsaw"}]}
+    wrapped = json.dumps({"content": [{"type": "text", "text": json.dumps(response, ensure_ascii=False)}]})
+    handle("after-mcp", {"conversation_id": "c1", "tool_name": "search_memory",
+                         "tool_input": json.dumps({"query": "分享"}), "result_json": wrapped}, gate_root)
+    lines = (Config.load(gate_root).cache_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    event = [json.loads(line) for line in lines if '"mcp_search"' in line][-1]
+    assert event["ids"] == [fid]
+
+
 def _stop(root: Path, conv: str = "c1") -> dict:
     return handle("stop", {"conversation_id": conv, "status": "completed"}, root)
 

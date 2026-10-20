@@ -18,6 +18,8 @@ aliases:
 - handoff
 - 对话id
 - 终端检索
+verified: '2026-10-20'
+verified_at: '2026-10-20T17:45:57.628+08:00'
 ---
 排除：终端 pmem search 认领交接记录后不删除。
 背景：终端里的 pmem search 拿不到对话 id。

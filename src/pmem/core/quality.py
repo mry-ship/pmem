@@ -4,6 +4,8 @@ from __future__ import annotations
 import difflib
 import re
 
+from pmem.core.entry import RECORD_KINDS
+
 _REASON = re.compile(
     r"根因|原因|因为|由于|所以|导致|结论|排除|风险|注意|不要|不能|勿|禁止|决定|边界|坑|前提|证据|实测|验证|否则|因此"
     r"|为了|目的|口径|差在|区别|澄清|回归|已知|避免|防止|以免"
@@ -20,7 +22,6 @@ _WHY = re.compile(
     r"|because|instead|trade-?off|otherwise"
 )
 VERIFY_KINDS = ("conclusion", "correction")
-RECORD_KINDS = ("feature", "plan")
 # 功能记录要能回答“谁要的、哪些行为不能被改掉”，否则后来的人会把它当冗余代码改回去
 _REQUIREMENT = re.compile(
     r"需求|要求|用户|产品|策划|设计|必须|保持|不能|不要|不可|约定|规则|为了|以便|目的|期望|应当|应该|只在|仅在"

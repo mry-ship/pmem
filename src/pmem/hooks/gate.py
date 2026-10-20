@@ -405,6 +405,9 @@ class Gate:
                 f"[pmem] {intro}，该模块有 {len(current_entries(entries))} 条现行研发记忆。回答或修改前先看这些结论"
                 f"（只列标题；要全文或更多请调用 search_memory(module=\"{module}\", query=\"<问题要点>\")）："
             )
+        elif current_entries(entries):
+            intro_line = (f"[pmem] {intro}，该模块现有的记忆都是功能记录，和这个文件无关的这里不列"
+                          f"（要看请调用 search_memory(module=\"{module}\")）。改动前先看全项目通用的坑：")
         else:
             intro_line = f"[pmem] {intro}，该模块还没有研发记忆。改动前先看全项目通用的坑："
         return "\n".join([intro_line, *self.lines_with_project(picked, project)])
@@ -710,7 +713,7 @@ class Gate:
         if not response or response.get("ok") is not True:
             return {}
         module = self.module_from_args({"module": response["module"]}) if response.get("module") else None
-        rows = [r for key in ("items", "timeline") for r in response.get(key) or [] if isinstance(r, dict)]
+        rows = [r for key in ("items", "features", "timeline") for r in response.get(key) or [] if isinstance(r, dict)]
         ids = [str(i) for i in dict.fromkeys([response.get("id"), *(r.get("id") for r in rows)])
                if i and re.fullmatch(_ULID, str(i))]
         if "record_memory" not in name and not self._from_pmem(name, response, ids):

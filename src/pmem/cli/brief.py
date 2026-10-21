@@ -16,6 +16,18 @@ def _stale(row: dict) -> list[str]:
     return [f"    ⚠ {STALE_LABEL}：{'；'.join(row.get('check') or [])}"] if row.get("stale") else []
 
 
+def _children_lines(children: list[dict]) -> list[str]:
+    lines = ["下级模块：" + "；".join(
+        f"{c['module']}（{c['count']} 条" + (f"，下级 {c['children']} 个" if c.get("children") else "") + "）"
+        for c in children)]
+    for child in children:
+        for row in child.get("latest") or []:
+            where = f"{row['module']} · " if row.get("module") else ""
+            lines.append(f"  {child['module']} ▸ {where}{_kind(row['kind'])}｜{row['entity']}｜{row['date']}"
+                         f"｜{row['id']}：{row['title']}")
+    return lines
+
+
 def _tail(result: dict) -> list[str]:
     lines = [f"! {w}" for w in result.get("warnings") or []]
     if result.get("verify_hint"):
@@ -35,6 +47,8 @@ def _search(result: dict) -> list[str]:
     lines = [head]
     for item in items:
         where = f"{item['module']} · " if item.get("module") else ""
+        if item.get("inherited"):
+            where = f"上级 {item['module']} · "
         seed = "（种子，待确认）" if item.get("status") == "seed" else ""
         if item.get("seen"):
             text = f"（本对话已给过全文）{item.get('summary') or ''}"
@@ -58,6 +72,9 @@ def _search(result: dict) -> list[str]:
             if row.get("applies"):
                 lines.append(f"    适用：{row['applies']}")
             lines += _stale(row)
+    children = result.get("children") or []
+    if children:
+        lines += _children_lines(children)
     for key in ("seen_hint", "applies_hint"):
         if result.get(key):
             lines.append(f"提示：{result[key]}")
@@ -76,6 +93,10 @@ def _graph(result: dict) -> list[str]:
         return lines + _tail(result)
     topics = result.get("topics") or []
     lines = [f"{result['module']}：{len(topics)} 个议题"]
+    if result.get("lineage"):
+        lines.append("上级模块：" + " → ".join(result["lineage"]))
+    if result.get("children"):
+        lines += _children_lines(result["children"])
     for topic in topics:
         lines.append(f"## {topic['entity']}（现行 {topic['current']}，已替代 {topic['superseded']}，最近 {topic['last']}）")
         for row in topic.get("latest") or []:

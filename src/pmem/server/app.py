@@ -81,7 +81,8 @@ def build_server(root: Path | None) -> MCPServer:
         ids: list[str] | None = None,
         source_conversation: str = "",
     ) -> str:
-        """检索项目研发记忆。改代码前传 path（要改的文件）或 module（category.Module）；entity 是模块内议题，可省；
+        """检索项目研发记忆。改代码前传 path（要改的文件）或 module（category.Module，子模块用点号续写，最多 4 段，
+        如 system.Ads.AdMob；查子模块会带上上级模块的教训，查父模块会列出下级模块和各自最新的记忆标题）；entity 是模块内议题，可省；
         query 是关键词或问题描述（按同义词表展开），都不确定时只传 query 全局检索。as_of=YYYY-MM-DD 看那天有效的记忆；
         limit 不传按项目配置。ids=[...] 按 id 取全文，优先于其他参数；full=true 时本对话给过的也给全文。
         返回 items（教训，全文）和 features（功能记录与规划，只有标题）；seen=true 的只给标题，要全文带 full=true；
@@ -108,13 +109,14 @@ def build_server(root: Path | None) -> MCPServer:
     ) -> str:
         """记录一条研发记忆。kind：feature 功能记录（改了模块就写：需求来源、必须保持的行为、适用条件、入口）、
         plan 未实现的需求；教训 exclusion 排除的方向、conclusion 根因或坑、correction 推翻旧结论、risk 看代码看不出的约束、
-        decision 方案取舍。module：category.Module；entity：模块内议题短名。
+        decision 方案取舍。module：category.Module（子模块用点号续写，最多 4 段）；结论写在适用的最高一层，
+        对所有下级都成立的写到父模块；entity：模块内议题短名。
         content 自包含（现象、原因、证据、影响范围），不写“改了哪个方法”。summary：一句话结论或必须保持的行为（60 字内），
         摘要、Wiki 和去重后的检索只显示它。verify：怎么确认结论仍成立（命令、测试名、现象），结论和更正尽量填。
         applies：成立前提（120 字内）。scope=project：编码、环境、跨模块约定这类全项目都会踩的坑。
         aliases：现象和术语的其他叫法（如 ["闪退", "崩溃"]），换说法也能搜到。
         anchors：相关代码，尽量写到函数（路径#函数名；只写文件时该文件任何改动都会标需核实），不填按本对话改过的文件补。
-        supersedes：本模块里被推翻的旧结论、说同一件事的旧功能记录、已实现的规划（plan）的 id。
+        supersedes：本模块（或其下级模块）里被推翻的旧结论、说同一件事的旧功能记录、已实现的规划（plan）的 id。
         同一任务再写同一模块时带上次返回的 draft_id 覆盖，没填的可选字段沿用原值。
         返回的 similar 是同议题已有记忆：重复或被推翻时带 draft_id 重写并填 supersedes。"""
         # 模型常给可选数组顺手填 []，且 draft_id 可能是闸门补的：空列表按“没传”处理，覆盖时沿用原值
@@ -137,7 +139,7 @@ def build_server(root: Path | None) -> MCPServer:
 
     @server.tool()
     def list_modules(category: str = "") -> str:
-        """列出项目的模块与记忆数量、常用议题。不确定模块名时先调用它。"""
+        """列出项目的模块与记忆数量、常用议题、上级（parent）和下级（children）。不确定模块名时先调用它。"""
         return call(lambda s: {**s.list_modules(category or None), "project_root": str(s.root)})
 
     return server

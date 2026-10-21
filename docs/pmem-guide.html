@@ -107,7 +107,7 @@
 <div class="layout">
 <nav>
   <div class="brand">pmem 使用手册</div>
-  <div class="ver">v0.1.0.dev0 · 项目研发记忆</div>
+  <div class="ver">v0.5.0 · 项目研发记忆</div>
   <a href="#glance">一眼看懂</a>
   <a href="#what">pmem 是什么</a>
   <a href="#benefits">收益与适用场景</a>
@@ -230,7 +230,7 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
   <h3>速度</h3>
   <table>
     <tr><th>环节</th><th>耗时</th><th>说明</th></tr>
-    <tr><td>单次检索</td><td><strong>中位 9 毫秒</strong></td><td>上一代 300～400 毫秒</td></tr>
+    <tr><td>单次检索</td><td><strong>中位约 7 毫秒</strong></td><td>本仓库 106 次真实检索；上一代 300～400 毫秒</td></tr>
     <tr><td>读代码时附摘要</td><td>Hook 约 0.3 秒</td><td>每个模块每个对话一次</td></tr>
     <tr><td>没查就改被拦下</td><td>Hook 约 0.3 秒</td><td>额外约 115 token</td></tr>
     <tr><td>其他工具调用</td><td>Hook 约 0.2 秒</td><td>不附加记忆正文</td></tr>
@@ -242,7 +242,8 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
   <table>
     <tr><th>什么时候</th><th>额外 token</th><th>额外耗时</th></tr>
     <tr><td>每个对话：加载规则</td><td>约 850</td><td>无</td></tr>
-    <tr><td>每个模块每个对话一次：检索（默认 5 条）</td><td>中位约 1500，最多约 2600</td><td>约 10 毫秒</td></tr>
+    <tr><td>每个模块每个对话一次：检索（默认 5 条教训全文 + 3 条功能记录标题）</td><td>中位约 2400，最多约 3300</td><td>约 7 毫秒</td></tr>
+    <tr><td>查子模块时另带的上级教训（只在细分了模块时）</td><td>每条几百，默认最多 2 条</td><td>无</td></tr>
     <tr><td>读代码时附摘要</td><td>约 530</td><td>Hook 约 0.3 秒</td></tr>
     <tr><td>没查就改被拦下</td><td>约 115</td><td>Hook 约 0.3 秒</td></tr>
     <tr><td>其他工具调用</td><td>0</td><td>Hook 约 0.2 秒</td></tr>
@@ -271,6 +272,19 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
     <tr><td>搜“闪退”排进前 3 的“崩溃”记忆</td><td>0 条</td><td><strong>2 条</strong></td></tr>
   </table>
   <p class="muted">检索数字来自 <code>scripts/eval_real_queries.py</code>。真实检索的答案是当时回复确实用到的记忆，用来看现在还能不能把那条结论排回来。只用关键词时前 3 为 73/91。按文件曾到 100% 的那次是记忆库副本上的重放，现行库是 118/120。</p>
+  <h3>v0.5 和 v0.3 比</h3>
+  <p class="muted">2026-10-21 把 v0.3 抽到临时目录，用本仓库同一份记忆库、同一套题重放；token 按 GPT-4o 分词。</p>
+  <table>
+    <tr><th>指标</th><th>v0.3</th><th>v0.5</th></tr>
+    <tr><td>真实检索，当时用到的结论排进前 3（91 题）</td><td>73 题（80%）</td><td><strong>82 题（90%）</strong></td></tr>
+    <tr><td>真实检索，排第一 / 平均排名得分（MRR）</td><td>37 题 / 0.603</td><td><strong>40 题 / 0.657</strong></td></tr>
+    <tr><td>只传文件路径，排进前 3（115 题）</td><td>113 题（98%）</td><td>113 题（98%）</td></tr>
+    <tr><td>换个说法检索，排进前 3（112 题）</td><td>110 题（98%）</td><td>110 题（98%）</td></tr>
+    <tr><td>每个对话加载规则</td><td>1034 token</td><td><strong>853 token（−18%）</strong></td></tr>
+    <tr><td>单次检索返回，中位 / 最多</td><td>1923 / 2723 token</td><td>2375 / 3288 token</td></tr>
+    <tr><td>单次检索耗时，中位</td><td>1.8 毫秒</td><td>6.5 毫秒</td></tr>
+  </table>
+  <p class="muted">准确率的提升集中在真实问题上，按文件和换说法本来就接近满分；v0.3 读不了功能记录，候选里少了这类干扰，对比对它略有利。每次检索多出的约 450 token 主要是功能记录标题（v0.3 没有），另有字段说明，真实对话里每个对话只给一次。耗时多出的几毫秒主要来自 v0.4 起更严的过期核对。父子模块的继承效果还没测。</p>
   <div class="callout warn">还没测：pmem 对改代码质量的端到端提升。可以用 <code>pmem bench</code> 做对照实验，或真实使用 2–4 周后看 <code>pmem report</code>。</div>
 
   <div class="grid2">
@@ -301,7 +315,7 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
   <div class="grid2">
     <div class="card">
       <h4>模块 module</h4>
-      <p>格式 <code>category.Module</code>，如 <code>gameplay.Jigsaw</code>。模块是业务单元而不是目录，可以包含多个路径、起别名。定义在 <code>.memory/modules.yaml</code>。</p>
+      <p>格式 <code>category.Module</code>，如 <code>gameplay.Jigsaw</code>；子模块用点号续写，最多 4 段（见下文“父子模块”）。模块是业务单元而不是目录，可以包含多个路径、起别名。定义在 <code>.memory/modules.yaml</code>。</p>
     </div>
     <div class="card">
       <h4>议题 entity</h4>
@@ -328,6 +342,28 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
       <p><code>active</code> 正式；<code>seed</code> 种子，从提交说明和文档提炼、待负责人确认，能检索到并标“种子，待确认”；<code>draft</code> 草稿（<code>write.default_status: draft</code> 时）；<code>archived</code> 已归档，不再出现在检索里，它替代过的旧记忆也保持隐藏。归档时记下日期和原状态：带 <code>as_of</code> 回看时，那天之后才归档的仍然可见；恢复时回到原状态（退回的种子恢复后仍是种子）。</p>
     </div>
   </div>
+
+  <h3>父子模块</h3>
+  <p>大业务需要细分时，子模块用点号续写名字，最多 4 段（大类 + 3 层），父子关系由名字表达，不需要另写 <code>parent</code>。以“4 个广告 SDK、每个 SDK 有自己的渠道、iOS 和 Android 打入的 SDK 不同”为例：</p>
+  <pre><code>modules:
+  system.Ads:                  # 父模块：广告公共逻辑（瀑布流、隐私弹窗时机）
+    paths: [Framework/Ads/Core/**]
+  system.Ads.AdMob:            # 子模块：AdMob 适配
+    paths: [Framework/Ads/AdMob/**]
+  system.Ads.AdMob.Mediation:  # 第 4 段：AdMob 下的聚合渠道
+    paths: [Framework/Ads/AdMob/Mediation/**]
+  infra.Build:
+    paths: [Build/**]
+    related:                   # 名字看不出的深层关联
+      - { module: system.Ads, reason: 打包按平台选择打入的广告 SDK }</code></pre>
+  <ul>
+    <li><b>查</b>：查子模块会带上各级上级模块的教训（在本模块的 5 条之外另给最多 2 条，<code>search.inherit_max</code> 可调；本模块教训不够 5 条时空出的位置也给上级），结果标“上级 <code>system.Ads</code>”；功能记录不继承。查父模块时附上各下级模块的条数和最新 5 条记忆的标题（含更下级，教训和功能记录都算），不给全文：问“广告系统整体情况”时一次看到各 SDK 的要点，要细节再查对应子模块。</li>
+    <li><b>写</b>：结论写在适用的最高一层，对所有 SDK 都成立的写到 <code>system.Ads</code>。兄弟模块写了同议题的教训时，写入结果会提示改写到父模块；父模块的记忆可以 <code>supersedes</code> 下级的，反过来不行。</li>
+    <li><b>闸门</b>：子模块自己没有记忆、但上级有教训时同样拦截，拦截提示里附上上级的坑。</li>
+    <li><b>登记</b>：父模块必须先登记（可以只作分组、不写路径），文件归属按最具体的路径。父模块已登记时，写入未登记的子模块名也会接受。</li>
+    <li><b>平台和渠道不是一层</b>：iOS/Android、渠道、版本差异写进记忆的 <code>applies</code>；只有各自有独立代码目录时才拆成子模块。</li>
+    <li><b>维护</b>：<code>pmem migrate rename</code> 改父模块时子模块跟着改名；<code>pmem sync</code> 会提议把大模块里文件多或改动多的子目录拆成子模块（只提示）；<code>pmem health</code> 的“父子模块结构”一节列出缺父模块、只有一个下级的空父模块、兄弟模块重复的教训等。团队成员需升级到支持父子模块的 pmem，旧版仍能读写已登记的子模块，但没有上级教训继承。</li>
+  </ul>
 
   <h3>五种记忆类型（kind）</h3>
   <table>
@@ -461,7 +497,7 @@ git commit -m "接入 pmem"</code></pre>
     <div class="arrow">→</div>
     <div class="node"><b>3. 按模块写</b>每个改过的模块写一条功能记录（谁要求的、为什么、必须保持的行为）；另有试过不行的方向、根因和坑、看代码看不出的约束、方案取舍时，各写一条教训。只改测试、生成代码、配置的不用写。</div>
     <div class="arrow">→</div>
-    <div class="node"><b>4. 结束追问</b>改了模块却没写记忆，回合结束时提醒 AI 补写功能记录和教训；确实不用记（只改了注释、格式、重命名）时，AI 回复“无需记录：原因”。不需要你回复。Cursor 会把它显示成一条以“[pmem]”开头的用户消息，由 AI 处理。</div>
+    <div class="node"><b>4. 结束追问</b>AI 在回复开头写“【pmem检索】模块（要点）”，结尾分行写“【pmem查询】模块，用到「…」”和“【pmem修改】模块 已写功能记录「…」；模块 无需记录（原因）”。只有改了模块却既没写记忆、也没在结尾说明无需记录时，回合结束才追加提醒。不需要你回复。Cursor 会把它显示成一条以“[pmem]”开头的用户消息，由 AI 处理。</div>
   </div>
 
   <h3>写记忆的约定</h3>
@@ -469,7 +505,7 @@ git commit -m "接入 pmem"</code></pre>
     <li>正文自包含：教训写现象、原因、证据、影响范围；功能记录写需求来源、必须保持的行为、适用条件、入口。都不写“改了哪个方法”这类版本库已有的信息。</li>
     <li>写一句 <code>summary</code>（教训写结论，功能记录写“什么行为必须保持”）；结论和更正尽量写 <code>verify</code>；有前提的写 <code>applies</code>；改哪里都会踩的坑加 <code>scope: project</code>。没填 summary、决定没写取舍、读起来像变更记录、功能记录没写需求来源时，写入会返回提示（不拒绝）。</li>
     <li>还没实现的需求写成 <code>plan</code>；实现后写功能记录并在 <code>supersedes</code> 填那条规划的 id。</li>
-    <li>正文 20～1200 字，超过 600 字会提示精简。不写密码、密钥、个人信息，含疑似密钥会被拒绝。</li>
+    <li>正文 20～5000 字，超过 600 字会提示精简。不写密码、密钥、个人信息，含疑似密钥会被拒绝。</li>
     <li>写入会返回 <code>similar</code>（同模块最相近的已有记忆）：重复或推翻了某条，就带 <code>draft_id</code> 重写并在 <code>supersedes</code> 填旧 id。</li>
     <li>同一任务对同一模块只留一条：再次写入时带上次返回的 <code>draft_id</code> 覆盖。覆盖时没填的 <code>supersedes</code>、<code>anchors</code>、<code>aliases</code>、<code>summary</code>、<code>verify</code>、<code>applies</code>、<code>scope</code> 沿用原值。</li>
     <li>同一议题每天最多写 5 条，防止刷屏。</li>
@@ -504,7 +540,7 @@ git commit -m "接入 pmem"</code></pre>
     <li>别的记忆服务也叫 <code>search_memory</code> 时，它的结果不算“查过 pmem”。</li>
     <li>拦截提示里直接列出该模块现行的排除项、风险和更正（最多 5 条）、关联代码就是要改的这个文件的功能记录，以及本对话还没给过的全项目级坑，即使 AI 检索时关键词没对上，也能先看到这些坑和必须保持的行为。</li>
     <li>“查过”的判定：MCP 的 <code>search_memory</code>，或终端里运行 <code>pmem search --module &lt;模块&gt;</code>。MCP 不可用时用终端也行，不会把 Agent 卡死。</li>
-    <li>结束提醒：改了模块却没写记忆，提醒每个模块写一条功能记录，另有被排除的方向、根因或坑、约束、方案取舍时再写教训；确实不用记时回复“无需记录：原因”。只改了 <code>gate.record_exempt</code> 里的文件（默认是测试、生成代码、json/yaml/toml 等配置）的模块不提醒。整个对话只查了记忆、没改也没写，也提醒一次（<code>gate.analysis_reminder</code> 可关）。中断结束的回合和说了“跳过记忆”的对话不提醒。提醒以“[pmem]”开头，用户不用处理；Claude Code、Codex 下以 Hook 反馈的形式出现（各版本都支持）。</li>
+    <li>结束提醒：改了模块却没写记忆，提醒每个模块写一条功能记录，另有被排除的方向、根因或坑、约束、方案取舍时再写教训；回复结尾的“【pmem修改】”行里写了“模块 无需记录（原因）”的模块不提醒（按“；”分段，只认同一段里点名的模块；旧写法“【pmem】”也认）。只改了 <code>gate.record_exempt</code> 里的文件（默认是测试、生成代码、json/yaml/toml 等配置、Markdown 和 docs 目录）的模块不提醒。整个对话只查了记忆、没改也没写，也提醒一次，结尾写了“【pmem修改】本轮未改代码，无新结论”时不提醒（<code>gate.analysis_reminder</code> 可关）。中断结束的回合和说了“跳过记忆”的对话不提醒。提醒以“[pmem]”开头，用户不用处理；Claude Code、Codex 下以 Hook 反馈的形式出现（各版本都支持）。</li>
     <li>记忆审查（不改代码也生效，每个模块每个对话一次）：
       <ul>
         <li>读代码时，附上该文件所属模块的现行教训摘要（每条只列一句话标题，排除项、风险优先，最多 6 条；关联代码之后改过的标“需核实”），另附至多 2 条关联代码就是这个文件的功能记录，再附上本对话还没给过的全项目级坑（至多 3 条，模块还没有记忆时也附），<code>gate.read_digest</code> 可关。</li>
@@ -604,7 +640,7 @@ wiki:
 write:
   default_status: active    <span class="c"># active 直接生效 / draft 需人工审阅</span>
   content_min: 20
-  content_max: 1200
+  content_max: 5000
   recommend_max: 600        <span class="c"># 超过只提示、不拒绝</span>
   max_per_day_per_entity: 5 <span class="c"># 同一议题每天最多几条；替代仍现行的旧记忆、覆盖草稿不计</span>
   secret_patterns: []       <span class="c"># 额外的敏感信息正则，正文、议题名、别名命中就拒绝写入</span>
@@ -657,7 +693,8 @@ server:
   <table>
     <tr><th>什么时候</th><th>额外 token（本仓库实测，GPT-4o 分词）</th><th>额外耗时</th></tr>
     <tr><td>每个对话：加载规则</td><td>约 850</td><td>无</td></tr>
-    <tr><td>每个模块每个对话一次：检索（默认 5 条）</td><td>中位约 1500，最多约 2600</td><td>检索约 10 毫秒</td></tr>
+    <tr><td>每个模块每个对话一次：检索（默认 5 条教训全文 + 3 条功能记录标题）</td><td>中位约 2400，最多约 3300</td><td>检索约 7 毫秒</td></tr>
+    <tr><td>查子模块时另带的上级教训（只在细分了模块时）</td><td>每条几百，默认最多 2 条</td><td>无</td></tr>
     <tr><td>读到某模块代码时附摘要（每模块每对话一次）</td><td>约 530</td><td>Hook 约 0.3 秒</td></tr>
     <tr><td>没查就改被拦下</td><td>约 115</td><td>Hook 约 0.3 秒</td></tr>
     <tr><td>其他工具调用</td><td>0</td><td>Hook 约 0.2 秒</td></tr>
@@ -818,7 +855,7 @@ pmem reindex</code></pre>
   </ul>
 </section>
 
-<p class="muted" style="text-align:center">pmem v0.1.0.dev0 · 详细设计见 <code>docs/architecture.md</code> 与 <code>README.md</code></p>
+<p class="muted" style="text-align:center">pmem v0.5.0 · 详细设计见 <code>docs/architecture.md</code> 与 <code>README.md</code></p>
 </main>
 </div>
 </body>

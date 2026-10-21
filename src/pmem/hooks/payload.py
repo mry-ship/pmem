@@ -245,6 +245,17 @@ def last_user_text(transcript_path: str | None) -> str | None:
     return None
 
 
+def turn_reply_text(transcript_path: str | None) -> str:
+    """本轮（最后一条用户消息之后）Agent 写给用户的文字，按先后拼接。"""
+    parts: list[str] = []
+    for role, content in _transcript_tail(transcript_path) or []:
+        if role == "user" and _text_of(content).strip():
+            break
+        if role == "assistant":
+            parts.append(_text_of(content))
+    return "\n".join(reversed(parts))
+
+
 def turn_tool_paths(transcript_path: str | None, tools: set[str]) -> list[str]:
     """本轮（最后一条用户消息之后）Agent 用指定工具看过的路径。Hook 没覆盖到的工具也能从这里补上。"""
     paths: list[str] = []

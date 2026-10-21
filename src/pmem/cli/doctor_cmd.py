@@ -13,7 +13,7 @@ from pmem.catalog.coverage import coverage_report
 from pmem.core.config import Config, ConfigError
 from pmem.core.entry import VISIBLE_STATUSES
 from pmem.core.quality import similar_entity_pairs
-from pmem.core.registry import ModuleRegistry, RegistryError
+from pmem.core.registry import MAX_MODULE_DEPTH, ModuleRegistry, RegistryError
 from pmem.service import COMPACT_MIN_GROUP
 from pmem.storage.files import FilesStorage
 from pmem.vcs.detect import detect_vcs
@@ -70,6 +70,13 @@ def run_doctor(root: Path) -> int:
     line(OK if n_modules else WARN, f"模块 {n_modules} 个、候选 {len(registry.candidates)} 个、大类 {' / '.join(registry.categories)}")
     if n_modules == 0:
         print("      还没有划分模块：对 Agent 说“按 pmem-bootstrap 技能划分模块”")
+    nested = [mid for mid, m in registry.modules.items() if m.depth > 2 and not m.merged_into]
+    if nested:
+        print(f"  i 有 {len(nested)} 个子模块（如 {nested[0]}）：团队成员需升级到支持父子模块的 pmem，"
+              "旧版能读写已登记的子模块，但没有上级教训继承")
+    deep = [mid for mid, m in registry.modules.items() if m.depth > MAX_MODULE_DEPTH]
+    if deep:
+        line(WARN, f"模块名超过 {MAX_MODULE_DEPTH} 段：{', '.join(deep[:5])}；用 pmem migrate rename 缩短")
 
     cov = coverage_report(root, registry)
     pct = cov["coverage"] * 100

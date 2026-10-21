@@ -288,7 +288,9 @@ def test_trimmed_rule_keeps_every_instruction_that_changes_behaviour():
     """规则只说什么时候做；字段写法在 record_memory 说明里，结果字段含义在检索提示里。"""
     for phrase in ("跳过记忆", "search_memory(path=", "list_modules()", "memory_graph", "as_of",
                    "confirm_memory", "correction", "pmem search --module", "pmem record", "安装 pmem",
-                   "记忆：查了 <模块>，用到「<记忆标题>」", "没有相关记忆", "记忆：不涉及项目模块，未查", "[pmem]",
+                   "【pmem检索】<模块>", "【pmem查询】<模块>，用到「<记忆标题>」", "没有相关记忆", "前后空一行",
+                   "【pmem检索】不涉及项目模块，未查", "【pmem修改】<模块> 已写功能记录", "无需记录",
+                   "【pmem修改】本轮未改代码，无新结论", "[pmem]",
                    "不要向用户确认", "draft_id", "plan", "exclusion", "risk", "decision", "不问用户",
                    "不写密码、密钥、个人信息"):
         assert phrase in RULE_BODY, phrase

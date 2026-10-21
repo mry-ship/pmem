@@ -23,6 +23,8 @@ class Review:
             return None
         entries = self.module_entries(module)
         picked = digest(entries, path=rel)
+        inherited, _ = self.ancestor_pitfalls(module)
+        picked += [e for e in inherited if e.id not in {p.id for p in picked}]
         project = self.take_project_pitfalls(module)
         if not picked and not project:
             return None
@@ -31,14 +33,15 @@ class Review:
         self.save()
         self.log("digest", module=module, ids=[e.id for e in picked], project=[e.id for e in project] or None)
         if picked:
-            intro_line = (f"[pmem] {intro}，现行记忆 {len(current_entries(entries))} 条，回答或修改前先看"
+            upper = "（含上级模块的坑）" if inherited else ""
+            intro_line = (f"[pmem] {intro}，现行记忆 {len(current_entries(entries))} 条{upper}，回答或修改前先看"
                           f"（只列标题，全文用 search_memory(module=\"{module}\", query=...)）：")
         elif current_entries(entries):
             intro_line = (f"[pmem] {intro}，该模块只有和这个文件无关的功能记录"
                           f"（要看用 search_memory(module=\"{module}\")）。改动前先看全项目通用的坑：")
         else:
             intro_line = f"[pmem] {intro}，该模块还没有记忆。改动前先看全项目通用的坑："
-        return "\n".join([intro_line, *self.lines_with_project(picked, project)])
+        return "\n".join([intro_line, *self.lines_with_project(picked, project, own=module)])
 
     def _skip_notice(self, module: str | None) -> dict:
         """本对话因“跳过记忆”关闭了检查时，第一次碰到有记忆的模块就告诉 Agent，误判也能被发现。"""

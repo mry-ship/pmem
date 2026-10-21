@@ -32,6 +32,9 @@ description: 按 pmem health 健康报告定期收口记忆库：核对过时记
    - 【未登记模块】【疑似重复模块】：`pmem migrate merge <被并入> <保留>`；未登记模块确属新业务时，把报告建议的 paths 登记进 modules.yaml，冷候选用 `pmem sync --apply` 转正；
    - 【召回偏低】：用 `pmem search --module <模块> --entity <议题> --brief` 看从没返回的议题，常问却查不到的补 aliases 或按 pmem-normalize 登记同义词；议题太杂的给用户看 `pmem migrate split <模块> --by entity --to <新模块>=<议题>[,<议题>]` 的预览；
    - 【记忆还在旧模块名下】：`pmem migrate tidy`；
+   - 【父子模块结构】：兄弟模块重复的教训，对所有下级都成立就在父模块写一条、`--supersedes` 填各下级那几条的 id；
+     只有一个下级、自己又没有路径和记忆的父模块，按报告给的命令合并；缺父模块的在 modules.yaml 登记它；
+     旧的 `parent` 字段按报告给的 `pmem migrate rename` 改成点号名字；`pmem sync` 提议的子模块确认后用它给出的 split 命令拆；
    - 【没有归属模块的代码目录】：`pmem sync` 预览新模块和要追加的路径；
    - 一个模块管得太宽、需要拆开时：`pmem migrate split <模块> --to <新模块>=<路径>`，预览里列出的“跨模块”“无法判断”的记忆用 `--assign <id>=<模块>` 指定去向；
    - 个别记忆写错了模块：`pmem migrate move <id> ... --to <模块>`；

@@ -140,7 +140,7 @@ def test_candidate_module_is_flagged(svc):
 
 def test_content_length_is_checked(svc):
     assert record(svc, content="太短")["ok"] is False
-    assert record(svc, content="长" * 1300)["ok"] is False
+    assert record(svc, content="长" * 5100)["ok"] is False
 
 
 def test_good_memory_has_no_hints(svc):

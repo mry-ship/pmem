@@ -8,7 +8,16 @@ from pathlib import Path
 import yaml
 
 from pmem.core.fileio import write_atomic
-from pmem.core.registry import DEPRECATED, MERGED_PREFIX, ModuleRegistry, RegistryError, is_module_id
+from pmem.core.registry import (
+    DEPRECATED,
+    MAX_MODULE_DEPTH,
+    MERGED_PREFIX,
+    ModuleRegistry,
+    RegistryError,
+    is_module_id,
+    module_depth,
+    parent_module,
+)
 from pmem.storage.files import FilesStorage
 
 
@@ -49,8 +58,8 @@ def _merge_list(target: dict, key: str, values: list) -> None:
 
 def _free_bare_name(registry: ModuleRegistry, old_id: str, new_id: str) -> list[str]:
     """旧的短名（不带大类）只被旧模块使用时也登记为别名，正文提及和短名检索才能继续认出它。"""
-    bare = old_id.split(".", 1)[1]
-    if bare.lower() == new_id.split(".", 1)[1].lower():
+    bare = old_id.rsplit(".", 1)[1]
+    if bare.lower() == new_id.rsplit(".", 1)[1].lower():
         return []
     try:
         owner = registry.resolve_module(bare).id
@@ -62,9 +71,13 @@ def _free_bare_name(registry: ModuleRegistry, old_id: str, new_id: str) -> list[
 def _check_new_name(registry: ModuleRegistry, new_id: str, own: str | None, merge_hint: str) -> None:
     """新模块名合法、大类存在、完整名和短名都没被别的模块占用（own 是允许占着短名的模块，如改名前的自己）。"""
     if not is_module_id(new_id):
-        raise MigrateError(f"新名字 {new_id!r} 不合法，格式为 category.Name（大类小写，模块名字母开头）")
+        raise MigrateError(f"新名字 {new_id!r} 不合法，格式为 category.Name[.Sub[.Sub]]（大类小写，每段字母开头，"
+                           f"最多 {MAX_MODULE_DEPTH} 段）")
     if new_id.split(".", 1)[0] not in registry.categories:
         raise MigrateError(f"大类 {new_id.split('.', 1)[0]!r} 不存在，只允许：{' / '.join(registry.categories)}")
+    parent = parent_module(new_id)
+    if parent is not None and not any(a.lower() == parent.lower() for a in registry.registered_ancestors(new_id)):
+        raise MigrateError(f"{new_id} 的父模块 {parent} 未登记（或已并入别的模块），先登记父模块")
     try:
         taken = registry.resolve_module(new_id)
     except RegistryError:
@@ -73,38 +86,71 @@ def _check_new_name(registry: ModuleRegistry, new_id: str, own: str | None, merg
         raise MigrateError(f"{new_id} 已经是模块 {taken.id} 的名字或别名")
     if taken is not None and taken.candidate:
         raise MigrateError(f"{new_id} 是冷候选模块，{merge_hint}")
+    # 子模块的末段在不同分支下重名是正常的（两个 SDK 下都有 Android），只有两段的模块要求短名唯一
+    if module_depth(new_id) > 2:
+        return
     bare = new_id.split(".", 1)[1]
     try:
         owner = registry.resolve_module(bare).id
     except RegistryError:
         owner = None
-    if owner is not None and owner != own:
+    if owner is not None and owner != own and module_depth(owner) == 2:
         raise MigrateError(f"短名 {bare} 已是模块 {owner} 的名字或别名，会有歧义")
 
 
 def plan_rename(data: dict, registry: ModuleRegistry, old: str, new: str) -> tuple[dict, list[str]]:
     old_id = _module_key(data, registry, old)
     new_id = new.strip()
+    if new_id.lower().startswith(old_id.lower() + "."):
+        raise MigrateError(f"不能把 {old_id} 改名到它自己的下级 {new_id}")
     _check_new_name(registry, new_id, old_id, f"请改用 pmem migrate merge {new_id} {old_id}")
+
+    # 后代跟着改名：父子关系由名字表达，父模块改名后子模块的前缀也要换
+    prefix = old_id.lower() + "."
+    renames = {old_id: new_id}
+    for mid in (data.get("modules") or {}):
+        if mid.lower().startswith(prefix):
+            renames[mid] = new_id + mid[len(old_id):]
+    too_deep = [n for n in renames.values() if module_depth(n) > MAX_MODULE_DEPTH]
+    if too_deep:
+        raise MigrateError(f"改名后 {'、'.join(too_deep)} 会超过 {MAX_MODULE_DEPTH} 段")
+    for mid, target in renames.items():
+        if mid != old_id and target.lower() in {m.lower() for m in (data.get("modules") or {})}:
+            raise MigrateError(f"{mid} 跟着改名为 {target}，但这个名字已被占用")
 
     out = copy.deepcopy(data)
     modules: dict = {}
     for mid, body in (out.get("modules") or {}).items():
-        if mid != old_id:
+        if mid not in renames:
             modules[mid] = body
             continue
         body = dict(body or {})
-        _merge_list(body, "aliases", [old_id, *_free_bare_name(registry, old_id, new_id)])
-        modules[new_id] = body
+        if not str(body.get("status") or "").startswith(MERGED_PREFIX):
+            _merge_list(body, "aliases", [mid, *_free_bare_name(registry, mid, renames[mid])])
+        modules[renames[mid]] = body
+    lowered = {k.lower(): v for k, v in renames.items()}
     for body in [*modules.values(), *(out.get("candidates") or {}).values()]:
         if not isinstance(body, dict):
             continue
-        if str(body.get("status") or "").strip() == f"{MERGED_PREFIX}{old_id}":
-            body["status"] = f"{MERGED_PREFIX}{new_id}"
-        if body.get("parent") == old_id:
-            body["parent"] = new_id
+        status = str(body.get("status") or "").strip()
+        if status.startswith(MERGED_PREFIX) and status[len(MERGED_PREFIX):].strip().lower() in lowered:
+            body["status"] = f"{MERGED_PREFIX}{lowered[status[len(MERGED_PREFIX):].strip().lower()]}"
+        if str(body.get("parent") or "").lower() in lowered:
+            body["parent"] = lowered[str(body["parent"]).lower()]
+        if isinstance(body.get("related"), list):
+            body["related"] = [_renamed_related(item, lowered) for item in body["related"]]
     out["modules"] = modules
-    return out, [f"{old_id} 改名为 {new_id}，旧名登记为别名，读写自动转到新名"]
+    notes = [f"{old_id} 改名为 {new_id}，旧名登记为别名，读写自动转到新名"]
+    if len(renames) > 1:
+        notes.append("子模块跟着改名：" + "，".join(f"{a} → {b}" for a, b in renames.items() if a != old_id))
+    return out, notes
+
+
+def _renamed_related(item, lowered: dict[str, str]):
+    if isinstance(item, dict):
+        target = str(item.get("module") or "")
+        return {**item, "module": lowered.get(target.lower(), target)}
+    return lowered.get(str(item).lower(), item)
 
 
 def _plan_merge_unregistered(data: dict, registry: ModuleRegistry, source: str, dst_id: str,

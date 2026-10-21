@@ -56,9 +56,10 @@ def coverage_report(root: Path, registry: ModuleRegistry) -> dict:
     mapping = map_files(root, registry)
     unmapped = Counter("/".join(rel.split("/")[:3]) if "/" in rel else "（根目录）" for rel in mapping.unmapped)
     used = Counter(mapping.owner.values())
+    # 文件全被下级模块分走的父模块只是分组，不算空壳
     shells = [
         mid for mid, m in {**registry.modules, **registry.candidates}.items()
-        if m.paths and not m.merged_into and used[mid] == 0
+        if m.paths and not m.merged_into and used[mid] == 0 and not registry.children(mid)
     ]
     total = mapping.files - mapping.excluded
     return {

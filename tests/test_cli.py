@@ -7,7 +7,9 @@ def test_version_flag_prints_version(capsys):
     with pytest.raises(SystemExit) as exc:
         main(["--version"])
     assert exc.value.code == 0
-    assert "pmem 0.1.0" in capsys.readouterr().out
+    from pmem import __version__
+
+    assert f"pmem {__version__}" in capsys.readouterr().out
 
 
 def test_record_content_from_stdin_is_utf8_even_when_console_is_gbk(monkeypatch):

@@ -43,7 +43,9 @@ class Guard:
         if self.state.has("searched", module):
             return None
         count = self.memory_count(module)
-        if count == 0:
+        # 子模块自己还没有记忆、上级模块有教训时照样要先查：查子模块会带上上级的教训
+        _, upper = self.ancestor_pitfalls(module)
+        if count == 0 and upper == 0:
             return None
         if mode == "warn":
             if self.state.has("warned", module):
@@ -52,7 +54,8 @@ class Guard:
             self.save()
         call = f'search_memory(module="{module}")'
         # Cursor 只把 user_message 交给 Agent（实测），因此指引必须完整写在这里
-        message = f"pmem：{rel} 属于 {module}（已有 {count} 条研发记忆）。请先调用 {call} 了解已有结论，"
+        held = f"已有 {count} 条研发记忆" + (f"，上级模块另有 {upper} 条教训" if upper else "")
+        message = f"pmem：{rel} 属于 {module}（{held}）。请先调用 {call} 了解已有结论，"
         if mode == "warn":
             message += "然后重试本次修改。"
         else:
@@ -73,16 +76,17 @@ class Guard:
         pitfalls = sorted((e for e in current_entries(entries) if e.kind in PITFALL_KINDS),
                           key=lambda e: PITFALL_KINDS.index(e.kind))
         shown = pitfalls[:MAX_GUARD_PITFALLS]
+        inherited, _ = self.ancestor_pitfalls(module)
         features = file_features(entries, rel) if rel else []
-        project = self.take_project_pitfalls(module, skip={e.id for e in shown})
-        if not shown and not project and not features:
+        project = self.take_project_pitfalls(module, skip={e.id for e in [*shown, *inherited]})
+        if not shown and not inherited and not project and not features:
             return "", 0
         self.save()
         text = ""
-        if shown or project:
+        if shown or inherited or project:
             more = f"（另有 {len(pitfalls) - len(shown)} 条，检索时可见）" if len(pitfalls) > len(shown) else ""
-            head = "\n该模块已知的排除项、风险和更正，改之前先对照" + more + "：\n" if shown else "\n"
-            text = head + "\n".join(self.lines_with_project(shown, project))
+            head = "\n该模块已知的排除项、风险和更正，改之前先对照" + more + "：\n" if shown or inherited else "\n"
+            text = head + "\n".join(self.lines_with_project([*shown, *inherited], project, own=module))
         if features:
             text += ("\n这个文件上的功能记录（用户要求、必须保持的行为），改动不要把它们改回去：\n"
                      + "\n".join(self.memory_lines(features)))

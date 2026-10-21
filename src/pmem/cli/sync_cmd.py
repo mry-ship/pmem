@@ -47,6 +47,11 @@ def render(plan: SyncPlan) -> list[str]:
         lines.append("与已有模块同名、未自动登记的目录（该模块已废弃或名字有歧义；"
                      "要恢复就 pmem migrate deprecate <模块> --undo，否则手工登记到别的模块）：")
         lines += [f"  {unit}/** ↔ {mid}" for unit, mid in plan.conflicts]
+    if plan.split:
+        lines.append("可以拆成子模块的目录（只是提示，不会自动改；要拆就运行后面的命令，记忆按关联代码跟着走）：")
+        lines += [f"  {child}：{path}（{files} 个代码文件，近 {HEAT_DAYS} 天改动 {h} 次）\n"
+                  f"    pmem migrate split {child.rsplit('.', 1)[0]} --to {child}={path}"
+                  for child, path, files, h in plan.split]
     if not plan.history and lines:
         lines.append("注意：没有取到版本库提交历史，以上没有按改动热度区分新模块和冷候选，也不提示闲置模块")
     return lines

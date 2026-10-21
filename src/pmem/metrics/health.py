@@ -10,10 +10,10 @@ from pathlib import Path
 
 from pmem.catalog.coverage import coverage_report
 from pmem.catalog.migrate import MigrateError, stray_moves
-from pmem.core.entry import KIND_LABELS
+from pmem.core.entry import KIND_LABELS, RECORD_KINDS
 from pmem.core.ids import ulid_ms
 from pmem.core.quality import similar_entity_pairs
-from pmem.core.registry import RegistryError
+from pmem.core.registry import MAX_MODULE_DEPTH, RegistryError, is_descendant, is_lineage, parent_module
 from pmem.index.tokenize import tokenize
 from pmem.metrics.audit import promotion_hints, recall_audit, render_recall, render_unregistered
 from pmem.metrics.cleanup import cleanup_candidates
@@ -68,15 +68,64 @@ def reject_reason(error: str, code: str | None = None) -> str:
 
 
 def _duplicate_modules(ids: list[str]) -> list[list[str]]:
-    """短名相同（跨大类）或几乎相同的模块组。"""
+    """去掉大类后名字相同（跨大类）或几乎相同的模块组。
+    父子模块、不同分支下同名的末段（AdMob.Android 与 Max.Android）是层级本身，不算重复。"""
     by_name: dict[str, list[str]] = defaultdict(list)
     for mid in ids:
         by_name[mid.split(".", 1)[-1].lower()].append(mid)
     groups = {tuple(sorted(group)) for group in by_name.values() if len(group) > 1}
     names = {mids[0].split(".", 1)[-1]: mids for mids in by_name.values()}
     for a, b in similar_entity_pairs(list(names)):
+        if _hierarchy_pair(a, b):
+            continue
         groups.add(tuple(sorted({*names[a], *names[b]})))
     return [list(g) for g in sorted(groups)]
+
+
+def _hierarchy_pair(a: str, b: str) -> bool:
+    """去掉大类后的两个名字是直系，或是不同父模块下的子模块。"""
+    if is_lineage(a, b):
+        return True
+    pa, pb = a.rpartition(".")[0], b.rpartition(".")[0]
+    return bool(pa and pb and pa.lower() != pb.lower())
+
+
+def _hierarchy_issues(registry, visible: list) -> list[str]:
+    """父子模块的结构问题：缺父模块、超过段数、旧版 parent 字段、related 指错、只有一个下级的空父模块、兄弟模块重复的教训。"""
+    rows = []
+    active = {mid: m for mid, m in registry.modules.items() if not m.merged_into}
+    lowered = {mid.lower() for mid in active}
+    counts = Counter(e.module.lower() for e in visible)
+    for mid, module in sorted(active.items()):
+        parent = parent_module(mid)
+        if module.depth > MAX_MODULE_DEPTH:
+            rows.append(f"{mid}：超过 {MAX_MODULE_DEPTH} 段，用 pmem migrate rename 缩短或提升为独立模块")
+        if parent and parent.lower() not in lowered:
+            rows.append(f"{mid}：父模块 {parent} 未登记，在 modules.yaml 登记它（可以只作为分组、不写路径）")
+        if module.legacy_parent:
+            rows.append(f"{mid}：parent 字段已不生效，父子关系改由名字表达："
+                        f"pmem migrate rename {mid} {module.legacy_parent}.{module.name} --apply，然后删掉 parent")
+        for item in module.related:
+            try:
+                known = registry.resolve_module(item["module"]).known
+            except RegistryError:
+                known = False
+            if not known:
+                rows.append(f"{mid}：related 里的 {item['module']} 不是登记的模块")
+        children = registry.children(mid)
+        if len(children) == 1 and not counts[mid.lower()] and not module.paths:
+            rows.append(f"{mid}：只有一个下级 {children[0]}、自己没有路径和记忆，层级多余："
+                        f"pmem migrate merge {children[0]} {mid} 或直接用下级当模块")
+    siblings: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for e in visible:
+        parent = parent_module(e.module)
+        if parent and e.kind not in RECORD_KINDS:
+            siblings[(parent, e.entity.lower())].add(e.module)
+    for (parent, entity), mods in sorted(siblings.items()):
+        if len(mods) >= 2:
+            rows.append(f"{parent} 的下级 {'、'.join(sorted(mods))} 都有议题 {entity} 的教训："
+                        f"对所有下级都成立就在 {parent} 写一条并 supersedes 替代它们")
+    return rows
 
 
 def _is_registered(registry, mid: str) -> bool:
@@ -161,9 +210,11 @@ def _cross_module_supersedes(entries: list, visible: set[str]) -> list[dict]:
     """现行记忆替代了别的模块的记忆：被替代的那条从原模块的检索里消失，查原模块看不到新结论。
     写入时已经拒绝，这里列出规则之前写下的，以及之后被 migrate move 搬到别处的。"""
     by_id = {e.id: e for e in entries}
+    # 替代下级模块的记忆是允许的：查下级会带上本模块的教训
     return [{"id": e.id, "module": e.module, "replaced": s, "replaced_module": by_id[s].module}
             for e in entries if e.id in visible
-            for s in e.supersedes if s in by_id and by_id[s].module != e.module]
+            for s in e.supersedes if s in by_id and by_id[s].module != e.module
+            and not is_descendant(by_id[s].module, e.module)]
 
 
 def _skipped(events: list[dict], entries: list, user: str, since: float) -> list[tuple[str, int]]:
@@ -231,6 +282,7 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
         "modules_registered": len(registered),
         "unregistered": unregistered,
         "duplicates": _duplicate_modules(registered + [u["module"] for u in unregistered]),
+        "hierarchy": _hierarchy_issues(registry, visible),
         "strays": [{"id": s.entry_id, "from": s.source, "to": s.target} for s in strays],
         "stray_problem": stray_problem,
         "unmapped_dirs": unmapped,
@@ -271,7 +323,9 @@ def render(h: dict) -> str:
             "笔误或归错（关联代码都归同一个已登记模块、其实是同一业务）就 pmem migrate merge <未登记模块> <正确模块>；"
             "确属新业务就把建议的 paths 登记到 modules.yaml，比原模块的路径更具体时自动优先；冷候选用 pmem sync --apply 转正")
     section("疑似重复模块", ["、".join(g) for g in h["duplicates"]],
-            "确认是同一业务后 pmem migrate merge <被并入> <保留>")
+            "确认是同一业务后 pmem migrate merge <被并入> <保留>；其实是父子关系的，改名成 父模块.子模块（pmem migrate rename）")
+    section("父子模块结构", h.get("hierarchy") or [],
+            "按每行的建议处理；兄弟模块重复的教训对 Agent 说“按 pmem-consolidate 收口”时会一并提升")
     section("记忆还在旧模块名下", [f"{s['id']}：{s['from']} → {s['to']}" for s in h["strays"][:TOP]]
             + ([f"……另有 {len(h['strays']) - TOP} 条"] if len(h["strays"]) > TOP else []),
             "pmem migrate tidy --apply 把它们搬到新模块名下")

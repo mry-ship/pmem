@@ -5,10 +5,10 @@ import os
 from datetime import date
 from pathlib import Path
 
-from pmem.core.entry import KINDS, SCOPES, SUMMARY_MAX, VISIBLE_STATUSES, Entry, auto_summary
+from pmem.core.entry import KINDS, RECORD_KINDS, SCOPES, SUMMARY_MAX, VISIBLE_STATUSES, Entry, auto_summary
 from pmem.core.ids import new_ulid
 from pmem.core.quality import content_hints, entity_hint, verify_hint
-from pmem.core.registry import ResolvedModule
+from pmem.core.registry import ResolvedModule, is_descendant, parent_module
 from pmem.core.secrets import find_secrets
 from pmem.core.textfmt import format_content
 from pmem.service.base import MAX_LIMIT, ServiceBase, fail, returns_errors
@@ -22,6 +22,8 @@ SIMILAR_HINT = (
     "similar 是同模块最相近的已有记忆：新结论与其中某条重复或推翻了它，就带 draft_id 重写并在 supersedes 填那条的 id；"
     "无关则忽略。"
 )
+SIBLING_HINT = ("sibling_similar 是兄弟模块里同一议题的教训：如果这个结论对 {parent} 的所有下级都成立，"
+                "改写到 {parent}，并在 supersedes 填这些 id（可以替代下级模块的记忆）。")
 ALIASES_HINT = "没填 aliases：把现象和关键术语的其他常用叫法（如 闪退/崩溃/crash）写进 aliases，换个说法也能搜到。"
 ANCHOR_HINT = (
     "anchors 只写了文件：该文件以后任何改动都会让这条记忆标为“需核实”。能定位到函数时写成 路径#函数名"
@@ -156,11 +158,12 @@ class RecordOps(ServiceBase):
         today = date.today().isoformat()
         supersedes = list(dict.fromkeys(s for s in supersedes or [] if s))
         replaced = [found for s in supersedes if (found := self.index.find(s)) is not None]
-        # 被替代的记忆会从它所在模块的检索里消失，新结论却在别的模块，查原模块的人两边都看不到
-        cross = [e for e in replaced if e.module != resolved.id]
+        # 被替代的记忆会从它所在模块的检索里消失，新结论却在别的模块，查原模块的人两边都看不到。
+        # 下级模块例外：查下级会带上本模块的教训，把下级的结论提升到上级时可以直接替代
+        cross = [e for e in replaced if e.module != resolved.id and not is_descendant(e.module, resolved.id)]
         if cross:
             where = "、".join(f"{e.id}（{e.module}）" for e in cross)
-            return fail(f"supersedes 只能填本模块（{resolved.id}）的记忆，{where} 属于别的模块。"
+            return fail(f"supersedes 只能填本模块（{resolved.id}）或它下级模块的记忆，{where} 属于别的模块。"
                         f"旧结论在原模块已不成立：在原模块写一条 correction 替代它，正文说明新结论在 {resolved.id}；"
                         f"旧记忆本来就归错了模块：先 pmem migrate move <id> --to {resolved.id} --apply 搬过来再替代",
                         "supersede_cross_module")
@@ -238,6 +241,10 @@ class RecordOps(ServiceBase):
         if similar:
             response["similar"] = similar
             hints.append(SIMILAR_HINT)
+        siblings = self._sibling_lessons(written.entry)
+        if siblings:
+            response["sibling_similar"] = siblings
+            hints.append(SIBLING_HINT.format(parent=parent_module(resolved.id)))
         if hints:
             response["hints"] = hints + [HINTS_FOOTER]
         self._refresh_wiki(response)
@@ -352,6 +359,21 @@ class RecordOps(ServiceBase):
             flags["similar_modules"] = [m for m in self._similar_modules(resolved.id) if m != resolved.id]
             warnings.append(f"{resolved.id} 尚未登记在 modules.yaml；如是笔误请改用相近模块")
         return flags, warnings
+
+    def _sibling_lessons(self, entry: Entry) -> list[dict]:
+        """兄弟模块里同一议题的现行教训：几个下级都写了同一件事，多半该写在上级。只看议题相同，不按相关度猜。"""
+        parent = parent_module(entry.module)
+        if parent is None or entry.kind in RECORD_KINDS:
+            return []
+        siblings = {m.lower() for m in self.registry.children(parent)} - {entry.module.lower()}
+        hidden = self.index.superseded()
+        rows = [
+            {"id": e.id, "module": e.module, "kind": e.kind, "date": e.note_date, "preview": e.title}
+            for e in self.index.entries()
+            if e.module.lower() in siblings and e.entity.lower() == entry.entity.lower()
+            and e.kind not in RECORD_KINDS and e.id not in hidden and e.status in VISIBLE_STATUSES
+        ]
+        return rows[:MAX_SIMILAR]
 
     def _similar_memories(self, entry: Entry) -> list[dict]:
         """同一议题下与新记忆最相近的有效记忆，交给写入的 Agent 判断是重复、推翻还是无关。

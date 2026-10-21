@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import re
+
 from wcmatch import glob as wglob
 
 from pmem.core import seen
 from pmem.hooks.memories import GLOB_FLAGS
+from pmem.hooks.payload import turn_reply_text
 
+# 【pmem修改】【pmem查询】等，也认旧写法【pmem】
+PMEM_LINE = re.compile(r"【pmem[^】]{0,6}】")
 TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens")
 
 
@@ -17,12 +22,29 @@ class Reminders:
     def _reminders_on(self, setting: str, default: bool | None = None) -> bool:
         return bool(self.config.get(setting, default)) and self.config.get("gate.mode") != "off"
 
-    def _pending_nudges(self) -> list[str]:
-        """改了代码却没写记忆的模块。"""
+    def _pending_nudges(self, declared: set[str] = frozenset()) -> list[str]:
+        """改了代码却没写记忆、回复里也没说明无需记录的模块。"""
         if not self._reminders_on("gate.stop_reminder", True):
             return []
         written = self._written()
-        return [m for m in self._record_required() if m not in written and not self.state.has("nudged", m)]
+        return [m for m in self._record_required()
+                if m not in written and m not in declared and not self.state.has("nudged", m)]
+
+    def _declarations(self, reply: str) -> tuple[set[str], bool]:
+        """回复末尾【pmem】行里的说明：写了“无需记录”的模块，以及是否声明了“无新结论”。
+        按“；”分段，只认同一段里点了名的模块，免得一句“无需记录”把别的模块也带过去。"""
+        declared: set[str] = set()
+        no_conclusion = False
+        for line in reply.splitlines():
+            line = line.strip().lstrip("-* ")
+            if not PMEM_LINE.match(line):
+                continue
+            for segment in re.split(r"[；;]", line):
+                if "无需记录" in segment:
+                    declared.update(self.modules_in_text(segment))
+                if "无新结论" in segment:
+                    no_conclusion = True
+        return declared, no_conclusion
 
     def _record_required(self) -> list[str]:
         """改过、需要写功能记录的模块：只改了测试、生成代码、配置（gate.record_exempt）的不算，废弃模块不算。"""
@@ -70,9 +92,11 @@ class Reminders:
         follow = finished and not (self.payload.get("loop_count") or self.payload.get("stop_hook_active"))
         asked, viewed = self._unreviewed() if follow else ([], [])
         review = asked + viewed
-        pending = self._pending_nudges() if follow else []
+        declared, no_conclusion = self._declarations(turn_reply_text(self.payload.get("transcript_path"))) \
+            if follow else (set(), False)
+        pending = self._pending_nudges(declared) if follow else []
         analyzed = self._analyzed() if finished else []
-        consulted_pending = self._consulted_only() if follow else []
+        consulted_pending = self._consulted_only() if follow and not no_conclusion else []
         notice = self.error_notice() if follow else None
         usage = {k: self.payload.get(k) for k in TOKEN_FIELDS if isinstance(self.payload.get(k), int)}
         self.save()

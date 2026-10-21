@@ -32,6 +32,7 @@ DEFAULTS: dict = {
             "**/test/**", "**/tests/**", "**/__tests__/**", "**/test_*.*", "**/*_test.*", "**/*.test.*",
             "**/*.spec.*", "**/generated/**", "**/*.generated.*", "**/*.g.cs", "**/*_pb2.py", "**/*.pb.*",
             "**/*.json", "**/*.yaml", "**/*.yml", "**/*.toml", "**/*.ini", "**/*.cfg", "**/*.lock", "**/*.meta",
+            "**/*.md", "**/docs/**",
         ],
         "analysis_markers": [
             "为什么", "原因", "根因", "排查", "定位", "分析", "怎么回事", "复现", "报错", "崩溃", "闪退",
@@ -41,12 +42,12 @@ DEFAULTS: dict = {
     "write": {
         "default_status": "active",
         "content_min": 20,
-        "content_max": 1200,
+        "content_max": 5000,
         "recommend_max": 600,
         "max_per_day_per_entity": 5,
         "secret_patterns": [],
     },
-    "search": {"limit": 5, "max_per_batch": 2, "recency_half_life_days": 90, "feature_limit": 3},
+    "search": {"limit": 5, "max_per_batch": 2, "recency_half_life_days": 90, "feature_limit": 3, "inherit_max": 2},
     "wiki": {"auto": True, "dir": ".memory/wiki"},
     "server": {"watchdog": True, "request_timeout": 120},
 }
@@ -57,7 +58,8 @@ _LIST_KEYS = ("gate.watch", "gate.ignore", "gate.skip_markers", "gate.resume_mar
 _NUMBERS = {
     "write.content_min": (0, int), "write.content_max": (1, int), "write.recommend_max": (1, int),
     "write.max_per_day_per_entity": (1, int), "search.limit": (1, int), "search.max_per_batch": (1, int),
-    "search.recency_half_life_days": (1, float), "search.feature_limit": (0, int), "server.request_timeout": (1, float),
+    "search.recency_half_life_days": (1, float), "search.feature_limit": (0, int), "search.inherit_max": (0, int),
+    "server.request_timeout": (1, float),
 }
 _CHOICES = {
     "vcs": ("auto", "git", "svn", "none"),

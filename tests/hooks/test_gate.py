@@ -560,6 +560,44 @@ def test_stop_is_quiet_when_module_was_recorded(make_project):
     assert handle("stop", {"conversation_id": "c1", "status": "completed"}, root) == {}
 
 
+def reply_transcript(tmp_path: Path, reply: str) -> str:
+    path = tmp_path / "reply.jsonl"
+    lines = [{"role": "user", "message": {"content": [{"type": "text", "text": "<user_query>改一下商店</user_query>"}]}},
+             {"role": "assistant", "message": {"content": [{"type": "text", "text": reply}]}}]
+    path.write_text("\n".join(json.dumps(x, ensure_ascii=False) for x in lines), encoding="utf-8")
+    return str(path)
+
+
+def test_stop_trusts_no_record_declaration_in_reply(make_project, tmp_path):
+    root = make_project()
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Jigsaw/Board.cs")}, root)
+    reply = ("改好了。\n\n【pmem查询】economy.Shop，没有相关记忆\n\n"
+             "【pmem修改】economy.Shop 无需记录（只改了注释）；gameplay.Jigsaw 已写功能记录「x」")
+    message = handle("stop", stop_payload(reply_transcript(tmp_path, reply)), root)["followup_message"]
+    assert "gameplay.Jigsaw" in message and "economy.Shop" not in message
+
+
+def test_stop_is_quiet_when_reply_declares_everything(make_project, tmp_path):
+    root = make_project()
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    # 旧写法【pmem】也认
+    reply = "【pmem】本轮修改：economy.Shop 无需记录（只改了格式）"
+    assert handle("stop", stop_payload(reply_transcript(tmp_path, reply)), root) == {}
+    plain = "economy.Shop 无需记录"
+    handle("edited", {"conversation_id": "c2", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    assert "economy.Shop" in handle("stop", stop_payload(reply_transcript(tmp_path, plain), conv="c2"),
+                                    root)["followup_message"]
+
+
+def test_stop_skips_docs_only_modules(make_project):
+    root = make_project()
+    (root / "src/Shop/docs").mkdir(parents=True, exist_ok=True)
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/docs/guide.html")}, root)
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/README.md")}, root)
+    assert handle("stop", {"conversation_id": "c1", "status": "completed"}, root) == {}
+
+
 def test_stop_is_quiet_when_aborted(make_project):
     root = make_project()
     handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)

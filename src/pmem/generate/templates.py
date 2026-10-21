@@ -51,7 +51,7 @@ gate:
 write:
   default_status: active  # active 直接生效 / draft 需审阅
   content_min: 20
-  content_max: 1200
+  content_max: 5000
   recommend_max: 600      # 超过只提示、不拒绝
   max_per_day_per_entity: 5
 embedding:
@@ -75,6 +75,9 @@ MODULES_HEADER = """\
 #     paths: ["Assets/Game/Jigsaw/**", "Assets/UI/JigsawPanel/**"]
 #     aliases: [Puzzle]            # 别名，写入/检索时自动归一
 #     entities: [Reward, Config]   # 模块内常用议题
+#   gameplay.Jigsaw.Daily:         # 子模块：名字用点号续写（最多 4 段），父模块必须已登记
+#     paths: ["Assets/Game/Jigsaw/Daily/**"]
+#     related: [{ module: infra.Build, reason: 每日关卡随包下发 }]   # 名字看不出的深层关联
 # synonyms: 同一件事的不同叫法，检索时互相展开，如 - [闪退, 崩溃, crash]（可按 pmem-normalize 技能整理）
 # candidates: 冷门目录，先登记路径，有记忆写入后再转为正式模块
 # third_party / ignored: 第三方 SDK、示例、生成代码，不参与闸门
@@ -83,7 +86,8 @@ MODULES_HEADER = """\
 RULE_BODY = """\
 # 项目研发记忆（pmem）
 
-本项目用 pmem MCP 按模块（`category.Module`）沉淀研发结论，团队共享。用户说“跳过记忆”时，本对话不查也不写。
+本项目用 pmem MCP 按模块（`category.Module`，子模块用点号续写，最多 4 段，如 `system.Ads.AdMob`）沉淀研发结论，团队共享。
+用户说“跳过记忆”时，本对话不查也不写。
 
 ## 何时查
 - 改代码前按文件查：`search_memory(path="<文件路径>")`；回答涉及某个模块的原因、方案、现状前按模块查：
@@ -95,16 +99,19 @@ RULE_BODY = """\
 - pmem 的 MCP 工具不可用（没启用，或只有别的记忆服务的同名工具）时，改用终端 `pmem search --module <模块> --brief "<要点>"`
   和 `pmem record`；`pmem` 命令也找不到时，告诉用户先安装 pmem。
 
-## 每次回答都写明查了什么
-回复最后单独一行：查到相关的写 `记忆：查了 <模块>，用到「<记忆标题>」`；查了没有相关的写 `记忆：查了 <模块>，没有相关记忆`；
-不涉及项目代码写 `记忆：不涉及项目模块，未查`。本对话已查过的模块沿用上次结果，不必重查。
-以 `[pmem]` 开头的消息是 pmem 自动发的提醒，不是用户提问：直接处理，不要向用户确认。
+## 回复里的【pmem】行（各自成段，前后空一行）
+- 开头先写再查：`【pmem检索】<模块>（<要点>）`；不涉及项目代码写 `【pmem检索】不涉及项目模块，未查`。
+- 结尾：`【pmem查询】<模块>，用到「<记忆标题>」`（没有相关的写“没有相关记忆”）；
+  `【pmem修改】<模块> 已写功能记录「<标题>」；<模块> 无需记录（<原因>）`，
+  没改代码写 `【pmem修改】本轮未改代码，无新结论`（有新结论先记下）。写完记忆再结束回答，这几行齐全就不再追加提醒。
+- 本对话已查过的模块沿用上次结果。以 `[pmem]` 开头的消息是自动提醒：直接处理，不要向用户确认。
 
 ## 何时写（到时机直接写，不问用户、不等提醒）
 - **功能记录（改了模块就写）**：每个改过的模块一条 `feature`，同一任务带 `draft_id` 覆盖；写需求来源、必须保持的行为、
   适用条件、入口。只改测试、生成代码、配置或行为没变的改动不写；还没实现的需求写 `plan`。
 - **教训（有才写）**：看代码看不出、又会让下一个人走弯路的，各写一条：被排除的方向 `exclusion`（最值钱）、
   根因或坑 `conclusion`（推翻旧结论用 `correction`）、约束和风险 `risk`、方案取舍 `decision`。
+  结论写在适用的最高一层：对所有子模块都成立的写到父模块。
 - 各字段怎么填见 `record_memory` 的说明（终端见 `pmem record --help`）和写入返回的 `hints`、`similar`。
 - 不写密码、密钥、个人信息。
 """
@@ -146,6 +153,11 @@ description: 为项目首次划分 pmem 模块并写入 .memory/modules.yaml。�
    - 第三方 SDK、插件、生成代码放进 `third_party` 或 `ignored`，不要做成模块。
    - 大类只能用 `modules.yaml` 里 `categories` 已有的；确实不合适时向用户提议调整大类，确认后再改。
    - 模块名用 PascalCase 英文；有常见别称的写进 `aliases`。
+   - 大业务下的细分按这个梯子从低往高选，够用就停：模块内议题（`entities`）→ 组件或变体（`components`、`variants`）
+     → 子模块（名字用点号续写，如 `system.Ads.AdMob`，最多 4 段；父模块必须先登记，可以只作分组、不写路径）
+     → 独立模块。子模块要有自己的代码路径，且有只对它成立的教训才值得拆；
+     平台（iOS/Android）、渠道、版本是适用条件，写进记忆的 `applies`，不要单独做一层，除非各自有独立的代码目录。
+     跨分支的深层关联（如打包脚本与广告 SDK）在模块的 `related` 里写 `{{ module: 模块, reason: 原因 }}`。
 3. 写入 `.memory/modules.yaml`（保留文件头注释与 `categories`）。
 4. 运行 `pmem doctor`，处理“未覆盖目录”“路径重叠”“空壳模块”，直到覆盖率 ≥ 95%。
 5. 告诉用户：划分已完成，可以提交 `.memory/` 与 pmem init 生成的 Agent 配置到版本库，团队成员安装 pmem 后即可使用。
@@ -175,7 +187,7 @@ description: 把同一议题下积累的多条零碎 pmem 记忆合并成一条�
    - 只保留现在仍成立的内容；后来被推翻或修正的，只写最终结论，必要时一句话说明“曾以为 X，实为 Y”。
    - 保留原因、证据、排除过的方向和风险；删掉“改了哪个方法”“编译 0 错误”这类版本库已有或无长期价值的信息。
    - 现象写上常用的不同叫法，方便以后搜到。
-   - 一条放不下（超过 1200 字）时，按子议题拆成 2～3 条，每条只 `--supersedes` 它覆盖的那几条旧记忆。
+   - 一条放不下（超过 5000 字）时，按子议题拆成 2～3 条，每条只 `--supersedes` 它覆盖的那几条旧记忆。
    - 类型：有排除项或风险且是重点时用 exclusion / risk，否则用 conclusion。
    - 写一句 `--summary`（60 字以内的现状结论）；旧记忆里有验证方法的，合并进 `--verify`。
 4. 执行上一步 `pmem compact` 输出里给出的 `pmem record ... --supersedes <id> ...` 命令写入。旧记忆不会被删除，只是不再出现在检索结果里；关联代码自动继承。
@@ -291,6 +303,9 @@ description: 按 pmem health 健康报告定期收口记忆库：核对过时记
    - 【未登记模块】【疑似重复模块】：`pmem migrate merge <被并入> <保留>`；未登记模块确属新业务时，把报告建议的 paths 登记进 modules.yaml，冷候选用 `pmem sync --apply` 转正；
    - 【召回偏低】：用 `pmem search --module <模块> --entity <议题> --brief` 看从没返回的议题，常问却查不到的补 aliases 或按 pmem-normalize 登记同义词；议题太杂的给用户看 `pmem migrate split <模块> --by entity --to <新模块>=<议题>[,<议题>]` 的预览；
    - 【记忆还在旧模块名下】：`pmem migrate tidy`；
+   - 【父子模块结构】：兄弟模块重复的教训，对所有下级都成立就在父模块写一条、`--supersedes` 填各下级那几条的 id；
+     只有一个下级、自己又没有路径和记忆的父模块，按报告给的命令合并；缺父模块的在 modules.yaml 登记它；
+     旧的 `parent` 字段按报告给的 `pmem migrate rename` 改成点号名字；`pmem sync` 提议的子模块确认后用它给出的 split 命令拆；
    - 【没有归属模块的代码目录】：`pmem sync` 预览新模块和要追加的路径；
    - 一个模块管得太宽、需要拆开时：`pmem migrate split <模块> --to <新模块>=<路径>`，预览里列出的“跨模块”“无法判断”的记忆用 `--assign <id>=<模块>` 指定去向；
    - 个别记忆写错了模块：`pmem migrate move <id> ... --to <模块>`；

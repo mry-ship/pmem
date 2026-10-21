@@ -15,11 +15,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from pmem.catalog.coverage import map_files
-from pmem.core.registry import WILDCARD, ModuleRegistry, RegistryError
+from pmem.core.registry import MAX_MODULE_DEPTH, WILDCARD, ModuleRegistry, RegistryError, module_depth
 from pmem.scan.lite import HEAT_DAYS, THIRD_PARTY_NAMES
 
 MODULE_MIN_FILES = 3
 PROMOTE_HEAT = 5
+SPLIT_MODULE_FILES = 60
+SPLIT_CHILD_FILES = 30
 IDLE_DAYS = 90
 MIN_VARIANT_PATHS = 2
 _WORD = re.compile(r"[A-Za-z0-9]+")
@@ -35,6 +37,7 @@ class SyncPlan:
     idle: list[str] = field(default_factory=list)
     loose: list[tuple[str, int]] = field(default_factory=list)
     conflicts: list[tuple[str, str]] = field(default_factory=list)
+    split: list[tuple[str, str, int, int]] = field(default_factory=list)
     unit_info: dict[str, tuple[int, int]] = field(default_factory=dict)
     history: bool = True
 
@@ -133,7 +136,7 @@ def _existing_module(registry: ModuleRegistry, name: str) -> str | None:
     if resolved is not None and resolved.candidate:
         return resolved.id
     # 短名只索引正式模块，同名的冷候选要单独找
-    same = [cid for cid in registry.candidates if cid.split(".", 1)[1].lower() == name.lower()]
+    same = [cid for cid in registry.candidates if cid.rsplit(".", 1)[-1].lower() == name.lower()]
     return same[0] if len(same) == 1 else None
 
 
@@ -215,6 +218,7 @@ def plan_sync(root: Path, registry: ModuleRegistry, memories: Counter,
             plan.promote.append((mid, f"已有 {memories[mid]} 条记忆"))
         elif cand_heat >= PROMOTE_HEAT:
             plan.promote.append((mid, f"近 {HEAT_DAYS} 天改动 {cand_heat} 次"))
+    plan.split = _split_proposals(registry, by_module, heat, taken_ids)
     if not history:
         return plan
     for mid, module in sorted(registry.modules.items()):
@@ -224,6 +228,39 @@ def plan_sync(root: Path, registry: ModuleRegistry, memories: Counter,
         if not any(recent.get(f, 0) for f in files):
             plan.idle.append(mid)
     return plan
+
+
+def _split_proposals(registry: ModuleRegistry, by_module: dict[str, list[str]], heat: Counter,
+                     taken_ids: dict[str, str]) -> list[tuple[str, str, int, int]]:
+    """大模块（≥60 个文件）里文件多或改动多的直接子目录，提议拆成子模块：(子模块, 路径, 文件数, 热度)。只提示，不自动执行。"""
+    proposals: list[tuple[str, str, int, int]] = []
+    for mid, module in sorted(registry.modules.items()):
+        files = by_module.get(mid, [])
+        if module.merged_into or module.deprecated or len(files) < SPLIT_MODULE_FILES:
+            continue
+        if module_depth(mid) >= MAX_MODULE_DEPTH:
+            continue
+        for pattern in module.paths:
+            pattern = pattern.replace("\\", "/")
+            base = pattern.removesuffix("/**")
+            if base == pattern or WILDCARD.search(base):
+                continue
+            groups: dict[str, list[str]] = defaultdict(list)
+            for rel in files:
+                rest = rel[len(base) + 1:].split("/") if rel.startswith(base + "/") else []
+                if len(rest) > 1:
+                    groups[rest[0]].append(rel)
+            for folder, sub in sorted(groups.items()):
+                sub_heat = sum(heat.get(f, 0) for f in sub)
+                name = pascal_name(folder)
+                if not name or len(sub) < MODULE_MIN_FILES:
+                    continue
+                if len(sub) < SPLIT_CHILD_FILES and sub_heat < PROMOTE_HEAT:
+                    continue
+                child = f"{mid}.{name}"
+                if child.lower() not in taken_ids:
+                    proposals.append((child, f"{base}/{folder}/**", len(sub), sub_heat))
+    return proposals
 
 
 def apply_plan(data: dict, plan: SyncPlan) -> dict:

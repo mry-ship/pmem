@@ -8,14 +8,15 @@ from pathlib import Path
 
 from wcmatch import glob as wglob
 
-from pmem.core.entry import KIND_LABELS, Entry
-from pmem.core.registry import RegistryError
+from pmem.core.entry import KIND_LABELS, PITFALL_KINDS, RECORD_KINDS, Entry
+from pmem.core.registry import RegistryError, ancestor_modules
 from pmem.index.anchors import ANCHOR_CACHE, STALE_LABEL, AnchorChecker
 from pmem.index.graph import current_entries, project_pitfalls
 from pmem.metrics.events import log_event
 
 GLOB_FLAGS = wglob.GLOBSTAR | wglob.BRACE | wglob.DOTGLOB | wglob.FORCEUNIX | wglob.IGNORECASE
 MAX_PROJECT_PITFALLS = 3
+MAX_INHERITED_PITFALLS = 2
 _PROJECT_SCOPE = re.compile(r"^scope:\s*['\"]?project", re.MULTILINE)
 _PATH_TOKEN = re.compile(r"[\w.\-]*[/\\][\w./\\\-]+")
 STALE_FOOTER = (f"标“{STALE_LABEL}”的记忆写下后关联代码又改过（改了哪里见 search_memory 结果的 check），"
@@ -67,8 +68,9 @@ class MemoryView:
 
     def modules_in_text(self, text: str) -> list[str]:
         """文字里提到的模块：完整模块 id、模块名或别名，以及能映射到模块的文件路径。"""
-        lowered = text.lower()
-        found = [mid for mid in self.registry.modules if mid.lower() in lowered]
+        # 按完整名的边界匹配：子串匹配会把提到 system.Ads.AdMob 当成也提到了 system.Ads
+        found = [mid for mid in self.registry.modules
+                 if re.search(rf"(?<![A-Za-z0-9_.]){re.escape(mid)}(?![A-Za-z0-9_]|\.[A-Za-z])", text, re.IGNORECASE)]
         found += [mid for mid, pattern in self.registry.name_patterns().items() if pattern.search(text)]
         paths = (re.sub(r"^(?:\.[/\\])+", "", t).rstrip(".") for t in _PATH_TOKEN.findall(text))
         found += [m for m in (self.module_of(self.relative(p)) for p in paths) if m]
@@ -77,6 +79,15 @@ class MemoryView:
     def memory_count(self, module: str) -> int:
         """现行记忆条数；已被替代或停用的不算，全部作废的模块不再拦截。"""
         return len(current_entries(self.module_entries(module)))
+
+    def ancestor_pitfalls(self, module: str) -> tuple[list[Entry], int]:
+        """上级模块里的排除项、风险、更正（由近到远、按类型排序，至多 MAX_INHERITED_PITFALLS 条），以及上级现行教训总数。"""
+        lessons = [(n, e) for n, a in enumerate(ancestor_modules(module))
+                   for e in current_entries(self.module_entries(a)) if e.kind not in RECORD_KINDS]
+        pitfalls = sorted(((n, e) for n, e in lessons if e.kind in PITFALL_KINDS),
+                          key=lambda t: (t[0], PITFALL_KINDS.index(t[1].kind)))
+        pitfalls = [e for _, e in pitfalls]
+        return pitfalls[:MAX_INHERITED_PITFALLS], len(lessons)
 
     def module_entries(self, module: str) -> list[Entry]:
         if module in self._entries:
@@ -128,9 +139,9 @@ class MemoryView:
             self.save()
         return fresh
 
-    def lines_with_project(self, entries: list[Entry], project: list[Entry]) -> list[str]:
-        """模块记忆和全项目级坑一起出行，只附一次“需核实”说明。"""
-        lines = self.memory_lines([*entries, *project])
+    def lines_with_project(self, entries: list[Entry], project: list[Entry], own: str | None = None) -> list[str]:
+        """模块记忆和全项目级坑一起出行，只附一次“需核实”说明。own 是当前模块，别的模块（上级）的行带模块名。"""
+        lines = self.memory_lines([*entries, *project], own=own)
         if project:
             lines.insert(len(entries), "全项目通用的坑（不限本模块）：")
         return lines
@@ -148,15 +159,15 @@ class MemoryView:
         except Exception:  # noqa: BLE001
             return {}
 
-    def memory_lines(self, entries: list[Entry]) -> list[str]:
+    def memory_lines(self, entries: list[Entry], own: str | None = None) -> list[str]:
         """摘要行：类型｜议题｜日期：预览；关联代码之后改过的标“需核实”。"""
         if self.defer_stale:
             self._deferred.update((e.id, e) for e in entries)
             marks = {e.id: _STALE_SLOT.format(e.id) for e in entries}
-            return self._lines(entries, marks, _FOOTER_SLOT.format(",".join(marks)))
+            return self._lines(entries, marks, _FOOTER_SLOT.format(",".join(marks)), own)
         problems = self.stale_problems(entries)
         marks = {i: _stale_mark(p) for i, p in problems.items()}
-        return self._lines(entries, marks, self._stale_footer() if problems else "")
+        return self._lines(entries, marks, self._stale_footer() if problems else "", own)
 
     def _stale_footer(self) -> str:
         """“需核实”的处理说明每个对话只给一次，上下文压缩后再给。
@@ -171,11 +182,12 @@ class MemoryView:
         return STALE_FOOTER
 
     @staticmethod
-    def _lines(entries: list[Entry], marks: dict[str, str], footer: str) -> list[str]:
+    def _lines(entries: list[Entry], marks: dict[str, str], footer: str, own: str | None = None) -> list[str]:
         lines = []
         for e in entries:
             seed = "（种子，待确认）" if e.status == "seed" else ""
-            where = f"{e.module}/" if e.project_wide else ""
+            upper = own is not None and e.module.lower() != own.lower() and not e.project_wide
+            where = f"{e.module}/" if e.project_wide else (f"上级 {e.module}/" if upper else "")
             lines.append(f"- {KIND_LABELS.get(e.kind, e.kind)}{seed}｜{where}{e.entity}｜{e.note_date}"
                          f"{marks.get(e.id, '')}：{e.title}")
         if footer:

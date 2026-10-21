@@ -22,6 +22,8 @@ from pmem.storage.files import FilesStorage
 BOOSTED_KINDS = ("exclusion", "correction")
 # 按文件检索时锚点命中的加分。相关度在 0～1 之间：只给路径时它决定顺序，带了 query 时只起辅助作用
 ANCHOR_BONUS = {2: 0.3, 1: 0.1, 0: 0.0}
+# 祖先模块的教训每远一层的降权系数
+INHERIT_DECAY = 0.85
 _BATCH_WINDOW_MS = 90 * 60 * 1000
 SYNONYM_WEIGHT = 0.8
 
@@ -281,12 +283,19 @@ class MemoryIndex:
         semantic: bool = True,
         path: str | None = None,
         feature_limit: int | None = None,
+        ancestors: list[str] | None = None,
+        inherit_max: int = 2,
     ) -> SearchResult:
         """排序 = (相关度 + 加分) × 时效；相关度 = 0.6 × 语义 + 0.4 × 关键词（无语义时只用关键词）。
         path 是要改的文件（项目相对路径）：锚点就是它的记忆加分，免得只按新旧排、被模块里别的方面挤掉。
         给了 feature_limit 时分层：items 只放教训（limit 条全文），功能记录与规划另排、放进 features（只有标题），
-        这样每次改模块都写的功能记录不会挤掉教训。"""
-        pool = [i for i in self._visible_items(as_of) if module is None or _same(i.entry.module, module)]
+        这样每次改模块都写的功能记录不会挤掉教训。
+        ancestors 是由近到远的祖先模块：它们的教训也参与排序（每远一层乘 INHERIT_DECAY），在 limit 之外另给最多 inherit_max 条，
+        本模块教训不够 limit 时空出的名额也给祖先（本模块的名额不被挤占）；功能记录不继承，议题过滤只作用于本模块。"""
+        visible = self._visible_items(as_of)
+        pool = [i for i in visible if module is None or _same(i.entry.module, module)]
+        distance = {a.lower(): n for n, a in enumerate(ancestors or [], start=1)} if module else {}
+        inherited = [i for i in visible if i.entry.module.lower() in distance and i.entry.kind not in RECORD_KINDS]
         result = SearchResult(warnings=list(self.warnings))
         if entity:
             matched = [i for i in pool if _same(i.entry.entity, entity)]
@@ -294,6 +303,8 @@ class MemoryIndex:
                 pool = matched
             elif pool:
                 result.fallback = "module"
+        own_ids = {i.entry.id for i in pool}
+        pool = pool + inherited
         if not pool:
             return result
 
@@ -308,22 +319,33 @@ class MemoryIndex:
         ranked = sorted(
             (
                 (_score(i.entry, rel + ANCHOR_BONUS[anchor_affinity(i.entry.anchors, path)], entity, day,
-                        half_life_days, as_of), ulid_ms(i.entry.id), i.entry)
+                        half_life_days, as_of) * INHERIT_DECAY ** distance.get(i.entry.module.lower(), 0),
+                 ulid_ms(i.entry.id), i.entry)
                 for i, rel in zip(pool, relevance, strict=True)
             ),
             key=lambda t: (t[0], t[1]),
             reverse=True,
         )
+        own = [t for t in ranked if t[2].id in own_ids]
         records: list[Entry] = []
         if feature_limit is not None:
             if feature_limit > 0:
-                records = _spread_batches([t for t in ranked if t[2].kind in RECORD_KINDS], feature_limit,
+                records = _spread_batches([t for t in own if t[2].kind in RECORD_KINDS], feature_limit,
                                           max_per_batch, related)
-            ranked = [t for t in ranked if t[2].kind not in RECORD_KINDS]
-        chosen = _spread_batches(ranked, limit, max_per_batch, related)
+            own = [t for t in own if t[2].kind not in RECORD_KINDS]
+        chosen = _spread_batches(own, limit, max_per_batch, related)
+        upper = [t for t in ranked if t[2].id not in own_ids]
+        if upper:
+            extra = _spread_batches(upper, max(limit, inherit_max), max_per_batch, related)
+            take = min(len(extra), max(inherit_max, limit - len(chosen)))
+            chosen = _merge_by_score(chosen, extra[:take], {t[2].id: t[0] for t in ranked})
         # 回看历史时代码早已变化，核对没有意义
         problems = self.check_anchors(chosen + records) if verify and not as_of else {}
-        result.items = [entry_row(e, problems.get(e.id), with_module=module is None) for e in chosen]
+        result.items = [entry_row(e, problems.get(e.id), with_module=module is None or e.id not in own_ids)
+                        for e in chosen]
+        for row in result.items:
+            if module is not None and row["id"] not in own_ids:
+                row["inherited"] = True
         result.features = [title_row(e, problems.get(e.id), with_module=module is None) for e in records]
         return result
 
@@ -360,6 +382,20 @@ def _score(entry: Entry, relevance: float, entity: str | None, today: date, half
         age = 0
     recency = 0.5 ** (age / half_life_days)
     return (relevance + bonus) * (0.7 + 0.3 * recency)
+
+
+def _merge_by_score(own: list[Entry], inherited: list[Entry], score: dict[str, float]) -> list[Entry]:
+    """把祖先教训按分数插进本模块结果；两边各自保持 _spread_batches 给出的次序（降权的不能被分数提回去）。"""
+    merged: list[Entry] = []
+    i = j = 0
+    while i < len(own) or j < len(inherited):
+        if j >= len(inherited) or (i < len(own) and score[own[i].id] >= score[inherited[j].id]):
+            merged.append(own[i])
+            i += 1
+        else:
+            merged.append(inherited[j])
+            j += 1
+    return merged
 
 
 def _spread_batches(ranked: list[tuple[float, int, Entry]], limit: int, max_per_batch: int,

@@ -17,6 +17,10 @@ WILDCARD = re.compile(r"\*\*|\*|\?|\[[^\]]*\]|\{[^}]*\}")
 MERGED_PREFIX = "merged_into:"
 DEPRECATED = "deprecated"
 MIN_ASCII_NAME = 4
+# 大类 + 最多三层名字；再深多半是把平台、渠道这类交叉维度编进了模块树
+MAX_MODULE_DEPTH = 4
+DEPTH_HINT = ("模块名最多 4 段（大类.模块.子模块.子模块）；渠道、平台、变体用 entity、applies 或 variants 表达，"
+              "确实需要更深就把某一层提升为独立模块")
 
 
 class RegistryError(ValueError):
@@ -28,9 +32,40 @@ class RegistryError(ValueError):
 
 
 def is_module_id(text: str) -> bool:
-    """category.Name：大类小写、模块名字母开头。"""
-    category, dot, name = str(text).partition(".")
-    return bool(dot and _CATEGORY_RE.match(category) and _NAME_RE.match(name))
+    """category.Name[.Sub[.Sub]]：大类小写、每段字母开头，总共不超过 MAX_MODULE_DEPTH 段。"""
+    category, dot, rest = str(text).partition(".")
+    parts = rest.split(".")
+    return bool(dot and _CATEGORY_RE.match(category) and len(parts) < MAX_MODULE_DEPTH
+                and all(_NAME_RE.match(p) for p in parts))
+
+
+def module_depth(module_id: str) -> int:
+    return str(module_id).count(".") + 1
+
+
+def parent_module(module_id: str) -> str | None:
+    """父模块由名字推出：去掉最后一段；两段的模块没有父模块。"""
+    return module_id.rsplit(".", 1)[0] if module_depth(module_id) > 2 else None
+
+
+def ancestor_modules(module_id: str) -> list[str]:
+    """由近到远的祖先模块名（不论是否登记）。"""
+    found, current = [], parent_module(module_id)
+    while current:
+        found.append(current)
+        current = parent_module(current)
+    return found
+
+
+def is_descendant(module_id: str, ancestor: str) -> bool:
+    """module_id 在 ancestor 之下（不含自身，不区分大小写）。"""
+    return module_id.lower().startswith(ancestor.lower() + ".")
+
+
+def is_lineage(a: str, b: str) -> bool:
+    """a 与 b 是同一个模块，或一个是另一个的祖先（不区分大小写）。"""
+    la, lb = a.lower(), b.lower()
+    return la == lb or la.startswith(lb + ".") or lb.startswith(la + ".")
 
 
 @dataclass
@@ -41,7 +76,9 @@ class Module:
     entities: list[str] = field(default_factory=list)
     components: list[str] = field(default_factory=list)
     variants: list[str] = field(default_factory=list)
-    parent: str | None = None
+    # 旧版的 parent 字段已不生效（父子关系由名字表达），只留着给健康检查提示改名
+    legacy_parent: str | None = None
+    related: list[dict] = field(default_factory=list)
     status: str = "active"
     description: str = ""
 
@@ -51,7 +88,21 @@ class Module:
 
     @property
     def name(self) -> str:
+        """短名：最后一段。"""
+        return self.id.rsplit(".", 1)[1]
+
+    @property
+    def path_name(self) -> str:
+        """去掉大类的部分，如 Ads.AdMob。"""
         return self.id.split(".", 1)[1]
+
+    @property
+    def parent_id(self) -> str | None:
+        return parent_module(self.id)
+
+    @property
+    def depth(self) -> int:
+        return module_depth(self.id)
 
     @property
     def deprecated(self) -> bool:
@@ -88,10 +139,30 @@ class Module:
             entities=words("entities"),
             components=words("components"),
             variants=words("variants"),
-            parent=data.get("parent"),
+            legacy_parent=str(data["parent"]) if data.get("parent") else None,
+            related=_related_items(module_id, data.get("related")),
             status=str(data.get("status") or "active"),
             description=str(data.get("description") or ""),
         )
+
+
+def _related_items(module_id: str, value) -> list[dict]:
+    """related: [infra.Build] 或 [{module: infra.Build, reason: ...}]，统一成 {module, reason}。"""
+    if not value:
+        return []
+    if isinstance(value, (str, dict)):
+        value = [value]
+    if not isinstance(value, list):
+        raise RegistryError(f"modules.yaml 里 {module_id}.related 应是列表")
+    items = []
+    for item in value:
+        if isinstance(item, dict):
+            target, reason = str(item.get("module") or "").strip(), str(item.get("reason") or "").strip()
+        else:
+            target, reason = str(item).strip(), ""
+        if target:
+            items.append({"module": target, "reason": reason})
+    return items
 
 
 @dataclass
@@ -185,6 +256,10 @@ class ModuleRegistry:
         for mid, module in self.modules.items():
             self._full_index[mid.lower()] = mid
             self._bare_index.setdefault(module.name.lower(), set()).add(mid)
+            # 末尾几段也能当短名：AdMob.Android、Ads.AdMob.Android
+            parts = module.path_name.split(".")
+            for start in range(len(parts) - 1):
+                self._bare_index.setdefault(".".join(parts[start:]).lower(), set()).add(mid)
             for alias in module.aliases:
                 if "." in alias:
                     self._full_index.setdefault(alias.lower(), mid)
@@ -236,7 +311,9 @@ class ModuleRegistry:
             mid = self._full_index[key]
             return self._resolved(mid, mid if self.modules[mid].merged_into else None)
 
-        if "." not in text:
+        # 不带大类的短名：最后一段（AdMob）或去掉大类的部分（Ads.AdMob）
+        first = text.split(".", 1)[0].lower()
+        if "." not in text or (first not in self.categories and key in self._bare_index):
             ids = self._bare_index.get(key)
             if not ids:
                 raise RegistryError(f"未知模块 {text!r}，请使用 category.Name 格式，或先用 list_modules 查看",
@@ -251,23 +328,55 @@ class ModuleRegistry:
         category = category.lower()
         if category not in self.categories:
             raise RegistryError(f"未知大类 {category!r}，只允许：{' / '.join(self.categories)}", "category_unknown")
-        if not _NAME_RE.match(name):
-            raise RegistryError(f"模块名 {name!r} 不合法，只能包含字母、数字、下划线且以字母开头", "module_invalid")
+        parts = name.split(".")
+        if len(parts) >= MAX_MODULE_DEPTH:
+            raise RegistryError(f"模块名 {text!r} 超过 {MAX_MODULE_DEPTH} 段。{DEPTH_HINT}", "module_invalid")
+        bad = next((p for p in parts if not _NAME_RE.match(p)), None)
+        if bad is not None:
+            raise RegistryError(f"模块名 {name!r} 不合法，每段只能包含字母、数字、下划线且以字母开头", "module_invalid")
         cand = self._candidate_index.get(f"{category}.{name}".lower())
         if cand:
             return ResolvedModule(cand, category, cand.split(".", 1)[1], known=False, candidate=True)
+        if len(parts) > 1:
+            # 未登记的子模块挂在已登记的父模块下，名字跟随父模块的写法；父模块也没登记就拒绝，免得随手造出一棵树
+            parent_key = f"{category}.{'.'.join(parts[:-1])}".lower()
+            if parent_key not in self._full_index:
+                raise RegistryError(f"{text} 的父模块 {category}.{'.'.join(parts[:-1])} 未登记：先在 modules.yaml "
+                                    "登记父模块，或写到已有模块（list_modules 查看）", "module_invalid")
+            parent = self._follow_merge(self._full_index[parent_key])
+            mid = f"{parent}.{parts[-1]}"
+            if module_depth(mid) > MAX_MODULE_DEPTH:
+                raise RegistryError(f"{text} 的父模块已并入 {parent}，挂上去会超过 {MAX_MODULE_DEPTH} 段。{DEPTH_HINT}",
+                                    "module_invalid")
+            mid_category, mid_name = mid.split(".", 1)
+            return ResolvedModule(mid, mid_category, mid_name, known=False)
         return ResolvedModule(f"{category}.{name}", category, name, known=False)
 
     def name_patterns(self) -> dict[str, re.Pattern]:
         """文字里提到某个模块的匹配式：模块名与不带点的别名，英文至少 4 个字符且按词边界，中文至少 2 个字。"""
         patterns = {}
         for mid, module in self.modules.items():
-            names = [n for n in (module.name, *module.aliases) if "." not in n]
+            # 不同分支下同名的末段（两个 SDK 下都有 Android）认不出指的是哪个，只认全名
+            names = [n for n in (module.name, *module.aliases)
+                     if "." not in n and (module.depth <= 2 or len(self._bare_index.get(n.lower(), ())) <= 1)]
             names = [n for n in names if (len(n) >= MIN_ASCII_NAME if n.isascii() else len(n) >= 2)]
             if names:
                 alternation = "|".join(re.escape(n) for n in sorted(names, key=len, reverse=True))
                 patterns[mid] = re.compile(rf"(?<![A-Za-z0-9_])(?:{alternation})(?![A-Za-z0-9_])")
         return patterns
+
+    # ---- 父子关系 ----
+
+    def registered_ancestors(self, module_id: str) -> list[str]:
+        """由近到远、已登记且未并入别处的祖先模块。"""
+        return [a for a in (self._full_index.get(x.lower()) for x in ancestor_modules(module_id))
+                if a is not None and not self.modules[a].merged_into]
+
+    def children(self, module_id: str) -> list[str]:
+        """已登记的直接子模块（并入别处的不算）。"""
+        key = module_id.lower()
+        return sorted(mid for mid, m in self.modules.items()
+                      if not m.merged_into and (m.parent_id or "").lower() == key)
 
     def is_global_entity(self, name: str) -> bool:
         return self._entity_vocab.get(name.lower()) == name

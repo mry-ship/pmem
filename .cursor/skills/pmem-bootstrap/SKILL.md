@@ -19,6 +19,11 @@ description: 为项目首次划分 pmem 模块并写入 .memory/modules.yaml。�
    - 第三方 SDK、插件、生成代码放进 `third_party` 或 `ignored`，不要做成模块。
    - 大类只能用 `modules.yaml` 里 `categories` 已有的；确实不合适时向用户提议调整大类，确认后再改。
    - 模块名用 PascalCase 英文；有常见别称的写进 `aliases`。
+   - 大业务下的细分按这个梯子从低往高选，够用就停：模块内议题（`entities`）→ 组件或变体（`components`、`variants`）
+     → 子模块（名字用点号续写，如 `system.Ads.AdMob`，最多 4 段；父模块必须先登记，可以只作分组、不写路径）
+     → 独立模块。子模块要有自己的代码路径，且有只对它成立的教训才值得拆；
+     平台（iOS/Android）、渠道、版本是适用条件，写进记忆的 `applies`，不要单独做一层，除非各自有独立的代码目录。
+     跨分支的深层关联（如打包脚本与广告 SDK）在模块的 `related` 里写 `{ module: 模块, reason: 原因 }`。
 3. 写入 `.memory/modules.yaml`（保留文件头注释与 `categories`）。
 4. 运行 `pmem doctor`，处理“未覆盖目录”“路径重叠”“空壳模块”，直到覆盖率 ≥ 95%。
 5. 告诉用户：划分已完成，可以提交 `.memory/` 与 pmem init 生成的 Agent 配置到版本库，团队成员安装 pmem 后即可使用。

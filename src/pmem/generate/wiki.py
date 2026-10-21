@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from pmem.core.entry import KIND_LABELS, Entry
-from pmem.core.registry import is_module_id
+from pmem.core.registry import is_lineage, is_module_id, module_depth, parent_module
 from pmem.generate.memmap import SELF_IGNORE, render_mermaid
 from pmem.index.anchors import STALE_LABEL
 from pmem.index.graph import MemoryGraph
@@ -113,15 +113,27 @@ def _entry_block(entry: Entry, to_root: str, problems: list[str] | None) -> list
     return [*lines, ""]
 
 
+def _module_ref(module_id: str, paged: set[str]) -> str:
+    return _module_link(module_id) if module_id in paged else f"`{module_id}`"
+
+
 def _module_page(module_id: str, entries: list[Entry], graph: MemoryGraph, registry, to_root: str,
-                 stale: dict[str, list[str]], diagram: str | None = None) -> str:
+                 stale: dict[str, list[str]], diagram: str | None = None, paged: set[str] | None = None) -> str:
     module = registry.modules.get(module_id)
     topics = graph.topics(module_id)
     current = [e for e in entries if e.id not in graph.superseded_by]
+    paged = paged if paged is not None else {module_id}
     lines = [MARKER, f"# {module_id}", "", "[← 全部模块](index.md)", ""]
     facts = []
     if module is not None and module.description:
         facts.append(module.description)
+    parent = parent_module(module_id)
+    if parent:
+        facts.append("上级模块：" + _module_ref(parent, paged) + "（上级的教训对本模块同样适用）")
+    children = sorted({*registry.children(module_id), *(m for m in paged if parent_module(m) == module_id)},
+                      key=str.lower)
+    if children:
+        facts.append("下级模块：" + "、".join(_module_ref(c, paged) for c in children))
     if module is not None and module.aliases:
         facts.append("别名：" + "、".join(module.aliases))
     if module is not None and module.paths:
@@ -132,9 +144,15 @@ def _module_page(module_id: str, entries: list[Entry], graph: MemoryGraph, regis
         facts.append(f"⚠ {flagged} 条{STALE_LABEL}：关联代码在记忆写下后改过或已删除")
     lines += [*(f"- {f}" for f in facts), ""]
 
-    related = graph.related(module_id, limit=10)
-    if related:
+    manual = [(item["module"], item.get("reason", "")) for item in (module.related if module else [])]
+    manual += [(other, item.get("reason", "")) for other, m in registry.modules.items() if other != module_id
+               for item in m.related if item["module"].lower() == module_id.lower()]
+    related = [r for r in graph.related(module_id, limit=20) if not is_lineage(r["module"], module_id)
+               and r["module"].lower() not in {mid.lower() for mid, _ in manual}][:10]
+    if manual or related:
         lines += ["## 相关模块", ""]
+        for other, reason in manual:
+            lines.append(f"- {_module_ref(other, paged)}：手工登记{('：' + reason) if reason else ''}")
         for row in related:
             topics_hint = f"（对方议题：{'、'.join(row['entities'])}）" if row["entities"] else ""
             lines.append(f"- {_module_link(row['module'])}：{row['via']}{topics_hint}")
@@ -177,11 +195,13 @@ def _index_page(title: str, by_module: dict[str, list[Entry]], graph: MemoryGrap
     order = [c for c in categories if c in by_category] + sorted(c for c in by_category if c not in categories)
     for category in order:
         lines += [f"## {category}", "", f"| 模块 | 现行记忆 | 议题 | {STALE_LABEL} | 最近更新 |", "|---|---|---|---|---|"]
-        for module_id in sorted(by_category[category]):
+        for module_id in sorted(by_category[category], key=str.lower):
             entries = by_module[module_id]
             live = [e for e in entries if e.id not in graph.superseded_by]
             flagged = sum(1 for e in live if e.id in stale)
-            lines.append(f"| {_module_link(module_id)} | {len(live)} | {len(graph.topics(module_id))} "
+            depth = module_depth(module_id)
+            indent = "　" * (depth - 3) + "└ " if depth > 2 else ""
+            lines.append(f"| {indent}{_module_link(module_id)} | {len(live)} | {len(graph.topics(module_id))} "
                          f"| {flagged or ''} | {max(e.note_date for e in entries)} |")
         lines.append("")
     project = sorted((e for e in current if e.project_wide), key=lambda e: (e.note_date, e.id), reverse=True)
@@ -212,11 +232,12 @@ def render_wiki(service, out_dir: Path) -> dict[str, str]:
         to_root = service.root.as_posix()
     diagrams = {m["module"]: render_mermaid(m) for m in build_map(service.index.entries(), full=False)["modules"]}
     pages = {}
+    paged = {mid for mid in by_module if _page(mid) is not None}
     for mid, entries in sorted(by_module.items()):
         name = _page(mid)
         if name is None:
             continue
-        pages[name] = _module_page(mid, entries, graph, service.registry, to_root, stale, diagrams.get(mid))
+        pages[name] = _module_page(mid, entries, graph, service.registry, to_root, stale, diagrams.get(mid), paged)
     title = service.config.get("project.name") or service.root.name
     pages["index.md"] = _index_page(title, by_module, graph, service.registry.categories, stale)
     return pages

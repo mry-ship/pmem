@@ -255,4 +255,4 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 
 ## 路线
 
-各版本的计划和进度记在 GitHub：[v0.3.1 功能记录与分层检索](https://github.com/mry-ship/pmem/issues/12)、[v0.3.2 记忆图与严格清理](https://github.com/mry-ship/pmem/issues/13)、[v0.4 治理闭环与团队化](https://github.com/mry-ship/pmem/issues/14)（已关闭：转正提示和召回审计已实现，团队汇总与中心服务长期搁置）、v0.5 父子模块与回复格式（[设计稿](docs/superpowers/specs/2026-10-21-pmem-module-hierarchy-design.md)）；设计细节见 [设计文档第 14 节](docs/superpowers/specs/2026-10-14-pmem-design.md)。
+各版本的计划和进度记在 GitHub：[v0.3.1 功能记录与分层检索](https://github.com/mry-ship/pmem/issues/12)、[v0.3.2 记忆图与严格清理](https://github.com/mry-ship/pmem/issues/13)、[v0.4 治理闭环与团队化](https://github.com/mry-ship/pmem/issues/14)（已关闭：转正提示和召回审计已实现，团队汇总与中心服务长期搁置）、v0.5 父子模块与回复格式（[设计稿](docs/superpowers/specs/2026-10-21-pmem-module-hierarchy-design.md)）、[v0.6 类型安全与规则化](https://github.com/mry-ship/pmem/issues/15)（计划，[设计稿](docs/superpowers/specs/2026-10-21-pmem-typesafe-design.md)）；设计细节见 [设计文档第 14 节](docs/superpowers/specs/2026-10-14-pmem-design.md)。

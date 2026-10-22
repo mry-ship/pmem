@@ -98,6 +98,12 @@ def test_body_comments_fall_back_to_reminding(make):
     assert "注释" in autosync.take_notice(Config.load(root).cache_dir)
 
 
+def test_ignored_directories_are_never_registered(make):
+    root = make(modules=MODULES + "ignored: [src/Game/Match/**]\n")
+    assert run_auto(root, "session")["status"] == "clean"
+    assert "gameplay.Match" not in _modules(root)
+
+
 def test_off_does_nothing(make):
     root = make("sync: { auto: off }\n")
     assert run_auto(root, "session") == {"status": "off"}

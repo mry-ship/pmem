@@ -67,7 +67,8 @@ def run_auto(root: Path, reason: str, now: float | None = None) -> dict:
         except (RegistryError, OSError, ValueError) as exc:
             result = {"status": "error", "error": str(exc)[:300]}
         state = load_state(cache_dir)
-        state.update(last_run=now, fingerprint=fingerprint(config.root, config.modules_path))
+        # 只有写了 modules.yaml 指纹才会变；大项目每遍历一次约 1 秒
+        state.update(last_run=now, fingerprint=fingerprint(config.root, config.modules_path) if result.get("applied") else mark)
         if full:
             state["last_full"] = now
         if "unresolved" in result:

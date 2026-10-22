@@ -73,7 +73,7 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 | 这次对话不用记忆 | 对 AI 说“跳过记忆”；说“恢复记忆”撤销 |
 | 记忆多了，合并零碎记忆 | 对 AI 说“按 pmem-compact 技能合并记忆” |
 | 换个说法搜不到 | 对 AI 说“按 pmem-normalize 技能整理同义词”（如“闪退 / 崩溃”） |
-| 新增了业务模块 | 默认自动：Agent 改到没登记的目录、或会话开始时（间隔 30 分钟），Hook 在后台扫描并追加到 `modules.yaml`（`sync.auto: apply`，可改 `remind` 只提醒或 `"off"`），结果由 Agent 转告并写明新增了几个模块，`pmem sync --history` 看最近 20 次；手动用 `pmem sync` 预览、`--apply` 写入，或直接在 `.memory/modules.yaml` 里加 |
+| 新增了业务模块 | 默认自动：Agent 改到没登记的目录、或会话开始时（间隔 30 分钟），Hook 在后台扫描并追加到 `modules.yaml`（`sync.auto: apply`，可改 `remind` 只提醒或 `"off"`），结果由 Agent 转告并写明新增了几个模块，`pmem sync --history` 看最近 20 次；不想登记的目录写进 `ignored`；手动用 `pmem sync` 预览、`--apply` 写入，或直接在 `.memory/modules.yaml` 里加 |
 | 模块改名、合并 | `pmem migrate rename <旧> <新>` / `pmem migrate merge <被并入> <保留>`，记忆随之搬家（默认预览，加 `--apply` 执行）。合并写错的模块名时默认不把它登记为别名，以后还会这样叫才加 `--alias`；队友之后写到旧名下的，`pmem migrate tidy --apply`；搬到一半失败时按提示运行列出的命令补完 |
 | 大业务要细分（如广告下各 SDK） | `pmem migrate split system.Ads --to system.Ads.AdMob=<路径>` 拆出子模块；`pmem sync` 会提议文件多、改动多的子目录。对所有子模块都成立的结论写到父模块，`pmem health` 会指出兄弟模块里重复的教训 |
 | 一个模块管得太宽，要拆开 | `pmem migrate split <模块> --to <新模块>=<路径>`（按议题拆加 `--by entity`）：记忆按关联代码分到新模块，判断不了的列出来，用 `--assign <id>=<模块>` 指定 |

@@ -762,7 +762,7 @@ sync:
     <div class="card">
       <h4>目录同步（pmem sync）</h4>
       <p>项目里新增了目录时运行。没被任何模块覆盖的代码按“第一个完全没有已覆盖文件的上级目录”分组：和已有模块同名、或是已有模块的又一个变体目录（同一父目录下它已有两个以上路径）的追加到那个模块；3 个文件以上且近 180 天有改动的成为新模块，否则成为冷候选；第三方目录追加到 <code>third_party</code>。冷候选有了记忆或改动 5 次以上时转正。近 90 天没改动也没记忆的模块只提示，不自动降级。</p>
-      <p><b>自动同步</b>（<code>sync.auto</code>，默认 <code>apply</code>）：不用记得手动跑。Agent 改到没归属任何模块的代码文件时立即、每次会话开始时（距上次超过 <code>interval_minutes</code>）由 Hook 拉起后台进程 <code>pmem sync --auto</code>，不阻塞对话。后台先比目录指纹，目录没变就直接结束；平时不读提交历史（SVN 要走网络），只按文件数分新模块和冷候选，每 <code>full_hours</code> 做一次带热度的完整扫描。<code>apply</code> 按 <code>--apply</code> 的规则只追加；<code>modules.yaml</code> 正文里有注释（重写会丢）时退回只提醒。结果在下一次工具调用后告诉 Agent，由它转告你这次新增了几个模块、几个冷候选（写明数量），名字不合适用 <code>pmem migrate rename</code> 改；<code>pmem sync --history</code> 列出本机最近 20 次自动登记各新增了多少。实测 4681 个代码文件的 SVN 项目：目录没变约 1.2 秒，有变化约 3.5 秒，全在后台。</p>
+      <p><b>自动同步</b>（<code>sync.auto</code>，默认 <code>apply</code>）：不用记得手动跑。Agent 改到没归属任何模块的代码文件时立即、每次会话开始时（距上次超过 <code>interval_minutes</code>）由 Hook 拉起后台进程 <code>pmem sync --auto</code>，不阻塞对话。后台先比目录指纹，目录没变就直接结束；平时不读提交历史（SVN 要走网络），只按文件数分新模块和冷候选，每 <code>full_hours</code> 做一次带热度的完整扫描。<code>apply</code> 按 <code>--apply</code> 的规则只追加；<code>modules.yaml</code> 正文里有注释（重写会丢）时退回只提醒。结果在下一次工具调用后告诉 Agent，由它转告你这次新增了几个模块、几个冷候选（写明数量），名字不合适用 <code>pmem migrate rename</code> 改；<code>pmem sync --history</code> 列出本机最近 20 次自动登记各新增了多少。扫完仍没归属的目录（散落文件、只提醒没登记的）再改时不重复扫描。自动登记只追加：手工删掉某个模块，下次扫描会把它加回来，不想登记的目录写进 <code>ignored</code>。实测 4681 个代码文件的 SVN 项目：目录没变约 1.2 秒，有变化约 3.5 秒，全在后台。</p>
     </div>
     <div class="card">
       <h4>健康报告（pmem health）</h4>

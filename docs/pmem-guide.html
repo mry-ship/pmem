@@ -176,7 +176,7 @@ pmem doctor</code></pre>
     <tr><th>什么时候</th><th>做什么</th></tr>
     <tr><td>日常开发</td><td>什么都不用做；记忆由 AI 自动写；不想被打扰时写“跳过记忆”</td></tr>
     <tr><td>提交代码时</td><td>把 <code>.memory/</code> 新增的记忆一起提交，<code>pmem doctor</code> 会提示还有几条没提交</td></tr>
-    <tr><td>新增业务模块</td><td><code>pmem sync</code> 预览新模块和要追加的路径，<code>--apply</code> 写入（只追加）；也可直接在 <code>.memory/modules.yaml</code> 里加</td></tr>
+    <tr><td>新增业务模块</td><td>默认自动：改到新目录或会话开始时后台扫描并登记（<code>sync.auto</code>）；也可手动 <code>pmem sync</code> 预览、<code>--apply</code> 写入（只追加），或直接在 <code>.memory/modules.yaml</code> 里加</td></tr>
     <tr><td>同一议题记忆变多</td><td>对 AI 说“按 pmem-compact 技能合并记忆”</td></tr>
     <tr><td>换个说法搜不到</td><td>对 AI 说“按 pmem-normalize 技能整理同义词”</td></tr>
     <tr><td>刚接入、记忆库还空</td><td>对 AI 说“按 pmem-seed 技能提炼种子记忆”，负责人用 <code>pmem seed</code> 过目后转正</td></tr>
@@ -656,7 +656,11 @@ embedding:
   base_url: ""              <span class="c"># 只接受本机（localhost、127.0.0.1、::1）和 https://api.openai.com。其他地址须在本机设置 PMEM_EMBED_ALLOW_REMOTE=1，且必须是 https。OPENAI_API_KEY 只发给官方地址，其余只用 PMEM_OPENAI_API_KEY。ollama 留空即 http://localhost:11434</span>
 server:
   watchdog: true            <span class="c"># MCP 服务崩溃、卡死或 pmem 升级后自动重启</span>
-  request_timeout: 120      <span class="c"># 单次调用超过这么多秒没响应就判定卡死并重启</span></code></pre>
+  request_timeout: 120      <span class="c"># 单次调用超过这么多秒没响应就判定卡死并重启</span>
+sync:
+  auto: apply               <span class="c"># 发现没登记的代码目录：apply 自动追加到 modules.yaml / remind 只提醒 / "off" 关闭</span>
+  interval_minutes: 30      <span class="c"># 会话开始时距上次扫描超过这么久才在后台扫一次；改到没登记的目录时立即扫</span>
+  full_hours: 24            <span class="c"># 至少这么久做一次带提交热度的完整扫描</span></code></pre>
   <p><code>modules.yaml</code> 改了随时生效；<code>config.yaml</code> 改了之后 Hook、命令行和已在运行的 MCP 服务都在下一次调用时生效；只有 <code>server</code> 下的两项（看门狗开关和超时）要在 Cursor 里重启 pmem 服务（或重开窗口）才会读到。</p>
 </section>
 
@@ -758,6 +762,7 @@ server:
     <div class="card">
       <h4>目录同步（pmem sync）</h4>
       <p>项目里新增了目录时运行。没被任何模块覆盖的代码按“第一个完全没有已覆盖文件的上级目录”分组：和已有模块同名、或是已有模块的又一个变体目录（同一父目录下它已有两个以上路径）的追加到那个模块；3 个文件以上且近 180 天有改动的成为新模块，否则成为冷候选；第三方目录追加到 <code>third_party</code>。冷候选有了记忆或改动 5 次以上时转正。近 90 天没改动也没记忆的模块只提示，不自动降级。</p>
+      <p><b>自动同步</b>（<code>sync.auto</code>，默认 <code>apply</code>）：不用记得手动跑。Agent 改到没归属任何模块的代码文件时立即、每次会话开始时（距上次超过 <code>interval_minutes</code>）由 Hook 拉起后台进程 <code>pmem sync --auto</code>，不阻塞对话。后台先比目录指纹，目录没变就直接结束；平时不读提交历史（SVN 要走网络），只按文件数分新模块和冷候选，每 <code>full_hours</code> 做一次带热度的完整扫描。<code>apply</code> 按 <code>--apply</code> 的规则只追加；<code>modules.yaml</code> 正文里有注释（重写会丢）时退回只提醒。结果在下一次工具调用后告诉 Agent，由它转告你，名字不合适用 <code>pmem migrate rename</code> 改。实测 4681 个代码文件的 SVN 项目：目录没变约 1.2 秒，有变化约 3.5 秒，全在后台。</p>
     </div>
     <div class="card">
       <h4>健康报告（pmem health）</h4>

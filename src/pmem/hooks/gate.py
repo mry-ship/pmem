@@ -3,7 +3,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from pmem.core import seen
+from pmem.core import autosync, seen
+from pmem.core.codefiles import is_code_file
 from pmem.core.config import Config
 from pmem.core.entry import Entry
 from pmem.core.registry import ModuleRegistry
@@ -143,13 +144,35 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
             self.save()
         if rel is not None:
             self.log("edit", module=module, file=rel)
+            if module is None and self._unregistered_code(rel):
+                self._autosync("edit")
+
+    def _unregistered_code(self, rel: str) -> bool:
+        """改到的是没归属任何模块的代码文件（不算第三方、忽略的目录和闸门不看的文件）。"""
+        if not is_code_file(rel) or not self._watched(rel) or self.registry.is_excluded(rel):
+            return False
+        try:
+            return self.registry.module_for_path(rel) is None
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _autosync(self, reason: str) -> None:
+        if autosync.should_spawn(self.config, reason):
+            started = autosync.spawn(self.root, self.config.cache_dir, reason)
+            self.log("autosync_spawn", reason=reason, ok=started)
+
+    def on_session(self) -> dict:
+        self._autosync("session")
+        return {}
 
     def on_post_tool(self) -> dict:
         result = self._post_tool()
-        notice = self.error_notice()
-        if notice:
+        notices = [self.error_notice()]
+        if self.config.get("sync.auto") != "off":
+            notices.append(autosync.take_notice(self.config.cache_dir))
+        if any(notices):
             result = dict(result or {})
-            result["additional_context"] = "\n\n".join(filter(None, [result.get("additional_context"), notice]))
+            result["additional_context"] = "\n\n".join(filter(None, [result.get("additional_context"), *notices]))
         return result
 
     def error_notice(self) -> str | None:
@@ -217,8 +240,8 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
 
 
 HANDLERS = {
-    # 新对话开始：装了 pmem 时无事可做；没装时由 .memory/bin/pmem-hook 包装脚本提醒
-    "session": lambda gate: {},
+    # 新对话开始：按间隔在后台扫描没登记的代码目录；没装 pmem 时由 .memory/bin/pmem-hook 包装脚本提醒
+    "session": Gate.on_session,
     "prompt": Gate.on_prompt,
     "pre-tool": Gate.on_pre_tool,
     "before-mcp": Gate.on_before_mcp,

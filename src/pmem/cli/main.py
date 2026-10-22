@@ -35,6 +35,8 @@ def build_parser():
 
     p = sub.add_parser("sync", help="重新扫描代码目录：列出新模块候选、要追加的路径、第三方目录和冷候选转正（默认只预览）")
     p.add_argument("--apply", action="store_true", help="写入 modules.yaml（只追加，不改已有模块名）")
+    p.add_argument("--auto", choices=("edit", "session", "full"), default=None,
+                   help="按 config.yaml 的 sync.auto 自动同步（Hook 在后台调用；full 强制带提交热度的完整扫描）")
     p.add_argument("--root", default=".")
 
     p = sub.add_parser("doctor", help="自检：配置、模块覆盖率、Cursor 接入状态")
@@ -327,8 +329,10 @@ def _scan(args) -> int:
 
 
 def _sync(args) -> int:
-    from pmem.cli.sync_cmd import run_sync
+    from pmem.cli.sync_cmd import run_auto_sync, run_sync
 
+    if args.auto:
+        return run_auto_sync(_project_root(args.root), args.auto)
     return run_sync(_project_root(args.root), args.apply)
 
 

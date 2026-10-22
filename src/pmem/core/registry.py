@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
 from wcmatch import glob as wglob
@@ -195,12 +196,18 @@ def _normalise_path(path: str) -> str:
     return normalised.lstrip("/")
 
 
+@lru_cache(maxsize=4096)
+def _compiled(pattern: str):
+    # globmatch 每次调用都重新编译（展开花括号），几千个文件 × 几十个模式时占扫描耗时的八成
+    return wglob.compile(pattern, flags=_GLOB_FLAGS)
+
+
 def _matches(pattern: str, path: str) -> bool:
     pattern = _normalise_path(pattern).rstrip("/")
     if not WILDCARD.search(pattern):
         lp, lpath = pattern.lower(), path.lower()
         return lpath == lp or lpath.startswith(lp + "/")
-    if wglob.globmatch(path, pattern, flags=_GLOB_FLAGS):
+    if _compiled(pattern).match(path):
         return True
     # Next.js 的 app/[id]、app/{slug} 这类目录名本身带方括号、花括号，也按字面匹配一次
     literal = re.sub(r"([\[\]{}])", r"\\\1", pattern)
@@ -209,7 +216,7 @@ def _matches(pattern: str, path: str) -> bool:
     if not re.search(r"[*?]", pattern):
         lp, lpath = pattern.lower(), path.lower()
         return lpath == lp or lpath.startswith(lp + "/")
-    return wglob.globmatch(path, literal, flags=_GLOB_FLAGS)
+    return _compiled(literal).match(path)
 
 
 def _item_path(item) -> str:

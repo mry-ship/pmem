@@ -1,6 +1,7 @@
 """pmem sync：对照代码目录列出 modules.yaml 的差异（默认只预览，--apply 只追加）。规划逻辑在 pmem.catalog.sync。"""
 from __future__ import annotations
 
+import time
 from collections import Counter
 from pathlib import Path
 
@@ -93,4 +94,26 @@ def run_sync(root: Path, apply: bool) -> int:
         return 1
     file.write(new_data)
     print("已写入 .memory/modules.yaml。运行 pmem doctor 检查覆盖率，然后提交 .memory/")
+    return 0
+
+
+def run_auto_sync(root: Path, reason: str) -> int:
+    from pmem.catalog.autosync import run_auto
+    from pmem.core.autosync import describe
+    from pmem.metrics.events import log_event
+
+    started = time.monotonic()
+    result = run_auto(root, reason)
+    status = result["status"]
+    items = describe(result) if status == "found" else []
+    if status != "off":
+        log_event(Config.load(root).cache_dir, "autosync", reason=reason, status=status, full=result.get("full"),
+                  applied=result.get("applied"), items=len(items) or None,
+                  ms=round((time.monotonic() - started) * 1000))
+    labels = {"off": "sync.auto 为 off，未扫描", "busy": "另一个自动扫描正在进行", "unchanged": "目录没有变化",
+              "clean": "modules.yaml 与代码目录一致", "error": f"扫描出错：{result.get('error')}"}
+    if status != "found":
+        print(labels[status])
+        return 1 if status == "error" else 0
+    print(("已自动登记：" if result.get("applied") else "发现未登记目录：") + "；".join(items))
     return 0

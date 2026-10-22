@@ -7,30 +7,14 @@ from collections import Counter
 from datetime import date, timedelta
 from pathlib import Path
 
+from pmem.core.codefiles import CODE_EXTS, SKIP_DIRS, SKIP_SUFFIXES, skip_dir  # noqa: F401
 from pmem.vcs.base import VCS
 from pmem.vcs.detect import detect_vcs
 
-CODE_EXTS = {
-    ".cs", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".vue", ".svelte", ".py", ".go", ".java", ".kt", ".kts",
-    ".swift", ".m", ".mm", ".c", ".cc", ".cpp", ".h", ".hpp", ".rs", ".rb", ".php", ".lua", ".dart",
-    ".scala", ".gd", ".shader", ".hlsl", ".sql", ".proto",
-}
-SKIP_DIRS = {
-    ".git", ".svn", ".hg", "node_modules", "obj", "bin", "build", "dist", "out",
-    ".venv", "venv", "__pycache__", ".idea", ".vs", ".vscode", ".cursor", ".memory", "target", ".gradle",
-    ".next", ".nuxt", "coverage", ".pytest_cache", ".ruff_cache",
-    # Go / PHP 依赖、iOS 依赖与构建产物、.NET 测试结果、Python 安装目录
-    "vendor", "Pods", "Carthage", "DerivedData", "TestResults", "site-packages",
-}
-SKIP_SUFFIXES = (".egg-info",)
 # Unity 编辑器在工程根目录生成的目录：同级同时有 Assets 和 ProjectSettings 才算，
 # 业务代码里的同名目录（如 Scripts/Logs 日志模块）照常扫描
 UNITY_GENERATED = {"Library", "Temp", "Logs", "UserSettings"}
 UNITY_MARKERS = {"Assets", "ProjectSettings"}
-
-
-def skip_dir(name: str) -> bool:
-    return name in SKIP_DIRS or name.startswith(".") or name.endswith(SKIP_SUFFIXES)
 
 
 def kept_dirs(names: list[str]) -> list[str]:

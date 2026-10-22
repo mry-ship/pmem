@@ -64,6 +64,10 @@ wiki:
 server:
   watchdog: true          # MCP 服务崩溃、卡死或 pmem 升级后自动重启，Cursor 不用手动重连
   request_timeout: 120    # 单次调用超过这么多秒没响应就判定卡死并重启
+sync:
+  auto: apply             # 发现没登记的代码目录：apply 自动追加到 modules.yaml / remind 只提醒 / "off" 关闭
+  interval_minutes: 30    # 会话开始时距上次扫描超过这么久才在后台扫一次；改到没登记的目录时立即扫
+  full_hours: 24          # 至少这么久做一次带提交热度的完整扫描（冷候选转正看它）
 """
 
 MODULES_HEADER = """\

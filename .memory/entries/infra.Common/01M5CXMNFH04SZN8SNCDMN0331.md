@@ -17,6 +17,8 @@ aliases:
 - 效果
 - token 消耗
 - 能省多少
+verified: '2026-10-22'
+verified_at: '2026-10-22T17:50:53.012+08:00'
 source:
   conversation: 4a38d786-a560-4c0b-9fe2-0371838dfd42
 ---

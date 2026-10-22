@@ -2,52 +2,63 @@
 
 # pmem
 
-**插拔式、托管式的 AI 项目记忆系统**
+**插拔式、托管式的 AI 项目研发记忆**
 
 让 AI 编程助手记住项目里踩过的坑、排除过的方向和做过的决定，<br>
 并在下次改代码前自动想起来。
 
+![Version](https://img.shields.io/badge/version-0.5.1-blue)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Cursor](https://img.shields.io/badge/Cursor-支持-000000)
 ![Claude Code](https://img.shields.io/badge/Claude%20Code-支持-D97757)
 ![Codex](https://img.shields.io/badge/Codex-支持-10A37F)
 ![Git / SVN](https://img.shields.io/badge/Git%20%2F%20SVN-支持-F05032)
 
-[📖 图文使用手册](https://mry-ship.github.io/pmem/pmem-guide.html) · [Wiki](https://github.com/mry-ship/pmem/wiki) · [架构说明](docs/architecture.md)
+[📖 使用手册](https://mry-ship.github.io/pmem/pmem-guide.html) · [快速接入](#快速接入) · [效果实测](#效果) · [Wiki](https://github.com/mry-ship/pmem/wiki) · [架构说明](docs/architecture.md) · [路线](#路线)
 
 </div>
 
 ---
 
-## 为什么用 pmem
+## 解决什么问题
 
-- 🔌 **插拔式**：一条 `pmem init` 接入任何项目，不改业务代码；不想用了，删掉它生成的配置即可。
-- 🤖 **托管式**：查记忆、写记忆、忘查时拦截、改完没记时提醒，全部由 AI 和 Hook 自动完成。
-- 👥 **团队共享**：记忆是仓库里的 Markdown 文件，随代码提交，队友拉代码就有；不需要服务器，不上传任何数据。
-- 📉 **越用越收敛**：记忆越积累，AI 越准（少犯同样的错）、越快（老问题不用从头排查）、越省 token，项目越到后期维护越明显。
+AI 编程助手每个对话都从零开始：上周排查出的根因、试过不行的方案、用户特意要求保留的功能，下一次它全不知道。结果是同样的错反复犯、老问题从头排查，甚至把你要求的功能当成冗余代码改回去。
 
-## 日常使用：和以前完全一样
+pmem 把这些结论按**业务模块**沉淀成仓库里的 Markdown 文件。AI 改代码前自动检索，忘了查会被拦下，改完没记会被提醒。整个过程不需要你操作。
 
-> **接入后照常提需求、修 bug、问问题即可。**
-> 不需要记命令，不需要手动查或写记忆，也不需要改变任何使用习惯。
+| 特性 | 说明 |
+|---|---|
+| 🔌 **插拔式** | 一条 `pmem init` 接入任何项目，不改业务代码；不想用了，删掉它生成的配置即可 |
+| 🤖 **托管式** | 查记忆、写记忆、忘查拦截、漏记提醒、新目录登记成模块，全部由 AI 和 Hook（编辑器在工具调用前后执行的脚本）自动完成 |
+| 👥 **团队共享** | 记忆随代码提交，队友拉代码就有；不需要服务器，不上传任何数据 |
+| 📉 **越用越收敛** | 记忆越积累，AI 越少犯同样的错、越少从头排查、越省 token，维护期越明显 |
 
-你照常对话时，pmem 在背后自动做这些事：
+**关键数字**（本仓库实测，口径见[效果](#效果)）：单次检索中位约 **7 毫秒**；真实问题的正确结论排进前 3 **90%**；一次修 bug 额外约 **3000～5000 token**；写进去的记忆被悄悄删掉 **0 条**。
 
-- **改前先查**：AI 要改某个文件，pmem 找到它所属的业务模块（如 `gameplay.Jigsaw`），把以前的根因、排除过的方向和风险交给 AI。
-- **问答也查**：AI 读到某个模块的代码时，自动附上该模块现行结论的摘要。
-- **做了功能就记**：改了哪个模块，AI 就为它写一条功能记录：谁要求的、为什么、哪些行为必须保持、在什么条件下成立。以后有人（包括 AI）要改这个文件，会先看到这些约定，不会把你要求的功能当成冗余代码改回去。只改测试、生成代码、配置的不用记。
-- **教训另外记、优先给**：试过不行的方向、确认的根因和坑、看代码看不出的约束、方案取舍，各写一条教训。检索时教训给全文、排在前面，功能记录只列标题，记得再多也不会把教训挤掉。
-- **全项目的坑人人看到**：编码、环境、跨模块约定这类改哪里都会踩的坑标为全项目通用，读任何模块的代码时都会附上。
-- **大业务可以细分**：模块名用点号续写子模块（最多 4 段，如 `system.Ads.AdMob`）。查子模块会另外带上父模块里“所有 SDK 都适用”的教训（默认 2 条，不挤占子模块自己的 5 条）；问父模块整体情况时附上各子模块最新 5 条记忆的标题。不细分的模块行为和以前完全一样。
-- **新模块自动登记**（v0.5.1）：AI 改到没登记的代码目录、或每次会话开始时（间隔 30 分钟），后台扫描并追加到 `modules.yaml`，不阻塞对话；AI 会转告“这次新增了几个模块、几个冷候选”，名字不合适用 `pmem migrate rename` 改。
-- **不重复占上下文**：同一对话里已经给过全文的记忆，再查到只给一句话标题。
-- **自动兜底**：AI 忘了查就去改，会被拦下直到查过为止；改了代码却没记，回合结束时提醒补上功能记录和教训（确实不用记时说明原因）。这条提醒以“[pmem]”开头，由 AI 自己处理，你不用回复。
-- **每次回答写明查了什么**：回复开头一行“【pmem检索】X（要点）”；结尾分行写“【pmem查询】X，用到「…」”和“【pmem修改】X 已写功能记录「…」；Y 无需记录（原因）”（没改代码写“【pmem修改】本轮未改代码，无新结论”）。这几行齐全时不再追加结束提醒。
-- **不用过期结论**：记忆关联的代码后来改过或被删了，会自动标出“需核实”。
+## 工作原理
 
 ![一次对话的流程：接手 → ①改前查 → 改代码 → ②写结论 → ③提交共享](docs/images/pmem-flow.svg)
 
-## 快速接入（约 5 分钟，每个项目一次）
+| 时机 | pmem 自动做什么 |
+|---|---|
+| AI 读到某个模块的代码 | 附上该模块现行结论的摘要（只列标题） |
+| AI 准备改文件 | 按文件找到所属模块（如 `gameplay.Jigsaw`），把根因、排除过的方向、风险交给 AI；没查就改会被拦下，直到查过为止 |
+| AI 改完代码 | 为每个改过的模块写一条功能记录，另有教训各写一条；漏记时回合结束提醒补上（确实不用记时说明原因） |
+| 新增了代码目录（v0.5.1） | 后台扫描并追加到 `modules.yaml`，不阻塞对话；AI 转告“这次新增了几个模块” |
+| 提交代码 | `.memory/` 随代码进版本库，队友拉代码后 AI 就能查到 |
+
+几个设计要点：
+
+- **两类记忆，教训优先**：教训（根因、排除项、更正、风险、决定）给全文、排在前面；功能记录（谁要求的、必须保持的行为）只列标题，记得再多也不会把教训挤掉。
+- **模块可以分层**：模块名用点号续写子模块，最多 4 段（如 `system.Ads.AdMob`）。查子模块时另带父模块里通用的教训（默认 2 条，不挤占子模块自己的 5 条）；不细分的模块行为不变。
+- **全项目的坑人人看到**：编码、环境、跨模块约定这类改哪里都会踩的坑标为全项目通用，读任何模块的代码时都会附上。
+- **不用过期结论**：记忆关联的代码后来改过或被删了，自动标出“需核实”，核对后确认或更正。
+- **不重复占上下文**：同一对话里已经给过全文的记忆，再查到只给一句话标题。
+- **回复可追溯**：AI 在回复开头写“【pmem检索】模块（要点）”，结尾写“【pmem查询】”和“【pmem修改】”两行，说明用到了哪条记忆、写了什么。没改代码时写“本轮未改代码，无新结论”。
+
+## 快速接入
+
+约 5 分钟，每个项目一次。需要 [uv](https://docs.astral.sh/uv/)（Python 包管理工具）和 Python 3.10 以上。
 
 ```bash
 # 1. 安装（每人一次）
@@ -57,38 +68,58 @@ uv tool install "pmem[embed] @ git+https://github.com/mry-ship/pmem"
 pmem init --type game            # 项目类型：game / app / backend / generic
 ```
 
-3. **打开开关**：Cursor 设置 → MCP → 启用 `pmem`（Claude Code、Codex 首次打开项目时批准即可）。之后服务崩溃、卡死或 pmem 升级时由看门狗自动重启，不用再手动重连。
+3. **打开开关**：Cursor 设置 → MCP → 启用 `pmem`（Claude Code、Codex 首次打开项目时批准即可）。之后服务崩溃、卡死或 pmem 升级时由看门狗自动重启，不用手动重连。
 4. **划分模块**：对 AI 说“按 pmem-bootstrap 技能划分模块”，确认它给出的表格。
 5. **提交**：运行 `pmem doctor` 自检，然后把 `.memory/` 和 `.cursor/` 提交到版本库。
 6. **（建议）种子记忆**：对 AI 说“按 pmem-seed 技能提炼种子记忆”，从提交说明和文档里为常改的模块先补一批结论，确认后转正，记忆库就不是从空开始。
 
-队友拉代码后，只需要做第 1 步和第 3 步。需要 [uv](https://docs.astral.sh/uv/)（Python 包管理工具）和 Python 3.10 以上。
+队友拉代码后，只需要做第 1 步和第 3 步。升级：`uv tool upgrade pmem`，再在项目里运行一次 `pmem init`（不会覆盖已有配置；这时给的 `--gate`、`--type` 不生效，直接改 `.memory/config.yaml`）。
 
-## 可选操作（都不是必须）
+## 日常使用
 
-不做这些，pmem 照样正常工作。需要时再用：
+> **接入后照常提需求、修 bug、问问题即可。** 不需要记命令，不需要手动查或写记忆，也不需要改变使用习惯。
 
-| 想做什么 | 怎么做 |
+需要时可以对 AI 说：
+
+| 你说 | 效果 |
 |---|---|
-| 让队友也看到新记忆 | 提交代码时把 `.memory/` 一起提交（建议） |
-| 这次对话不用记忆 | 对 AI 说“跳过记忆”；说“恢复记忆”撤销 |
-| 记忆多了，合并零碎记忆 | 对 AI 说“按 pmem-compact 技能合并记忆” |
-| 换个说法搜不到 | 对 AI 说“按 pmem-normalize 技能整理同义词”（如“闪退 / 崩溃”） |
-| 新增了业务模块 | 默认自动：Agent 改到没登记的目录、或会话开始时（间隔 30 分钟），Hook 在后台扫描并追加到 `modules.yaml`（`sync.auto: apply`，可改 `remind` 只提醒或 `"off"`），结果由 Agent 转告并写明新增了几个模块，`pmem sync --history` 看最近 20 次；不想登记的目录写进 `ignored`；手动用 `pmem sync` 预览、`--apply` 写入，或直接在 `.memory/modules.yaml` 里加 |
-| 模块改名、合并 | `pmem migrate rename <旧> <新>` / `pmem migrate merge <被并入> <保留>`，记忆随之搬家（默认预览，加 `--apply` 执行）。合并写错的模块名时默认不把它登记为别名，以后还会这样叫才加 `--alias`；队友之后写到旧名下的，`pmem migrate tidy --apply`；搬到一半失败时按提示运行列出的命令补完 |
-| 大业务要细分（如广告下各 SDK） | `pmem migrate split system.Ads --to system.Ads.AdMob=<路径>` 拆出子模块；`pmem sync` 会提议文件多、改动多的子目录。对所有子模块都成立的结论写到父模块，`pmem health` 会指出兄弟模块里重复的教训 |
-| 一个模块管得太宽，要拆开 | `pmem migrate split <模块> --to <新模块>=<路径>`（按议题拆加 `--by entity`）：记忆按关联代码分到新模块，判断不了的列出来，用 `--assign <id>=<模块>` 指定 |
-| 个别记忆写错了模块 | `pmem migrate move <id> ... --to <模块>`：id、替代关系和关联代码都不变（默认预览，加 `--apply` 执行） |
-| 代码文件改名、搬家后记忆都标“需核实” | `pmem anchors --rename <旧路径>=<新路径>`：改写所有记忆的关联代码，文件、目录或 `路径#函数名` 都行（默认预览） |
-| 业务下线、模块不再维护 | `pmem migrate deprecate <模块> --apply`：旧记忆照常可查，拒绝新写入；`--undo` 撤销 |
-| 去掉过时的记忆 | `pmem archive <id>`：不再出现在检索里，文件保留可追溯；`--restore` 恢复到归档前的状态 |
-| 合并错了，要撤销 | `pmem compact --undo <合并后的 id>`：合并记忆归档并标为已撤销，被它替代的原记忆重新现行；`pmem archive --restore <id>` 重做这次合并 |
-| 看记忆怎么演变、有没有漏 | `pmem map`：生成本地网页 `.memory/wiki/map.html`，按模块分区、议题排时间线，可缩放、点开看全文；顶部自检列出漏记、断链、悬而未决、过期。Wiki 每个模块页也附一张演化图 |
-| 体检 | `pmem doctor`：提示没提交的记忆、可以合并的议题 |
-| 定期收口（模块负责人） | 对 AI 说“按 pmem-consolidate 技能整理记忆库”，它按 `pmem health` 逐节处理：疑似互相矛盾的记忆、可能过时的记忆、零碎记忆、反复查不到的问题、待确认的种子、未登记或重复的模块（附建议登记的路径）、召回偏低的模块（记忆多却大多查不出来，建议补别名或拆模块）、改了代码却没写功能记录的模块、清理候选（只建议归档、不删除，逐条附依据，由你确认） |
-| 看收益 | `pmem report`：命中率、避坑次数、跨人复用，功能记录覆盖率，防错类记忆（排除项、风险、更正）占教训的比例，对话内重复返回率 |
+| 跳过记忆 / 恢复记忆 | 本次对话不查也不写；“恢复记忆”撤销 |
+| 按 pmem-compact 技能合并记忆 | 同一议题的零碎记忆合并成一两条现状 |
+| 按 pmem-normalize 技能整理同义词 | 换个说法也能搜到（如“闪退 / 崩溃”） |
+| 按 pmem-consolidate 技能整理记忆库 | 模块负责人定期收口，见下方“定期体检” |
+
+## 维护
+
+以下都不是必须的，不做 pmem 照样正常工作。涉及改动的命令默认只预览，加 `--apply` 才执行。
+
+### 模块目录
+
+| 场景 | 怎么做 |
+|---|---|
+| 新增了业务模块 | 默认自动登记（`sync.auto: apply`）：AI 改到没登记的目录、或会话开始时（间隔 30 分钟），后台扫描并追加到 `modules.yaml`，`pmem sync --history` 看最近 20 次。不想登记的目录写进 `ignored`；改成 `remind` 只提醒、`"off"` 关闭，再手动 `pmem sync` |
+| 模块改名、合并 | `pmem migrate rename <旧> <新>` / `pmem migrate merge <被并入> <保留>`，记忆随之搬家。只有以后还会用旧名才加 `--alias`；队友之后写到旧名下的，用 `pmem migrate tidy --apply` 收拢；搬到一半失败时按提示补完 |
+| 大业务要细分（如广告下各 SDK） | `pmem migrate split system.Ads --to system.Ads.AdMob=<路径>`；`pmem sync` 会提议文件多、改动多的子目录。对所有子模块都成立的结论写到父模块 |
+| 一个模块管得太宽 | `pmem migrate split <模块> --to <新模块>=<路径>`（按议题拆加 `--by entity`）；判断不了的列出来，用 `--assign <id>=<模块>` 指定 |
+| 个别记忆写错了模块 | `pmem migrate move <id> ... --to <模块>`，id、替代关系和关联代码都不变 |
+| 代码文件改名、搬家 | `pmem anchors --rename <旧路径>=<新路径>`，文件、目录或 `路径#函数名` 都行 |
+| 业务下线 | `pmem migrate deprecate <模块> --apply`：旧记忆照常可查，拒绝新写入；`--undo` 撤销 |
+
+### 记忆
+
+| 场景 | 怎么做 |
+|---|---|
+| 去掉过时的记忆 | `pmem archive <id>`：不再出现在检索里，文件保留可追溯；`--restore` 恢复 |
+| 合并错了要撤销 | `pmem compact --undo <合并后的 id>`：被替代的原记忆重新现行 |
+| 看记忆怎么演变 | `pmem map` 生成本地网页 `.memory/wiki/map.html`：按模块分区、议题排时间线，顶部自检列出漏记、断链、悬而未决、过期 |
 | 通读全部结论 | 打开 `.memory/wiki/index.md`，每个模块一页，写入记忆后自动更新 |
-| 升级 | `uv tool upgrade pmem`，再在项目里运行一次 `pmem init`（不会覆盖已有配置；这时给的 `--gate`、`--type` 不生效，会单独提示，直接改 `.memory/config.yaml`） |
+
+### 定期体检
+
+| 命令 | 用途 |
+|---|---|
+| `pmem doctor` | 没提交的记忆、可以合并的议题、团队版本提示 |
+| `pmem health` | 负责人收口用的健康报告：疑似矛盾、可能过时、零碎记忆、反复查不到的问题、待确认的种子、未登记或重复的模块、召回偏低的模块、漏写功能记录的模块、清理候选（只建议归档，由你确认）。对 AI 说“按 pmem-consolidate 技能整理记忆库”逐节处理 |
+| `pmem report` | 本机收益：命中率、避坑次数、跨人复用、功能记录覆盖率、防错类记忆占比、对话内重复返回率 |
 
 <details>
 <summary><b>一条记忆长什么样</b></summary>
@@ -111,6 +142,33 @@ applies: 开启断线重连的版本                              # 可选：在
 ```
 
 功能记录同样是一个文件，`kind: feature`，正文写需求来源、必须保持的行为和入口，例如“用户要求：拼图完成后必须弹出分享面板，审核期间也要保持；入口在 Board.Finish”。
+
+</details>
+
+<details>
+<summary><b>命令速查</b>（日常不需要，排查或自己查看时用）</summary>
+
+```bash
+pmem search --path <文件>              # 查某个文件所属模块的记忆
+pmem search --module <模块> "关键词"    # 按模块和关键词查；加 --brief 每条一行；同一对话里给过的只显示标题，--full 取全文
+pmem search --id <id> ...              # 按 id 取全文（功能记录在检索结果里只列标题）
+pmem record ... --kind feature         # 命令行写功能记录；--applies 写适用条件
+pmem list                              # 模块和记忆数量
+pmem doctor                            # 体检
+pmem report                            # 本机收益报告
+pmem health                            # 健康报告（负责人收口用）
+pmem seed                              # 待确认的种子记忆；--accept / --reject 处理
+pmem archive <id>                      # 归档过时记忆；--restore 撤销
+pmem compact --undo <id>               # 撤销一次合并，原记忆重新现行
+pmem map                               # 记忆演化图（本地网页）和自检；--json 输出数据，--days 改漏记统计天数
+pmem migrate tidy                      # 把还在旧模块名下的记忆搬到新名下（加 --apply 执行）
+pmem sync                              # 对照代码目录列出新模块、要追加的路径（加 --apply 执行）
+pmem sync --history                    # 最近 20 次自动登记各新增了几个模块（自动登记由 Hook 在后台完成）
+pmem wiki                              # 生成浏览用的模块 Wiki
+pmem format --apply                    # 把旧记忆里一整行的长正文断行（新写入的会自动整理）
+```
+
+全部命令、配置项和常见问题见 [使用手册](https://mry-ship.github.io/pmem/pmem-guide.html)。
 
 </details>
 
@@ -139,6 +197,7 @@ applies: 开启断线重连的版本                              # 可选：在
 | 读到某模块代码时附摘要 | Hook 约 0.3 秒 | 每个模块每个对话一次，只列标题 |
 | 没查就改被拦下 | Hook 约 0.3 秒 | 额外约 115 token |
 | 其他工具调用 | Hook 约 0.2 秒 | 不附加记忆正文 |
+| 新目录自动登记 | Hook 约 0.25 秒返回，扫描在后台 | 4681 个代码文件的 SVN 项目：目录没变约 1.2 秒，有变化约 3.3 秒 |
 | 语义模型 | 约 90 MB，第一次检索才加载 | 避免服务启动卡住约 30 秒 |
 
 未提交文件的比对如果单次超过 1 秒，这项比对暂停 24 小时。
@@ -184,7 +243,10 @@ applies: 开启断线重连的版本                              # 可选：在
 | 用没写进正文的别名检索，排进前 3（126 题） |  | **122 题（97%）** |
 | 写进去后被悄悄删掉的记忆 | 约 19% | **0** |
 
-### v0.5 和 v0.3 比
+真实检索的答案是当时回复确实用到的记忆，用来看现在还能不能把那条结论排回来。同一套题只用关键词时，前 3 为 73/91。按文件那 100% 是更早一份记忆库副本上的结果，现行库是 118/120，不要写成 100%。
+
+<details>
+<summary><b>v0.5 和 v0.3 对比</b></summary>
 
 2026-10-21 把 v0.3 抽到临时目录，用本仓库同一份记忆库、同一套题重放；token 按 GPT-4o 分词。
 
@@ -200,7 +262,7 @@ applies: 开启断线重连的版本                              # 可选：在
 
 准确率的提升集中在真实问题上；按文件和换说法本来就接近满分。v0.3 读不了功能记录，候选里少了这类干扰，对比对它略有利。每次检索多出的约 450 token 主要是功能记录标题（v0.3 没有），另有字段说明，真实对话里每个对话只给一次。耗时多出的几毫秒主要来自 v0.4 起更严的过期核对。父子模块的继承效果、端到端的被纠正比例和总 token 还没测。
 
-真实检索的答案是当时回复确实用到的记忆，用来看现在还能不能把那条结论排回来。同一套题只用关键词时，前 3 为 73/91。按文件那 100% 是更早一份记忆库副本上的结果，现行库是 118/120，不要写成 100%。
+</details>
 
 ### 越用越收敛
 
@@ -208,35 +270,10 @@ applies: 开启断线重连的版本                              # 可选：在
 
 收敛有下限，最终趋向真正的新工作量。前提是记忆要准（过期的会标“需核实”），同一议题不要太零碎（`pmem doctor` 会提示，说一句“按 pmem-compact 技能合并记忆”即可）。
 
-<details>
-<summary><b>常用命令</b>（日常不需要，排查或自己查看时用）</summary>
-
-```bash
-pmem search --path <文件>              # 查某个文件所属模块的记忆
-pmem search --module <模块> "关键词"    # 按模块和关键词查；加 --brief 每条一行；同一对话里给过的只显示标题，--full 取全文
-pmem search --id <id> ...              # 按 id 取全文（功能记录在检索结果里只列标题）
-pmem record ... --kind feature         # 命令行写功能记录；--applies 写适用条件
-pmem list                              # 模块和记忆数量
-pmem doctor                            # 体检
-pmem report                            # 本机收益报告
-pmem health                            # 健康报告（负责人收口用）
-pmem seed                              # 待确认的种子记忆；--accept / --reject 处理
-pmem archive <id>                      # 归档过时记忆；--restore 撤销
-pmem compact --undo <id>               # 撤销一次合并，原记忆重新现行
-pmem map                               # 记忆演化图（本地网页）和自检；--json 输出数据，--days 改漏记统计天数
-pmem migrate tidy                      # 把还在旧模块名下的记忆搬到新名下（加 --apply 执行）
-pmem sync                              # 对照代码目录列出新模块、要追加的路径（加 --apply 执行）
-pmem sync --history                    # 最近 20 次自动登记各新增了几个模块（自动登记由 Hook 在后台完成）
-pmem wiki                              # 生成浏览用的模块 Wiki
-pmem format --apply                    # 把旧记忆里一整行的长正文断行（新写入的会自动整理）
-```
-
-全部命令、配置项和常见问题见 [使用手册](https://mry-ship.github.io/pmem/pmem-guide.html)。
-
-</details>
+## 已知限制
 
 <details>
-<summary><b>已知限制</b></summary>
+<summary><b>展开全部</b></summary>
 
 - Claude Code、Codex 的接入只做过模拟测试，还没在真实会话里跑过。
 - Cursor 不允许在提问时注入内容，所以纯问答（不读代码）的记忆审查发生在回合结束时：AI 先回答，再被要求查记忆并修正。Claude Code、Codex 可以在提问时直接附上摘要。
@@ -244,6 +281,7 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 - 终端里的写操作靠解析命令识别：重定向、`Set-Content`、`cp`/`mv`、`git checkout/restore/apply`、`python -c`、套一层的 `powershell -Command`/`cmd /c`/`bash -c`、先 `cd` 再写相对路径，以及所运行脚本里的字面路径都能认出。脚本里拼接出来的路径、格式化工具和 `git stash`/`reset` 这类命令事前认不出：执行后比对未提交文件（Git、SVN 都支持），改到没查过的模块时立即提醒补查（只能事后提醒，拦不住）。仓库大到单次比对超过 1 秒时，这项比对暂停 24 小时。
 - 队友没装 pmem 时，闸门和审查都不生效（Hook 起不来，按设置放行，不会卡住）；新对话开始时会提示 Agent 让用户先安装。
 - Hook 自身出错时那次直接放行、不做记忆检查；之后闸门会让 AI 在回复里提醒一次，原因用 `pmem doctor` 查看。
+- 新模块自动登记只追加：手工从 `modules.yaml` 删掉的模块下次会被加回来，不想登记的目录要写进 `ignored`；`modules.yaml` 正文里有注释时退回只提醒。
 - 按函数判断过期只支持 Git；SVN 和找不到函数时按文件判断。
 - Windows PowerShell 5 里把 pmem 输出再接给 `Select-String` 等命令会乱码（它按 GBK 解码），直接看输出或用 `--brief`。
 - 功能记录（`feature` / `plan`）和 `applies` 字段需要较新的 pmem：团队里还在用旧版的人读到这类记忆文件会跳过它，请一起升级。
@@ -255,6 +293,22 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 
 </details>
 
+## 文档
+
+| 文档 | 内容 |
+|---|---|
+| [使用手册](https://mry-ship.github.io/pmem/pmem-guide.html) | 图文版：接入、日常使用、闸门、配置、命令、常见问题 |
+| [Wiki](https://github.com/mry-ship/pmem/wiki) | 快速上手、日常使用、更新记录 |
+| [架构说明](docs/architecture.md) | 各包职责、分层约束、命令分发 |
+| [设计文档](docs/superpowers/specs/2026-10-14-pmem-design.md) | 完整设计与版本规划（第 14 节） |
+
 ## 路线
 
-各版本的计划和进度记在 GitHub：[v0.3.1 功能记录与分层检索](https://github.com/mry-ship/pmem/issues/12)、[v0.3.2 记忆图与严格清理](https://github.com/mry-ship/pmem/issues/13)、[v0.4 治理闭环与团队化](https://github.com/mry-ship/pmem/issues/14)（已关闭：转正提示和召回审计已实现，团队汇总与中心服务长期搁置）、v0.5 父子模块与回复格式（[设计稿](docs/superpowers/specs/2026-10-21-pmem-module-hierarchy-design.md)）、v0.5.1 新模块自动登记、[v0.6 类型安全与规则化](https://github.com/mry-ship/pmem/issues/15)（计划，[设计稿](docs/superpowers/specs/2026-10-21-pmem-typesafe-design.md)）；设计细节见 [设计文档第 14 节](docs/superpowers/specs/2026-10-14-pmem-design.md)。
+| 版本 | 内容 | 状态 |
+|---|---|---|
+| [v0.3.1](https://github.com/mry-ship/pmem/issues/12) | 功能记录与分层检索 | 已完成 |
+| [v0.3.2](https://github.com/mry-ship/pmem/issues/13) | 记忆图与严格清理 | 已完成 |
+| [v0.4](https://github.com/mry-ship/pmem/issues/14) | 治理闭环与团队化 | 已关闭：转正提示和召回审计已实现，团队汇总与中心服务长期搁置 |
+| v0.5（[设计稿](docs/superpowers/specs/2026-10-21-pmem-module-hierarchy-design.md)） | 父子模块与回复格式 | 已完成 |
+| v0.5.1 | 新模块自动登记 | 已完成（当前版本） |
+| [v0.6](https://github.com/mry-ship/pmem/issues/15)（[设计稿](docs/superpowers/specs/2026-10-21-pmem-typesafe-design.md)） | 类型安全与规则化 | 计划中 |

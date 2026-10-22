@@ -67,8 +67,9 @@ def scan_lock(cache_dir: Path):
         path.unlink(missing_ok=True)
 
 
-def should_spawn(config, reason: str, now: float | None = None) -> bool:
-    """改到没登记的目录（edit）随时触发，只防连发；会话开始（session）按 sync.interval_minutes 节流。"""
+def should_spawn(config, reason: str, now: float | None = None, folder: str | None = None) -> bool:
+    """改到没登记的目录（edit）随时触发，只防连发，上次扫描后仍没归属的目录（folder）不再触发；
+    会话开始（session）按 sync.interval_minutes 节流。"""
     if os.environ.get("PMEM_NO_AUTOSYNC") or config.get("sync.auto") == "off" or not config.modules_path.exists():
         return False
     now = now or time.time()
@@ -77,6 +78,8 @@ def should_spawn(config, reason: str, now: float | None = None) -> bool:
         return False
     state = load_state(cache_dir)
     if reason == "edit":
+        if folder is not None and folder in set(state.get("unresolved_dirs") or []):
+            return False
         return now - float(state.get("last_spawn") or 0) >= EDIT_SPAWN_GAP_SECONDS
     interval = float(config.get("sync.interval_minutes") or 0) * 60
     last = max(float(state.get("last_run") or 0), float(state.get("last_spawn") or 0))
@@ -142,6 +145,9 @@ def describe(result: dict) -> list[str]:
 
 def take_notice(cache_dir: Path) -> str | None:
     """最近一次后台扫描有新发现、还没告诉过 Agent 时，返回一次提醒文字。"""
+    # 后台扫描正在写状态时不读改写，免得把它刚写的结果和历史覆盖掉；扫完后下一次工具调用再提醒
+    if lock_busy(cache_dir):
+        return None
     state = load_state(cache_dir)
     result = state.get("result")
     if not isinstance(result, dict) or result.get("noticed"):

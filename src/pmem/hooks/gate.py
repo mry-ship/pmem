@@ -145,7 +145,7 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
         if rel is not None:
             self.log("edit", module=module, file=rel)
             if module is None and self._unregistered_code(rel):
-                self._autosync("edit")
+                self._autosync("edit", rel.rsplit("/", 1)[0] if "/" in rel else "")
 
     def _unregistered_code(self, rel: str) -> bool:
         """改到的是没归属任何模块的代码文件（不算第三方、忽略的目录和闸门不看的文件）。"""
@@ -156,8 +156,8 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
         except Exception:  # noqa: BLE001
             return False
 
-    def _autosync(self, reason: str) -> None:
-        if autosync.should_spawn(self.config, reason):
+    def _autosync(self, reason: str, folder: str | None = None) -> None:
+        if autosync.should_spawn(self.config, reason, folder=folder):
             started = autosync.spawn(self.root, self.config.cache_dir, reason)
             self.log("autosync_spawn", reason=reason, ok=started)
 

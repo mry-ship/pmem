@@ -70,6 +70,8 @@ def run_auto(root: Path, reason: str, now: float | None = None) -> dict:
         state.update(last_run=now, fingerprint=fingerprint(config.root, config.modules_path))
         if full:
             state["last_full"] = now
+        if "unresolved" in result:
+            state["unresolved_dirs"] = result.pop("unresolved")
         if result["status"] in ("found", "error"):
             state["result"] = {**result, "time": now, "reason": reason, "noticed": False}
         if result.get("applied"):
@@ -95,16 +97,28 @@ def _plan_and_apply(config: Config, mode: str, full: bool) -> dict:
         memories = Counter(e.module for _, e in storage.iter_all() if e.status != "archived")
     plan = plan_sync(config.root, registry, memories, heat, recent, history=history)
     if not plan.changes:
-        return {"status": "clean", "full": full}
+        return {"status": "clean", "full": full, "unresolved": _unresolved(plan.unmapped, registry)}
     result = {"status": "found", "full": full, **summarize(plan), "applied": False}
     if mode != "apply":
-        return result
+        return {**result, "unresolved": _unresolved(plan.unmapped, registry)}
     file = ModulesFile.read(config.modules_path)
     if file.lost_comments():
-        result["skipped"] = "comments"
-        return result
+        return {**result, "skipped": "comments", "unresolved": _unresolved(plan.unmapped, registry)}
     new_data = apply_plan(file.data, plan)
-    ModuleRegistry(new_data)
+    updated = ModuleRegistry(new_data)
     file.write(new_data)
-    result["applied"] = True
-    return result
+    return {**result, "applied": True, "unresolved": _unresolved(plan.unmapped, updated)}
+
+
+def _unresolved(unmapped: list[str], registry: ModuleRegistry) -> list[str]:
+    """扫描后仍没有归属的代码文件所在目录（散落文件、只提醒没登记的）。Hook 改到这些目录不再拉起扫描，
+    否则每改一次就白白遍历一遍整个项目；目录结构变了由会话开始和每日完整扫描处理。"""
+    dirs: set[str] = set()
+    for rel in unmapped:
+        try:
+            covered = registry.is_excluded(rel) or registry.module_for_path(rel) is not None
+        except RegistryError:
+            covered = True
+        if not covered:
+            dirs.add(rel.rsplit("/", 1)[0] if "/" in rel else "")
+    return sorted(dirs)

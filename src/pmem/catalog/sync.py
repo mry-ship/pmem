@@ -39,6 +39,7 @@ class SyncPlan:
     conflicts: list[tuple[str, str]] = field(default_factory=list)
     split: list[tuple[str, str, int, int]] = field(default_factory=list)
     unit_info: dict[str, tuple[int, int]] = field(default_factory=dict)
+    unmapped: list[str] = field(default_factory=list)
     history: bool = True
 
     @property
@@ -163,6 +164,7 @@ def plan_sync(root: Path, registry: ModuleRegistry, memories: Counter,
     plan = SyncPlan(history=history)
     taken_ids = {mid.lower(): mid for mid in (*registry.modules, *registry.candidates)}
     owner, unmapped = _scan(root, registry)
+    plan.unmapped = unmapped
     raw_units, loose = _units(owner, unmapped)
     units: dict[str, list[str]] = {}
     for unit, files in raw_units.items():

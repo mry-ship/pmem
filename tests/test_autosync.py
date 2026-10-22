@@ -139,6 +139,32 @@ def test_editing_unregistered_code_spawns_one_background_scan(make, spawned):
     assert len(spawned) == 1 and spawned[0][-4:] == ["--auto", "edit", "--root", str(root)]
 
 
+def test_directories_still_unregistered_after_a_scan_do_not_respawn(make, spawned):
+    root = make("sync: { auto: remind }\n")
+    run_auto(root, "session")
+    assert "src/Game/Match" in autosync.load_state(Config.load(root).cache_dir)["unresolved_dirs"]
+    _edited(root, "src/Game/Match/A.cs")
+    assert spawned == []
+    _write(root, "src/Game/Shop/Shop.cs")
+    _edited(root, "src/Game/Shop/Shop.cs")
+    assert len(spawned) == 1
+
+
+def test_applied_directories_leave_the_unresolved_list(make):
+    root = make()
+    run_auto(root, "session")
+    assert autosync.load_state(Config.load(root).cache_dir)["unresolved_dirs"] == []
+
+
+def test_notice_waits_while_a_scan_is_writing_state(make):
+    root = make()
+    run_auto(root, "session")
+    cache = Config.load(root).cache_dir
+    with autosync.scan_lock(cache):
+        assert autosync.take_notice(cache) is None
+    assert "gameplay.Match" in autosync.take_notice(cache)
+
+
 def test_session_start_spawns_by_interval(make, spawned):
     root = make()
     handle("session", {"conversation_id": "c1"}, root)

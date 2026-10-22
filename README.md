@@ -8,6 +8,7 @@
 并在下次改代码前自动想起来。
 
 ![Version](https://img.shields.io/badge/version-0.5.1-blue)
+![License](https://img.shields.io/badge/license-GPL--3.0-green)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Cursor](https://img.shields.io/badge/Cursor-支持-000000)
 ![Claude Code](https://img.shields.io/badge/Claude%20Code-支持-D97757)
@@ -312,3 +313,7 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 | v0.5（[设计稿](docs/superpowers/specs/2026-10-21-pmem-module-hierarchy-design.md)） | 父子模块与回复格式 | 已完成 |
 | v0.5.1 | 新模块自动登记 | 已完成（当前版本） |
 | [v0.6](https://github.com/mry-ship/pmem/issues/15)（[设计稿](docs/superpowers/specs/2026-10-21-pmem-typesafe-design.md)） | 类型安全与规则化 | 计划中 |
+
+## 许可证
+
+[GPL-3.0](LICENSE)：可以自由使用、修改和分发；修改后再发布（包括并入其他软件发布）时，须以同样的 GPL-3.0 开源。只在团队内部使用、不对外发布的，不受这条约束。

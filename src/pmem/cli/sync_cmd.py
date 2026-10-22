@@ -99,7 +99,7 @@ def run_sync(root: Path, apply: bool) -> int:
 
 def run_auto_sync(root: Path, reason: str) -> int:
     from pmem.catalog.autosync import run_auto
-    from pmem.core.autosync import describe
+    from pmem.core.autosync import count_text, counts, describe
     from pmem.metrics.events import log_event
 
     started = time.monotonic()
@@ -107,13 +107,31 @@ def run_auto_sync(root: Path, reason: str) -> int:
     status = result["status"]
     items = describe(result) if status == "found" else []
     if status != "off":
+        n = counts(result) if status == "found" else {}
         log_event(Config.load(root).cache_dir, "autosync", reason=reason, status=status, full=result.get("full"),
-                  applied=result.get("applied"), items=len(items) or None,
-                  ms=round((time.monotonic() - started) * 1000))
+                  applied=result.get("applied"), ms=round((time.monotonic() - started) * 1000),
+                  **{k: v for k, v in n.items() if v})
     labels = {"off": "sync.auto 为 off，未扫描", "busy": "另一个自动扫描正在进行", "unchanged": "目录没有变化",
               "clean": "modules.yaml 与代码目录一致", "error": f"扫描出错：{result.get('error')}"}
     if status != "found":
         print(labels[status])
         return 1 if status == "error" else 0
-    print(("已自动登记：" if result.get("applied") else "发现未登记目录：") + "；".join(items))
+    head = f"已自动登记，{count_text(result)}" if result.get("applied") else f"发现未登记目录，待{count_text(result)}"
+    print(head + "：" + "；".join(items))
+    return 0
+
+
+def run_history(root: Path) -> int:
+    from pmem.core.autosync import load_state
+
+    history = load_state(Config.load(root).cache_dir).get("history") or []
+    if not history:
+        print("本机还没有自动登记过模块")
+        return 0
+    total = sum(h.get("new_modules", 0) for h in history), sum(h.get("new_candidates", 0) for h in history)
+    print(f"最近 {len(history)} 次自动登记，共新增 {total[0]} 个模块、{total[1]} 个冷候选：")
+    for h in reversed(history):
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(h.get("time") or 0))
+        print(f"  {when}（{h.get('reason')}）新增 {h.get('new_modules', 0)} 个模块、{h.get('new_candidates', 0)} 个冷候选、"
+              f"{h.get('append_paths', 0)} 个模块追加路径：{'、'.join(h.get('modules') or []) or '—'}")
     return 0

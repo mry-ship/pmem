@@ -14,12 +14,14 @@ from pathlib import Path
 
 from pmem.catalog.sync import IDLE_DAYS, SyncPlan, apply_plan, plan_sync
 from pmem.catalog.yamlfile import ModulesFile
-from pmem.core.autosync import load_state, save_state, scan_lock
+from pmem.core.autosync import counts, load_state, save_state, scan_lock
 from pmem.core.config import Config
 from pmem.core.registry import ModuleRegistry, RegistryError
 from pmem.scan.lite import HEAT_DAYS, file_heat_windows, iter_code_files
 from pmem.storage.files import FilesStorage
 from pmem.vcs.detect import detect_vcs
+
+HISTORY_MAX = 20
 
 
 def fingerprint(root: Path, modules_path: Path) -> str:
@@ -70,6 +72,11 @@ def run_auto(root: Path, reason: str, now: float | None = None) -> dict:
             state["last_full"] = now
         if result["status"] in ("found", "error"):
             state["result"] = {**result, "time": now, "reason": reason, "noticed": False}
+        if result.get("applied"):
+            # 每次自动登记了多少，留最近 HISTORY_MAX 次，pmem sync --history 查看
+            entry = {"time": now, "reason": reason, **counts(result),
+                     "modules": [*result["new_modules"], *result["new_candidates"]]}
+            state["history"] = [*(state.get("history") or []), entry][-HISTORY_MAX:]
         save_state(cache_dir, state)
         return result
 

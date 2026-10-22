@@ -111,6 +111,25 @@ def _paths(body: dict) -> str:
     return "、".join(body.get("paths") or [])
 
 
+def counts(result: dict) -> dict[str, int]:
+    return {
+        "new_modules": len(result.get("new_modules") or {}), "new_candidates": len(result.get("new_candidates") or {}),
+        "append_paths": len(result.get("append_paths") or {}), "third_party": len(result.get("third_party") or []),
+        "promote": len(result.get("promote") or []),
+    }
+
+
+def count_text(result: dict) -> str:
+    """“新增 2 个模块、1 个冷候选、1 个模块追加路径”这样的一句；全是 0 时为空串。"""
+    n = counts(result)
+    parts = [f"新增 {n['new_modules']} 个模块" if n["new_modules"] else "",
+             f"{n['new_candidates']} 个冷候选" if n["new_candidates"] else "",
+             f"{n['append_paths']} 个模块追加路径" if n["append_paths"] else "",
+             f"{n['third_party']} 个第三方目录" if n["third_party"] else "",
+             f"{n['promote']} 个冷候选转正" if n["promote"] else ""]
+    return "、".join(p for p in parts if p)
+
+
 def describe(result: dict) -> list[str]:
     """一次扫描结果里要告诉用户的条目。"""
     lines = [f"新模块 {mid}（{_paths(body)}）" for mid, body in (result.get("new_modules") or {}).items()]
@@ -135,9 +154,11 @@ def take_notice(cache_dir: Path) -> str | None:
     if not items:
         return None
     shown = "；".join(items[:8]) + (f" 等 {len(items)} 项" if len(items) > 8 else "")
+    total = count_text(result)
     if result.get("applied"):
-        return (f"[pmem] 后台扫描发现新的代码目录，已自动登记到 .memory/modules.yaml：{shown}。"
-                "请在回复里顺带告诉用户：名字不合适可用 pmem migrate rename <旧名> <新名> 改，记得提交 .memory/modules.yaml。")
+        return (f"[pmem] 后台扫描发现新的代码目录，已自动登记到 .memory/modules.yaml，共{total}：{shown}。"
+                f"请在回复里告诉用户这次{total}（写明数量），名字不合适可用 pmem migrate rename <旧名> <新名> 改，"
+                "记得提交 .memory/modules.yaml。")
     why = "modules.yaml 正文里有注释，自动重写会丢失，所以没有自动登记；" if result.get("skipped") == "comments" else ""
-    return (f"[pmem] 后台扫描发现没登记的代码目录：{shown}。{why}"
-            "请在回复里提醒用户运行 pmem sync 预览、确认后 pmem sync --apply 登记。")
+    return (f"[pmem] 后台扫描发现没登记的代码目录，待登记 {total.removeprefix('新增 ')}：{shown}。{why}"
+            "请在回复里写明数量并提醒用户运行 pmem sync 预览、确认后 pmem sync --apply 登记。")

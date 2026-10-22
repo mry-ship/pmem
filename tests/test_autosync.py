@@ -52,7 +52,24 @@ def test_apply_registers_new_directories_and_keeps_header(make):
     assert (root / ".memory" / "modules.yaml").read_text(encoding="utf-8").startswith("# 模块目录")
     notice = autosync.take_notice(Config.load(root).cache_dir)
     assert "已自动登记" in notice and "gameplay.Match" in notice and "pmem migrate rename" in notice
+    assert "新增 1 个模块" in notice and "写明数量" in notice
     assert autosync.take_notice(Config.load(root).cache_dir) is None
+
+
+def test_each_applied_run_records_how_many_modules_were_added(make, capsys):
+    from pmem.cli.main import main
+
+    root = make()
+    main(["sync", "--auto", "session", "--root", str(root)])
+    assert "已自动登记，新增 1 个模块：" in capsys.readouterr().out
+    _write(root, "src/Game/Tiny/X.cs")
+    run_auto(root, "edit")
+    history = autosync.load_state(Config.load(root).cache_dir)["history"]
+    assert [(h["new_modules"], h["new_candidates"], h["modules"]) for h in history] == [
+        (1, 0, ["gameplay.Match"]), (0, 1, ["gameplay.Tiny"])]
+    main(["sync", "--history", "--root", str(root)])
+    out = capsys.readouterr().out
+    assert "最近 2 次自动登记，共新增 1 个模块、1 个冷候选" in out and "gameplay.Tiny" in out
 
 
 def test_unchanged_directories_skip_planning_until_full_scan_is_due(make):

@@ -39,6 +39,7 @@
 - **教训另外记、优先给**：试过不行的方向、确认的根因和坑、看代码看不出的约束、方案取舍，各写一条教训。检索时教训给全文、排在前面，功能记录只列标题，记得再多也不会把教训挤掉。
 - **全项目的坑人人看到**：编码、环境、跨模块约定这类改哪里都会踩的坑标为全项目通用，读任何模块的代码时都会附上。
 - **大业务可以细分**：模块名用点号续写子模块（最多 4 段，如 `system.Ads.AdMob`）。查子模块会另外带上父模块里“所有 SDK 都适用”的教训（默认 2 条，不挤占子模块自己的 5 条）；问父模块整体情况时附上各子模块最新 5 条记忆的标题。不细分的模块行为和以前完全一样。
+- **新模块自动登记**（v0.5.1）：AI 改到没登记的代码目录、或每次会话开始时（间隔 30 分钟），后台扫描并追加到 `modules.yaml`，不阻塞对话；AI 会转告“这次新增了几个模块、几个冷候选”，名字不合适用 `pmem migrate rename` 改。
 - **不重复占上下文**：同一对话里已经给过全文的记忆，再查到只给一句话标题。
 - **自动兜底**：AI 忘了查就去改，会被拦下直到查过为止；改了代码却没记，回合结束时提醒补上功能记录和教训（确实不用记时说明原因）。这条提醒以“[pmem]”开头，由 AI 自己处理，你不用回复。
 - **每次回答写明查了什么**：回复开头一行“【pmem检索】X（要点）”；结尾分行写“【pmem查询】X，用到「…」”和“【pmem修改】X 已写功能记录「…」；Y 无需记录（原因）”（没改代码写“【pmem修改】本轮未改代码，无新结论”）。这几行齐全时不再追加结束提醒。
@@ -225,6 +226,7 @@ pmem compact --undo <id>               # 撤销一次合并，原记忆重新现
 pmem map                               # 记忆演化图（本地网页）和自检；--json 输出数据，--days 改漏记统计天数
 pmem migrate tidy                      # 把还在旧模块名下的记忆搬到新名下（加 --apply 执行）
 pmem sync                              # 对照代码目录列出新模块、要追加的路径（加 --apply 执行）
+pmem sync --history                    # 最近 20 次自动登记各新增了几个模块（自动登记由 Hook 在后台完成）
 pmem wiki                              # 生成浏览用的模块 Wiki
 pmem format --apply                    # 把旧记忆里一整行的长正文断行（新写入的会自动整理）
 ```
@@ -255,4 +257,4 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 
 ## 路线
 
-各版本的计划和进度记在 GitHub：[v0.3.1 功能记录与分层检索](https://github.com/mry-ship/pmem/issues/12)、[v0.3.2 记忆图与严格清理](https://github.com/mry-ship/pmem/issues/13)、[v0.4 治理闭环与团队化](https://github.com/mry-ship/pmem/issues/14)（已关闭：转正提示和召回审计已实现，团队汇总与中心服务长期搁置）、v0.5 父子模块与回复格式（[设计稿](docs/superpowers/specs/2026-10-21-pmem-module-hierarchy-design.md)）、[v0.6 类型安全与规则化](https://github.com/mry-ship/pmem/issues/15)（计划，[设计稿](docs/superpowers/specs/2026-10-21-pmem-typesafe-design.md)）；设计细节见 [设计文档第 14 节](docs/superpowers/specs/2026-10-14-pmem-design.md)。
+各版本的计划和进度记在 GitHub：[v0.3.1 功能记录与分层检索](https://github.com/mry-ship/pmem/issues/12)、[v0.3.2 记忆图与严格清理](https://github.com/mry-ship/pmem/issues/13)、[v0.4 治理闭环与团队化](https://github.com/mry-ship/pmem/issues/14)（已关闭：转正提示和召回审计已实现，团队汇总与中心服务长期搁置）、v0.5 父子模块与回复格式（[设计稿](docs/superpowers/specs/2026-10-21-pmem-module-hierarchy-design.md)）、v0.5.1 新模块自动登记、[v0.6 类型安全与规则化](https://github.com/mry-ship/pmem/issues/15)（计划，[设计稿](docs/superpowers/specs/2026-10-21-pmem-typesafe-design.md)）；设计细节见 [设计文档第 14 节](docs/superpowers/specs/2026-10-14-pmem-design.md)。

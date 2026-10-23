@@ -1,6 +1,6 @@
 [project]
 name = "pmem"
-version = "0.5.1"
+version = "0.6.0"
 description = "给 AI 编程助手挂一个项目记忆：改代码前自动按模块查结论，改完记下来，随代码团队共享（Cursor / Claude Code / Codex）"
 requires-python = ">=3.10"
 license = "GPL-3.0-or-later"

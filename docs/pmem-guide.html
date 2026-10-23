@@ -434,6 +434,7 @@ pmem init --type game                     <span class="c"># 项目类型：game 
 pmem init --agents cursor,claude,codex    <span class="c"># 指定接入哪些工具；默认 auto</span>
 pmem init --gate warn                     <span class="c"># 闸门力度：block（默认）/ warn / off，只在首次生成 config.yaml 时生效</span></code></pre>
       <p>重复运行 <code>pmem init</code>（如升级后）只更新它生成的规则、技能、Hook 和 MCP 配置，不覆盖 <code>config.yaml</code>、<code>modules.yaml</code>。这时再给 <code>--gate</code>、<code>--type</code> 不会生效，输出里会单独列出，改闸门力度、项目类型请直接改 <code>config.yaml</code>。</p>
+      <p>规格提醒默认不提示。首次生成 <code>config.yaml</code> 时，在终端里问要不要开启：输入 y 开启，直接回车保持关闭。脚本或 Agent 接入时不询问，保持关闭，并打印怎么改。再次运行不再问。</p>
       <p><code>auto</code> 总会接入 Cursor；项目里已有 <code>.claude/</code> 或 <code>CLAUDE.md</code> 时接入 Claude Code，已有 <code>.codex/</code> 或 <code>AGENTS.md</code> 时接入 Codex。已有配置只合并不覆盖。</p>
       <table>
         <tr><th>工具</th><th>生成的文件</th></tr>

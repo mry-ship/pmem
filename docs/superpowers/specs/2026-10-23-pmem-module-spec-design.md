@@ -112,7 +112,7 @@ spec:
   reminder: false   # 默认不提示。改成 true 后回合结束提醒更新规格；gate.mode 为 off 时不提醒
 ```
 
-`spec.dir` 和 `spec.reminder` 有缺省值，提醒缺省是关。已有项目的 `config.yaml` 不被 `pmem init` 改写，也不会被补上一份 `spec` 段。缺了 `spec.reminder` 时，`Config.load` 在读取时并入 false，因此没写过这项的旧项目升级后不再弹出规格提醒。文件里已经写成 true 的仍提醒，已经写了的 `spec.dir` 保持原值。
+`spec.dir` 和 `spec.reminder` 有缺省值，提醒缺省是关。首次 `pmem init` 生成配置时，在终端里询问是否开启：输入 y 才写成 true，直接回车保持 false。没有终端时不询问，保持关闭并打印改法。已有项目的 `config.yaml` 不被 `pmem init` 改写，再次运行也不再问，也不会被补上一份 `spec` 段。缺了 `spec.reminder` 时，`Config.load` 在读取时并入 false，因此没写过这项的旧项目升级后不再弹出规格提醒。文件里已经写成 true 的仍提醒，已经写了的 `spec.dir` 保持原值。
 
 ### 3.5 和记忆、Wiki 的关系
 

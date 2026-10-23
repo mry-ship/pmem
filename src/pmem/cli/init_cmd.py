@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import sys
 from pathlib import Path
 
 import yaml
@@ -19,7 +20,27 @@ def guess_type(root: Path) -> str:
     return "generic"
 
 
-def run_init(root: Path, project_type: str | None, gate: str | None = None, agents: str = "auto") -> int:
+def choose_spec_reminder(stdin=None) -> bool | None:
+    """首次写入配置时问要不要开规格提醒。
+
+    终端里输入 y 才开启，直接回车保持关闭。
+    没有终端（脚本、测试、Agent）时不询问，返回 None，沿用模板里的关闭。
+    """
+    stream = sys.stdin if stdin is None else stdin
+    if not getattr(stream, "isatty", lambda: False)():
+        return None
+    print("规格提醒默认不提示。改了模块后，要在回合结束提醒更新规格吗？"
+          "输入 y 开启，直接回车保持关闭：", end=" ", flush=True)
+    try:
+        answer = stream.readline()
+    except EOFError:
+        print()
+        return False
+    return answer.strip().lower() in {"y", "yes", "是"}
+
+
+def run_init(root: Path, project_type: str | None, gate: str | None = None, agents: str = "auto",
+             stdin=None) -> int:
     root = root.resolve()
     memory = root / ".memory"
     config_path = memory / "config.yaml"
@@ -34,9 +55,19 @@ def run_init(root: Path, project_type: str | None, gate: str | None = None, agen
     project_type = project_type or guess_type(root)
     chosen = pick_agents(root, agents)
     done: list[str] = []
+    spec_note = ""
 
     if not config_path.exists():
-        write_text(config_path, CONFIG_TEMPLATE.format(name=root.name, type=project_type, gate=gate))
+        choice = choose_spec_reminder(stdin)
+        text = CONFIG_TEMPLATE.format(name=root.name, type=project_type, gate=gate)
+        if choice is True:
+            text = text.replace("  reminder: false", "  reminder: true", 1)
+            spec_note = "规格提醒已开启。不想要时，把 .memory/config.yaml 里的 spec.reminder 改回 false。"
+        elif choice is False:
+            spec_note = "规格提醒保持关闭。以后要开，把 .memory/config.yaml 里的 spec.reminder 改成 true。"
+        else:
+            spec_note = "规格提醒默认不提示。要开启的话，把 .memory/config.yaml 里的 spec.reminder 改成 true。"
+        write_text(config_path, text)
         done.append(f"创建 {config_path.relative_to(root)}（项目类型 {project_type}，闸门 {gate}）")
     if not modules_path.exists():
         body = {
@@ -62,6 +93,8 @@ def run_init(root: Path, project_type: str | None, gate: str | None = None, agen
         print("\n以下参数没有生效（重复运行不覆盖已有配置）：")
         for line in ignored:
             print(f"  - {line}")
+    if spec_note:
+        print(f"\n{spec_note}")
     if shutil.which("pmem") is None:
         print("\n注意：当前 PATH 中找不到 pmem 命令，Agent 将无法启动 MCP 与 Hooks。请先运行：uv tool install pmem")
     from pmem.cli.spec_cmd import ensure_spec_skeletons

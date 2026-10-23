@@ -132,6 +132,43 @@ def test_init_only_wires_cursor_when_no_other_agent_is_present(tmp_path):
     assert (tmp_path / ".codex" / "hooks.json").exists() and not (tmp_path / ".claude").exists()
 
 
+class _Answer:
+    def __init__(self, text: str):
+        self.text = text
+
+    def isatty(self) -> bool:
+        return True
+
+    def readline(self) -> str:
+        return self.text
+
+
+def test_init_enables_spec_reminder_only_when_the_user_says_yes(tmp_path, capsys):
+    from pmem.cli.init_cmd import run_init
+
+    opened = tmp_path / "opened"
+    assert run_init(opened, "generic", stdin=_Answer("y\n")) == 0
+    opened_config = yaml.safe_load((opened / ".memory" / "config.yaml").read_text(encoding="utf-8"))
+    assert opened_config["spec"]["reminder"] is True
+    assert "规格提醒已开启" in capsys.readouterr().out
+
+    declined = tmp_path / "declined"
+    assert run_init(declined, "generic", stdin=_Answer("\n")) == 0
+    declined_config = yaml.safe_load((declined / ".memory" / "config.yaml").read_text(encoding="utf-8"))
+    assert declined_config["spec"]["reminder"] is False
+    assert "保持关闭" in capsys.readouterr().out
+
+
+def test_init_leaves_spec_reminder_off_without_a_terminal(tmp_path, capsys):
+    assert main(["init", "--root", str(tmp_path), "--type", "generic"]) == 0
+    config = yaml.safe_load((tmp_path / ".memory" / "config.yaml").read_text(encoding="utf-8"))
+    assert config["spec"]["reminder"] is False
+    out = capsys.readouterr().out
+    assert "默认不提示" in out
+    main(["init", "--root", str(tmp_path)])
+    assert "默认不提示" not in capsys.readouterr().out
+
+
 def test_init_keeps_existing_memory_config(tmp_path):
     (tmp_path / ".memory").mkdir()
     (tmp_path / ".memory" / "config.yaml").write_text("gate: { mode: block }\n", encoding="utf-8")

@@ -13,7 +13,7 @@ from pmem.hooks.gate import cli_args, handle, may_change_unseen, shell_write_tar
 from pmem.hooks.state import SessionState
 from pmem.metrics.events import read_events
 
-CONFIG = "project: {{ name: demo }}\nvcs: none\ngate: {{ mode: {mode} }}\n"
+CONFIG = "project: {{ name: demo }}\nvcs: none\ngate: {{ mode: {mode} }}\nspec: {{ reminder: false }}\n"
 MODULES = """
 categories: { gameplay: {}, economy: {} }
 modules:
@@ -37,10 +37,13 @@ note_date: '2026-10-01'
 def make_project(tmp_path, monkeypatch):
     monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
 
-    def build(mode="warn", with_memory=True) -> Path:
+    def build(mode="warn", with_memory=True, spec_reminder=False) -> Path:
         root = tmp_path / "proj"
         (root / ".memory").mkdir(parents=True, exist_ok=True)
-        (root / ".memory" / "config.yaml").write_text(CONFIG.format(mode=mode), encoding="utf-8")
+        text = CONFIG.format(mode=mode)
+        if spec_reminder:
+            text = text.replace("reminder: false", "reminder: true")
+        (root / ".memory" / "config.yaml").write_text(text, encoding="utf-8")
         (root / ".memory" / "modules.yaml").write_text(MODULES, encoding="utf-8")
         if with_memory:
             folder = root / ".memory" / "entries" / "gameplay.Jigsaw"
@@ -1462,3 +1465,44 @@ def test_denied_command_leaves_no_snapshot(git_project):
     root = git_project
     assert handle("pre-tool", shell("uv run fmt; echo x > src/Jigsaw/Board.cs"), root)["permission"] == "deny"
     assert SessionState(Config.load(root).cache_dir, "c1").data["shell_before"] == {}
+
+
+def test_stop_reminds_to_update_spec_once(make_project):
+    root = make_project(spec_reminder=True)
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    first = handle("stop", {"conversation_id": "c1", "status": "completed"}, root)
+    assert "economy.Shop" in first["followup_message"]
+    assert "不要整篇重写" in first["followup_message"]
+    assert first["followup_message"].startswith("[pmem]")
+    assert handle("stop", {"conversation_id": "c1", "status": "completed"}, root) == {}
+
+
+def test_stop_skips_spec_when_declared_or_exempt_or_off(make_project, tmp_path):
+    root = make_project(spec_reminder=True)
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    reply = "【pmem修改】economy.Shop 无需记录（只改了注释）"
+    assert "不要整篇重写" not in handle(
+        "stop", stop_payload(reply_transcript(tmp_path, reply)), root).get("followup_message", "")
+    (root / "src/Shop/docs").mkdir(parents=True, exist_ok=True)
+    handle("edited", {"conversation_id": "c2", "file_path": str(root / "src/Shop/docs/guide.html")}, root)
+    assert handle("stop", {"conversation_id": "c2", "status": "completed"}, root) == {}
+    quiet = make_project(mode="off", spec_reminder=True)
+    handle("edited", {"conversation_id": "c3", "file_path": str(quiet / "src/Shop/Shop.cs")}, quiet)
+    assert handle("stop", {"conversation_id": "c3", "status": "completed"}, quiet) == {}
+
+
+def test_writing_spec_file_is_not_a_code_edit(make_project):
+    root = make_project(spec_reminder=True)
+    spec = root / ".memory" / "specs" / "economy.Shop" / "美术设计.md"
+    spec.parent.mkdir(parents=True)
+    spec.write_text("规格\n", encoding="utf-8")
+    handle("post-tool", {"conversation_id": "c1", "tool_name": "Write",
+                         "tool_input": {"file_paths": [str(spec)]}}, root)
+    state = SessionState(Config.load(root).cache_dir, "c1")
+    assert state.data["spec_written"] == ["economy.Shop"]
+    assert state.data["edited"] == []
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    handle("after-mcp", {"conversation_id": "c1", "tool_name": "record_memory",
+                         "result_json": json.dumps({"ok": True, "id": "01JA7K3M2X9F4Q8W6ZB1C2D3E9",
+                                                    "module": "economy.Shop"})}, root)
+    assert handle("stop", {"conversation_id": "c1", "status": "completed"}, root) == {}

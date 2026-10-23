@@ -94,6 +94,7 @@ def run_sync(root: Path, apply: bool) -> int:
         return 1
     file.write(new_data)
     print("已写入 .memory/modules.yaml。运行 pmem doctor 检查覆盖率，然后提交 .memory/")
+    _lay_spec_skeletons(root)
     return 0
 
 
@@ -118,7 +119,20 @@ def run_auto_sync(root: Path, reason: str) -> int:
         return 1 if status == "error" else 0
     head = f"已自动登记，{count_text(result)}" if result.get("applied") else f"发现未登记目录，待{count_text(result)}"
     print(head + "：" + "；".join(items))
+    if result.get("applied"):
+        _lay_spec_skeletons(root)
     return 0
+
+
+def _lay_spec_skeletons(root: Path) -> None:
+    from pmem.cli.spec_cmd import ensure_spec_skeletons
+
+    code, message = ensure_spec_skeletons(root)
+    if not message:
+        return
+    print(message)
+    if code == 0 and message.startswith("规格骨架") and "新写 0" not in message:
+        print("还没有规格的模块只补了骨架。四份正文要对 Agent 说「补全模块规格」。")
 
 
 def run_history(root: Path) -> int:

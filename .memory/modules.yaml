@@ -59,6 +59,10 @@ modules:
   feature.Wiki:
     description: 从记忆生成可浏览的 Markdown Wiki（每模块一页、过期标记、写入后自动更新）
     paths: [src/pmem/generate/wiki.py, src/pmem/cli/wiki_cmd.py, tests/test_wiki.py]
+  feature.Spec:
+    description: 模块规格：每个模块四份可提交的当前文档（策划、美术、程序、现状），骨架和目录由 pmem spec 生成，正文由 pmem-spec 技能写
+    paths: [src/pmem/generate/spec.py, src/pmem/cli/spec_cmd.py, tests/test_spec.py]
+    aliases: [模块规格, RebuildSpec]
   feature.Metrics:
     description: 度量与报告：本机事件日志、收益报告 pmem report、引用识别、健康报告 pmem health（含清理候选）、记忆图 pmem map 与自检、对照实验 pmem bench
     paths: [src/pmem/metrics/**, src/pmem/bench/**, src/pmem/generate/memmap.py, src/pmem/cli/map_cmd.py, tests/metrics/**, tests/bench/**, tests/test_memmap.py, scripts/calibrate_cite.py, bench/**]

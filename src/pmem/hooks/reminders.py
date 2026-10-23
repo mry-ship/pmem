@@ -60,6 +60,14 @@ class Reminders:
 
         return [m for m in self.state.data["edited"] if not self._deprecated(m) and needed(m)]
 
+    def _pending_specs(self, declared: set[str] = frozenset()) -> list[str]:
+        """改了行为却还没写对应规格的模块。和功能记录分开记已提醒，避免互相抵消。"""
+        if not self._reminders_on("spec.reminder", True):
+            return []
+        written = set(self.state.data.get("spec_written") or [])
+        return [m for m in self._record_required()
+                if m not in written and m not in declared and not self.state.has("spec_nudged", m)]
+
     def _deprecated(self, module_id: str) -> bool:
         """废弃模块只读，写记忆会被拒绝，所以不提醒写。"""
         module = self.registry.modules.get(module_id)
@@ -95,6 +103,7 @@ class Reminders:
         declared, no_conclusion = self._declarations(turn_reply_text(self.payload.get("transcript_path"))) \
             if follow else (set(), False)
         pending = self._pending_nudges(declared) if follow else []
+        specs = self._pending_specs(declared) if follow else []
         analyzed = self._analyzed() if finished else []
         consulted_pending = self._consulted_only() if follow and not no_conclusion else []
         notice = self.error_notice() if follow else None
@@ -111,15 +120,17 @@ class Reminders:
             required=self._record_required() or None,
             analyzed=analyzed or None,
             review=review or None,
-            nudged=(pending + consulted_pending) or None,
+            nudged=(pending + consulted_pending + specs) or None,
             **usage,
         )
-        if not review and not pending and not consulted_pending:
+        if not review and not pending and not consulted_pending and not specs:
             return {"followup_message": notice} if notice else {}
         for module in review:
             self.state.add("review_nudged", module)
         for module in pending + consulted_pending:
             self.state.add("nudged", module)
+        for module in specs:
+            self.state.add("spec_nudged", module)
         self.save()
         messages = []
         if review:
@@ -146,6 +157,15 @@ class Reminders:
                 f"[pmem] 本轮查了 {'、'.join(consulted_pending)} 的记忆，没有改代码也没有写记忆。"
                 "得出了新结论（根因、排除过的方向、决定、风险）就直接用 record_memory 记下；"
                 "没有新结论就简短说明“已核对，无新结论”。不要询问用户。"
+            )
+        if specs:
+            messages.append(
+                f"[pmem] 本轮修改了 {'、'.join(specs)}，对应的模块规格还没更新。"
+                "请按 pmem-spec 更新 .memory/specs/<模块>/ 里对应的那一份："
+                "程序和现状只改正波及的段落，本轮新定的策划和美术写入并保留。"
+                "无画面的模块美术节写「本模块无画面」。"
+                "旧稿没有美术设计这一节时，插在策划和程序之间。"
+                "不要整篇重写，也不要改其他模块。不要询问用户。"
             )
         if notice:
             messages.append(notice)

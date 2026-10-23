@@ -1,6 +1,8 @@
-# pmem v0.6 类型安全与规则化设计
+# pmem v0.7 类型安全与规则化设计
 
 日期：2026-10-21　状态：计划，待确认（进度见 [Issue #15](https://github.com/mry-ship/pmem/issues/15)）
+
+2026-10-23 起版本号为 v0.7。v0.6 改为模块规格，见 `2026-10-23-pmem-module-spec-design.md`。下文范围不变。
 
 ## 1. 背景与目标
 

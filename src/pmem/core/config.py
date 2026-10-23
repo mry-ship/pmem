@@ -49,6 +49,7 @@ DEFAULTS: dict = {
     },
     "search": {"limit": 5, "max_per_batch": 2, "recency_half_life_days": 90, "feature_limit": 3, "inherit_max": 2},
     "wiki": {"auto": True, "dir": ".memory/wiki"},
+    "spec": {"dir": ".memory/specs", "reminder": True},
     "server": {"watchdog": True, "request_timeout": 120},
     # 自动发现没登记的代码目录：改到这类文件时立即、会话开始时按间隔在后台扫描；full_hours 内至少一次带提交热度的完整扫描
     "sync": {"auto": "apply", "interval_minutes": 30, "full_hours": 24},
@@ -135,7 +136,7 @@ class Config:
     def __init__(self, root: Path, data: dict):
         self.root = root
         self.data = data
-        for section in ("gate", "write", "search", "server", "embedding", "wiki", "project", "sync"):
+        for section in ("gate", "write", "search", "server", "embedding", "wiki", "project", "sync", "spec"):
             if not isinstance(data.get(section), dict):
                 raise ConfigError(f"配置项 {section} 应是键值对，当前为 {data.get(section)!r}")
         gate = data["gate"]

@@ -61,7 +61,12 @@ def test_each_applied_run_records_how_many_modules_were_added(make, capsys):
 
     root = make()
     main(["sync", "--auto", "session", "--root", str(root)])
-    assert "已自动登记，新增 1 个模块：" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "已自动登记，新增 1 个模块：" in out
+    assert "补全模块规格" in out
+    assert (root / ".memory" / "specs" / "gameplay.Match" / "程序设计.md").is_file()
+    assert "<!-- spec:empty -->" in (
+        root / ".memory" / "specs" / "gameplay.Match" / "程序设计.md").read_text(encoding="utf-8")
     _write(root, "src/Game/Tiny/X.cs")
     run_auto(root, "edit")
     history = autosync.load_state(Config.load(root).cache_dir)["history"]

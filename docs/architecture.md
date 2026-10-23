@@ -55,8 +55,8 @@ flowchart LR
 | `metrics` | 事件日志（`events.py`，多进程追加时加跨进程锁）、收益报告、引用识别、健康报告（`pmem health`，含按议题找“一正一反、用词高度相似”的疑似矛盾记忆，被拒写入按错误码归类，改了代码却没写功能记录的模块，严格的清理候选 `cleanup.py`，未登记模块的转正提示与召回审计 `audit.py`）、记忆图自检（`memmap.py`：漏记、断链、悬而未决、过期与总评；渲染交给 `generate.memmap`，由 `cli/map_cmd.py` 拼起来，因为 `metrics` 不能依赖 `generate`） |
 | `importers` | 从既有记忆系统（LanceDB 参考实现）只读导入：复制后再读、按来源 id 幂等、保留原时间、套用项目的敏感信息规则 |
 | `bench` | 基于 Cursor SDK 的有/无记忆对照实验 |
-| `generate` | `templates`（规则、技能、Hook、配置模板）、`integrations`（按 Agent 写入规则和技能，合并 hooks / MCP 配置时只替换 pmem 自己的条目）、`wiki`（模块页附 Mermaid 演化图）、`memmap`（`pmem map` 的本地 HTML 与 Mermaid；图的数据由 `index/memmap.py` 从记忆文件推出） |
-| `cli` / `scan` | 命令入口（两张分发表：search、record、confirm、graph、list、terms、archive 直接调 `MemoryService`；init、scan、sync、doctor、compact、anchors、format、import、reindex、report、health、seed、migrate、wiki、map、bench、serve、hook 各自实现；`compact --undo` 调 `MemoryService.revert` 撤销合并；代码搬家后 `anchors --rename 旧=新` 改写所有记忆的关联代码；`init_cmd` 只建配置和打印结果，接入文件交给 `generate.integrations`）、目录与提交热度扫描（供 Agent 划分模块；`sync` 读一次提交历史同时算 180 天热度和 90 天是否有改动）、代码文件索引（`scan/files.py`，`anchors` 补关联代码和清理候选共用） |
+| `generate` | `templates`（规则、技能、Hook、配置模板）、`integrations`（按 Agent 写入规则和技能，合并 hooks / MCP 配置时只替换 pmem 自己的条目）、`wiki`（模块页附 Mermaid 演化图）、`spec`（模块规格的骨架、文首事实和目录；策划、美术、程序、现状由 `pmem-spec` 技能写）、`memmap`（`pmem map` 的本地 HTML 与 Mermaid；图的数据由 `index/memmap.py` 从记忆文件推出） |
+| `cli` / `scan` | 命令入口（两张分发表：search、record、confirm、graph、list、terms、archive 直接调 `MemoryService`；init、scan、sync、doctor、compact、anchors、format、import、reindex、report、health、seed、migrate、wiki、spec、map、bench、serve、hook 各自实现；`compact --undo` 调 `MemoryService.revert` 撤销合并；代码搬家后 `anchors --rename 旧=新` 改写所有记忆的关联代码；`init_cmd` 建配置、给已登记模块补规格骨架并打印结果，接入文件交给 `generate.integrations`）、目录与提交热度扫描（供 Agent 划分模块；`sync` 读一次提交历史同时算 180 天热度和 90 天是否有改动）、代码文件索引（`scan/files.py`，`anchors` 补关联代码和清理候选共用） |
 
 ## 分层
 

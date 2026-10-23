@@ -29,6 +29,8 @@ _DEFAULTS = {
     "project_done": False,
     # 摘要里“需核实”的处理说明本对话已经给过
     "stale_explained": False,
+    # 本轮写过的模块规格、以及已经提醒过更新规格的模块（和功能记录的 nudged 分开）
+    "spec_written": [], "spec_nudged": [],
 }
 
 

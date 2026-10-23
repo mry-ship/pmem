@@ -64,10 +64,16 @@ def run_init(root: Path, project_type: str | None, gate: str | None = None, agen
             print(f"  - {line}")
     if shutil.which("pmem") is None:
         print("\n注意：当前 PATH 中找不到 pmem 命令，Agent 将无法启动 MCP 与 Hooks。请先运行：uv tool install pmem")
+    from pmem.cli.spec_cmd import ensure_spec_skeletons
+
+    _code, message = ensure_spec_skeletons(root)
+    print(f"\n{message}")
     print("\n下一步：")
     for i, agent in enumerate(chosen, 1):
         print(f"  {i}. {NEXT_STEPS[agent]}")
     n = len(chosen)
     print(f"  {n + 1}. 对 Agent 说：“按 pmem-bootstrap 技能划分模块”。")
-    print(f"  {n + 2}. 运行 pmem doctor 确认覆盖率，然后把 .memory/ 与上面生成的配置提交到版本库。")
+    print(f"  {n + 2}. 对 Agent 说：“补全模块规格”。已登记模块会先铺四份骨架；"
+          "正文由 pmem-spec 按代码写全，看不到的策划和美术留空。")
+    print(f"  {n + 3}. 运行 pmem doctor 确认覆盖率，然后把 .memory/ 与上面生成的配置提交到版本库。")
     return 0

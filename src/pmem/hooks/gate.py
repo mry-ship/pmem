@@ -7,7 +7,7 @@ from pmem.core import autosync, seen
 from pmem.core.codefiles import is_code_file
 from pmem.core.config import Config
 from pmem.core.entry import Entry
-from pmem.core.registry import ModuleRegistry
+from pmem.core.registry import ModuleRegistry, is_module_id
 from pmem.hooks.guard import Guard
 from pmem.hooks.mcp import ALLOW, PMEM_TOOLS, McpCalls, foreign_tool
 from pmem.hooks.memories import MemoryView
@@ -136,6 +136,7 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
         return {}
 
     def _mark_edited(self, path: str) -> None:
+        self._note_spec(path)
         rel = self.relative(path)
         module = self.module_of(rel)
         if module and self.state is not None:
@@ -146,6 +147,27 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
             self.log("edit", module=module, file=rel)
             if module is None and self._unregistered_code(rel):
                 self._autosync("edit", rel.rsplit("/", 1)[0] if "/" in rel else "")
+
+    def _note_spec(self, path: str) -> None:
+        """规格在 .memory/ 里，闸门忽略它，不记成业务改动；只记下这份规格本轮写过。"""
+        if self.state is None:
+            return
+        rel = self.relative(path)
+        if not rel:
+            return
+        spec_dir = str(self.config.get("spec.dir") or ".memory/specs").replace("\\", "/").strip("/")
+        prefix = spec_dir + "/"
+        if not rel.startswith(prefix):
+            return
+        name = rel[len(prefix):]
+        module, _, filename = name.partition("/")
+        if not filename or "/" in filename or filename == "index.md":
+            return
+        if filename not in {"策划设计.md", "美术设计.md", "程序设计.md", "模块现状.md"}:
+            return
+        if is_module_id(module):
+            self.state.add("spec_written", module)
+            self.save()
 
     def _unregistered_code(self, rel: str) -> bool:
         """改到的是没归属任何模块的代码文件（不算第三方、忽略的目录和闸门不看的文件）。"""

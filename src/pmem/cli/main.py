@@ -172,6 +172,12 @@ def build_parser():
     p.add_argument("--json", action="store_true")
     p.add_argument("--root", default=".")
 
+    p = sub.add_parser("spec", help="模块规格：骨架、目录和完成情况（正文由 pmem-spec 技能写）")
+    p.add_argument("action", nargs="?", choices=("init", "index", "fill"), default=None,
+                   help="init 补骨架；index 刷新目录和文首事实；fill 补骨架并列出还没写全的模块")
+    p.add_argument("--check", action="store_true", help="有模块还没完成首稿时返回 1")
+    p.add_argument("--root", default=".")
+
     p = sub.add_parser("wiki", help="从记忆生成可浏览的模块 Wiki（Markdown，每个模块一页）")
     p.add_argument("--out", default=None, help="输出目录，默认 .memory/wiki")
     p.add_argument("--root", default=".")
@@ -426,6 +432,12 @@ def _format(args) -> int:
     return run_format(_project_root(args.root), args.module or None, args.apply)
 
 
+def _spec(args) -> int:
+    from pmem.cli.spec_cmd import run_spec
+
+    return run_spec(_project_root(args.root), args.action, args.check)
+
+
 def _wiki(args) -> int:
     from pmem.cli.wiki_cmd import run_wiki
 
@@ -479,6 +491,7 @@ COMMANDS = {
     "bench": _bench,
     "anchors": _anchors,
     "format": _format,
+    "spec": _spec,
     "wiki": _wiki,
     "map": _map,
     "seed": _seed,

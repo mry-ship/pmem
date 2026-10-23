@@ -117,7 +117,7 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 | 合并错了要撤销 | `pmem compact --undo <合并后的 id>`：被替代的原记忆重新现行 |
 | 看记忆怎么演变 | `pmem map` 生成本地网页 `.memory/wiki/map.html`：按模块分区、议题排时间线，顶部自检列出漏记、断链、悬而未决、过期 |
 | 通读全部结论 | 打开 `.memory/wiki/index.md`，每个模块一页，写入记忆后自动更新 |
-| 看模块现在是什么样 | 打开 `.memory/specs/<模块>/`。四份是当前的完整策划、完整程序、完整美术、完整现状，给美术只拷 `美术设计.md`。还没有就说“补全模块规格”。`pmem init` 和自动登记只铺空骨架；模块后来有变化时，回合结束提醒 AI 改那一份里变了的段落，不用自己维护 |
+| 看模块现在是什么样 | 打开 `.memory/specs/<模块>/`。四份是当前的完整策划、完整程序、完整美术、完整现状，给美术只拷 `美术设计.md`。还没有就说“补全模块规格”。`pmem init` 和自动登记只铺空骨架。模块后来有变化时，说“更新这个模块的规格”。规格提醒默认不提示，想自动跟上再把 `spec.reminder` 设为 true |
 
 ### 定期体检
 
@@ -318,7 +318,7 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 | [v0.4](https://github.com/mry-ship/pmem/issues/14) | 治理闭环与团队化 | 已关闭：转正提示和召回审计已实现，团队汇总与中心服务长期搁置 |
 | v0.5（[设计稿](docs/superpowers/specs/2026-10-21-pmem-module-hierarchy-design.md)） | 父子模块与回复格式 | 已完成 |
 | v0.5.1 | 新模块自动登记 | 已完成 |
-| [v0.6](https://github.com/mry-ship/pmem/issues/16)（[设计稿](docs/superpowers/specs/2026-10-23-pmem-module-spec-design.md)） | 模块规格：每个模块一份可独立重做的当前文档 | 已完成（当前版本 0.6.0） |
+| [v0.6](https://github.com/mry-ship/pmem/issues/16)（[设计稿](docs/superpowers/specs/2026-10-23-pmem-module-spec-design.md)） | 模块规格：每个模块一份可独立重做的当前文档。规格提醒默认不提示 | 已完成（当前版本 0.6.0） |
 | [v0.7](https://github.com/mry-ship/pmem/issues/15)（[设计稿](docs/superpowers/specs/2026-10-21-pmem-typesafe-design.md)） | 类型安全与规则化 | 计划中，由 v0.6 顺延 |
 
 ## 许可证

@@ -18,6 +18,13 @@ def test_defaults_fill_missing_keys(tmp_path):
     assert cfg.get("gate.skip_markers") == ["跳过记忆", "skip-memory"]
     assert cfg.get("search.limit") == 5
     assert cfg.get("vcs") == "auto"
+    assert cfg.get("spec.dir") == ".memory/specs"
+    assert cfg.get("spec.reminder") is False
+
+
+def test_spec_reminder_stays_off_when_only_the_directory_is_set(tmp_path):
+    write_config(tmp_path, "spec: { dir: .memory/specs }\n")
+    assert Config.load(tmp_path).get("spec.reminder") is False
 
 
 def test_empty_config_file_uses_defaults(tmp_path):

@@ -49,7 +49,7 @@ DEFAULTS: dict = {
     },
     "search": {"limit": 5, "max_per_batch": 2, "recency_half_life_days": 90, "feature_limit": 3, "inherit_max": 2},
     "wiki": {"auto": True, "dir": ".memory/wiki"},
-    "spec": {"dir": ".memory/specs", "reminder": True},
+    "spec": {"dir": ".memory/specs", "reminder": False},
     "server": {"watchdog": True, "request_timeout": 120},
     # 自动发现没登记的代码目录：改到这类文件时立即、会话开始时按间隔在后台扫描；full_hours 内至少一次带提交热度的完整扫描
     "sync": {"auto": "apply", "interval_minutes": 30, "full_hours": 24},

@@ -63,7 +63,7 @@ wiki:
   dir: .memory/wiki       # 首次生成时放一个 .gitignore 不进版本库；想提交就删掉它
 spec:
   dir: .memory/specs      # 每个模块一份当前规格，进版本库；正文由 pmem-spec 技能写
-  reminder: true          # 回合结束时，改了模块却没更新规格就提醒一次
+  reminder: false         # 默认不提示。改成 true 后，回合结束时改了模块却没更新规格就提醒一次
 server:
   watchdog: true          # MCP 服务崩溃、卡死或 pmem 升级后自动重启，Cursor 不用手动重连
   request_timeout: 120    # 单次调用超过这么多秒没响应就判定卡死并重启

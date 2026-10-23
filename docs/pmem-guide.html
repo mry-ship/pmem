@@ -191,7 +191,7 @@ pmem doctor</code></pre>
     <tr><td>定期收口（模块负责人）</td><td>对 AI 说“按 pmem-consolidate 技能整理记忆库”（按 <code>pmem health</code> 逐节处理）</td></tr>
     <tr><td>想看效果</td><td><code>pmem report</code></td></tr>
     <tr><td>想通读全部结论</td><td>打开 <code>.memory/wiki/index.md</code>（写入记忆后自动更新，过期的标“需核实”）</td></tr>
-    <tr><td>看模块现在的完整设计</td><td>打开 <code>.memory/specs/&lt;模块&gt;/</code>，四份分开：策划、美术、程序、现状，记的是当前完整内容。还没有就对 AI 说“补全模块规格”。<code>pmem init</code> 和自动登记只铺空骨架；模块后来有变化时，回合结束提醒 AI 更新那一个模块里变了的段落，不用自己改</td></tr>
+    <tr><td>看模块现在的完整设计</td><td>打开 <code>.memory/specs/&lt;模块&gt;/</code>，四份分开：策划、美术、程序、现状，记的是当前完整内容。还没有就对 AI 说“补全模块规格”。<code>pmem init</code> 和自动登记只铺空骨架；模块后来有变化时，对 AI 说“更新这个模块的规格”。规格提醒默认不提示，想自动跟上再把 <code>spec.reminder</code> 设为 true</td></tr>
     <tr><td>升级 pmem</td><td><code>uv tool upgrade pmem</code></td></tr>
   </table>
 </section>
@@ -501,7 +501,7 @@ git commit -m "接入 pmem"</code></pre>
     <div class="node"><b>4. 结束追问</b>AI 在回复开头写“【pmem检索】模块（要点）”，结尾分行写“【pmem查询】模块，用到「…」”和“【pmem修改】模块 已写功能记录「…」；模块 无需记录（原因）”。只有改了模块却既没写记忆、也没在结尾说明无需记录时，回合结束才追加提醒。不需要你回复。Cursor 会把它显示成一条以“[pmem]”开头的用户消息，由 AI 处理。</div>
   </div>
   <p><b>新目录自动登记</b>（v0.5.1）：AI 改到没登记的代码目录、或会话开始时，Hook 在后台扫描并追加到 <code>modules.yaml</code>，AI 会在回复里告诉你“这次新增了几个模块、几个冷候选”；记得把 <code>.memory/modules.yaml</code> 一起提交。真正写入新模块时，会给还没有规格的模块铺四份空骨架，正文不在这里写。细节见“整理与维护 → 目录同步”。</p>
-  <p><b>模块规格</b>：<code>.memory/specs/&lt;模块&gt;/</code> 里四份文件记这个模块现在的完整策划、完整美术、完整程序、完整现状，和 Wiki 分开，进版本库。划分模块后对 AI 说“补全模块规格”（或先跑 <code>pmem spec fill</code> 看缺谁）。之后某一轮改了这个模块，回合结束提醒 AI 把变了的段落改成现在的说法，已有内容留在原处。没有画面的美术文件写「本模块无画面」。</p>
+  <p><b>模块规格</b>：<code>.memory/specs/&lt;模块&gt;/</code> 里四份文件记这个模块现在的完整策划、完整美术、完整程序、完整现状，和 Wiki 分开，进版本库。划分模块后对 AI 说“补全模块规格”（或先跑 <code>pmem spec fill</code> 看缺谁）。之后某一轮改了这个模块，对 AI 说更新这个模块的规格，它只改变了的段落，已有内容留在原处。规格提醒默认不提示。没有画面的美术文件写「本模块无画面」。</p>
 
   <h3>写记忆的约定</h3>
   <ul>
@@ -595,7 +595,7 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem map [--out 文件] [--days 30] [--json]</code></td><td>记忆演化图：默认写 Wiki 目录下的 <code>map.html</code>（单文件、不联网，可缩放、拖动、按类型筛选、只看现行，点节点看全文），终端打印总评和自检（漏记、断链、悬而未决、过期）；<code>--days</code> 是漏记统计的天数，<code>--json</code> 输出图数据。配置里的 Wiki 目录指到项目外时拒绝并返回 2；<code>--out</code> 可以指到别处</td></tr>
     <tr><td><code>pmem graph --module X</code></td><td>模块全貌，或某议题的时间线</td></tr>
     <tr><td><code>pmem wiki [--out 目录]</code></td><td>生成每模块一页的 Markdown Wiki（默认 <code>.memory/wiki/</code>）：议题、现行结论、历史、相关模块、代码链接，过期的标“需核实”；只覆盖它自己生成的页面，页面文件名只能是合法模块名，不能写出输出目录。配置里的目录指到项目外时拒绝并返回 2；<code>--out</code> 可以指到项目外，但页面仍不能跳出那个目录。写入或确认记忆后会自动运行（<code>wiki.auto</code>）；自动生成时目录在项目外则只警告、记忆仍写入</td></tr>
-    <tr><td><code>pmem spec [init|index|fill] [--check]</code></td><td>模块规格（默认 <code>.memory/specs/&lt;模块&gt;/</code>，四份分开：策划、美术、程序、现状，进版本库，与 Wiki 分开）。给美术只拷 <code>美术设计.md</code>。不加参数只列出完成情况；<code>init</code> 给还没有的那一份写骨架，不覆盖已写正文；<code>fill</code> 同样只铺骨架，并列出首稿还没写完的模块（有未完成时返回 1），完整正文仍由技能按代码写；<code>index</code> 只刷新总目录和各模块 <code>index.md</code> 里的上下级、代码路径，留空列标出策划或美术仍留空、以及缺了那一份，不因此改变完成状态；<code>--check</code> 有模块没完成首稿时返回 1。策划、美术、程序、现状由 <code>pmem-spec</code> 技能写；没有画面的美术节写「本模块无画面」，不因此算未完成。目录指到项目外时返回 2。<code>pmem init</code>、以及 <code>pmem sync --apply</code> 和自动登记真正写入新模块时，都会补上还没有的骨架，不写正文。改了模块却没更新规格时，回合结束提醒一次（<code>spec.reminder</code>）。只改了未登记进模块路径的资源时，这次提醒不会响</td></tr>
+    <tr><td><code>pmem spec [init|index|fill] [--check]</code></td><td>模块规格（默认 <code>.memory/specs/&lt;模块&gt;/</code>，四份分开：策划、美术、程序、现状，进版本库，与 Wiki 分开）。给美术只拷 <code>美术设计.md</code>。不加参数只列出完成情况；<code>init</code> 给还没有的那一份写骨架，不覆盖已写正文；<code>fill</code> 同样只铺骨架，并列出首稿还没写完的模块（有未完成时返回 1），完整正文仍由技能按代码写；<code>index</code> 只刷新总目录和各模块 <code>index.md</code> 里的上下级、代码路径，留空列标出策划或美术仍留空、以及缺了那一份，不因此改变完成状态；<code>--check</code> 有模块没完成首稿时返回 1。策划、美术、程序、现状由 <code>pmem-spec</code> 技能写；没有画面的美术节写「本模块无画面」，不因此算未完成。目录指到项目外时返回 2。<code>pmem init</code>、以及 <code>pmem sync --apply</code> 和自动登记真正写入新模块时，都会补上还没有的骨架，不写正文。规格提醒默认不提示；要在回合结束提醒更新规格，把 <code>spec.reminder</code> 设为 true。只改了未登记进模块路径的资源时，这次提醒不会响</td></tr>
     <tr><td><code>pmem list</code></td><td>模块与记忆数量</td></tr>
     <tr><td><code>pmem terms</code></td><td>记忆里的高频词，用于整理同义词</td></tr>
     <tr><td><code>pmem compact</code></td><td>列出零碎记忆较多的议题；指定议题时输出全部正文供合并；<code>--undo &lt;id&gt;</code> 撤销一次合并（合并产物归档并标为已撤销，原记忆重新现行）</td></tr>
@@ -643,7 +643,7 @@ wiki:
   dir: .memory/wiki         <span class="c"># 必须在项目内。指到项目外时 pmem wiki / pmem map 拒绝；自动生成只警告。首次生成自带 .gitignore</span>
 spec:
   dir: .memory/specs        <span class="c"># 必须在项目内。每个模块一份当前规格，进版本库；指到项目外时 pmem spec 拒绝</span>
-  reminder: true            <span class="c"># 改了模块却没更新规格时，回合结束提醒一次</span>
+  reminder: false           <span class="c"># 默认不提示。改成 true 后，改了模块却没更新规格时，回合结束提醒一次</span>
 write:
   default_status: active    <span class="c"># active 直接生效 / draft 需人工审阅</span>
   content_min: 20

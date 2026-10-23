@@ -62,7 +62,7 @@ class Reminders:
 
     def _pending_specs(self, declared: set[str] = frozenset()) -> list[str]:
         """改了行为却还没写对应规格的模块。和功能记录分开记已提醒，避免互相抵消。"""
-        if not self._reminders_on("spec.reminder", True):
+        if not self._reminders_on("spec.reminder", False):
             return []
         written = set(self.state.data.get("spec_written") or [])
         return [m for m in self._record_required()
@@ -164,7 +164,7 @@ class Reminders:
                 "请按 pmem-spec 更新 .memory/specs/<模块>/ 里对应的那一份："
                 "程序和现状只改正波及的段落，本轮新定的策划和美术写入并保留。"
                 "无画面的模块美术节写「本模块无画面」。"
-                "旧稿没有美术设计这一节时，插在策划和程序之间。"
+                "目录里还没有美术设计.md 时补上这一份。"
                 "不要整篇重写，也不要改其他模块。不要询问用户。"
             )
         if notice:

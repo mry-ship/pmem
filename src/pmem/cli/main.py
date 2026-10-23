@@ -173,8 +173,9 @@ def build_parser():
     p.add_argument("--root", default=".")
 
     p = sub.add_parser("spec", help="模块规格：骨架、目录和完成情况（正文由 pmem-spec 技能写）")
-    p.add_argument("action", nargs="?", choices=("init", "index", "fill"), default=None,
-                   help="init 补骨架；index 刷新目录和文首事实；fill 补骨架并列出还没写全的模块")
+    p.add_argument("action", nargs="?", choices=("init", "index", "fill", "complete"), default=None,
+                   help="init 补骨架；index 刷新目录和文首事实；complete 是补全模块规格的入口"
+                        "（铺骨架、列出缺谁，正文由 Agent 写到九成八）；fill 是 complete 的旧名")
     p.add_argument("--check", action="store_true", help="有模块还没完成首稿时返回 1")
     p.add_argument("--root", default=".")
 

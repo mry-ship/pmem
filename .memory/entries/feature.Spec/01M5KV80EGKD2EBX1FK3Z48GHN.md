@@ -19,6 +19,8 @@ aliases:
 - pmem spec
 - pmem-spec
 - 模块规格
+verified: '2026-10-23'
+verified_at: '2026-10-23T20:55:06.281+08:00'
 source:
   conversation: 0d888a97-1b45-4e7c-8ac3-150747ba7b2e
 ---

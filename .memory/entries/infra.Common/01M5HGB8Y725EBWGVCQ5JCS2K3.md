@@ -13,6 +13,8 @@ note_date: '2026-10-22'
 summary: README 按“问题→工作原理→接入→日常→维护→效果→限制→文档→路线”组织，效果五张表保持分开
 verify: 打开 README：顶部有版本徽章和锚点导航，效果一节五张表分开，已知限制里有 Wiki 与嵌入两条
 applies: 改 README 结构或发新版本时
+verified: '2026-10-23'
+verified_at: '2026-10-23T21:03:55.369+08:00'
 source:
   conversation: 9622f1ee-c79a-429b-b50b-25228d393eb8
 ---

@@ -73,7 +73,7 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 ```
 
 3. **打开开关**：Cursor 设置 → MCP → 启用 `pmem`（Claude Code、Codex 首次打开项目时批准即可）。之后服务崩溃、卡死或 pmem 升级时由看门狗自动重启，不用手动重连。
-4. **划分模块**：对 AI 说“按 pmem-bootstrap 技能划分模块”，确认它给出的表格。然后说“补全模块规格”，按当前代码写成每个模块的策划、美术、程序和现状。`pmem init` 首次生成配置时会问要不要开启规格提醒，直接回车保持关闭；脚本接入不询问，也默认不提示。之后要更新规格，对 AI 说“更新这个模块的规格”。
+4. **划分模块**：对 AI 说“按 pmem-bootstrap 技能划分模块”，确认它给出的表格。然后说“补全模块规格”（入口 `pmem spec complete`），按当前代码写成每个模块可拿走复用的策划、美术、程序和现状，已实现对外契约写到九成八。`pmem init` 首次生成配置时会问要不要开启规格提醒，直接回车保持关闭；脚本接入不询问，也默认不提示。之后要更新规格，对 AI 说“更新这个模块的规格”。
 5. **提交**：运行 `pmem doctor` 自检，然后把 `.memory/` 和 `.cursor/` 提交到版本库。
 6. **（建议）种子记忆**：对 AI 说“按 pmem-seed 技能提炼种子记忆”，从提交说明和文档里为常改的模块先补一批结论，确认后转正，记忆库就不是从空开始。
 
@@ -91,7 +91,7 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 | 按 pmem-compact 技能合并记忆 | 同一议题的零碎记忆合并成一两条现状 |
 | 按 pmem-normalize 技能整理同义词 | 换个说法也能搜到（如“闪退 / 崩溃”） |
 | 按 pmem-consolidate 技能整理记忆库 | 模块负责人定期收口，见下方“定期体检” |
-| 补全模块规格 | 把还没写完的模块写成当前的策划、美术、程序、现状。`pmem spec fill` 先列出缺谁 |
+| 补全模块规格 | 把还没写完的模块写成当前的策划、美术、程序、现状。入口是 `pmem spec complete`（`fill` 是旧名）：先列出缺谁，正文由 Agent 写到九成八 |
 
 ## 维护
 
@@ -117,7 +117,7 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 | 合并错了要撤销 | `pmem compact --undo <合并后的 id>`：被替代的原记忆重新现行 |
 | 看记忆怎么演变 | `pmem map` 生成本地网页 `.memory/wiki/map.html`：按模块分区、议题排时间线，顶部自检列出漏记、断链、悬而未决、过期 |
 | 通读全部结论 | 打开 `.memory/wiki/index.md`，每个模块一页，写入记忆后自动更新 |
-| 看模块现在是什么样 | 打开 `.memory/specs/<模块>/`。四份是当前的完整策划、完整程序、完整美术、完整现状，给美术只拷 `美术设计.md`。还没有就说“补全模块规格”。`pmem init` 和自动登记只铺空骨架。模块后来有变化时，说“更新这个模块的规格”。规格提醒默认不提示，想自动跟上再把 `spec.reminder` 设为 true |
+| 看模块现在是什么样 | 打开 `.memory/specs/<模块>/`。四份是当前的完整策划、完整程序、完整美术、完整现状，给美术只拷 `美术设计.md`。还没有就说“补全模块规格”（`pmem spec complete`，写到九成八）。`pmem init` 和自动登记只铺空骨架。模块后来有变化时，说“更新这个模块的规格”。规格提醒默认不提示，想自动跟上再把 `spec.reminder` 设为 true |
 
 ### 定期体检
 
@@ -171,7 +171,7 @@ pmem migrate tidy                      # 把还在旧模块名下的记忆搬到
 pmem sync                              # 对照代码目录列出新模块、要追加的路径（加 --apply 执行）
 pmem sync --history                    # 最近 20 次自动登记各新增了几个模块（自动登记由 Hook 在后台完成）
 pmem wiki                              # 生成浏览用的模块 Wiki
-pmem spec                              # 模块规格的完成情况；init 写骨架，fill 列出没写完的，index 刷新目录
+pmem spec                              # 模块规格的完成情况；init 写骨架，complete 列出没写完的（补全入口），index 刷新目录
 pmem format --apply                    # 把旧记忆里一整行的长正文断行（新写入的会自动整理）
 ```
 
@@ -318,7 +318,7 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 | [v0.4](https://github.com/mry-ship/pmem/issues/14) | 治理闭环与团队化 | 已关闭：转正提示和召回审计已实现，团队汇总与中心服务长期搁置 |
 | v0.5（[设计稿](docs/superpowers/specs/2026-10-21-pmem-module-hierarchy-design.md)） | 父子模块与回复格式 | 已完成 |
 | v0.5.1 | 新模块自动登记 | 已完成 |
-| [v0.6](https://github.com/mry-ship/pmem/issues/16)（[设计稿](docs/superpowers/specs/2026-10-23-pmem-module-spec-design.md)） | 模块规格：每个模块一份可独立重做的当前文档。规格提醒默认不提示 | 已完成（当前版本 0.6.0） |
+| [v0.6](https://github.com/mry-ship/pmem/issues/16)（[设计稿](docs/superpowers/specs/2026-10-23-pmem-module-spec-design.md)） | 模块规格：每个模块一份可拿走重做的当前文档；`pmem spec complete` 写到九成八。规格提醒默认不提示 | 已完成（当前版本 0.6.0） |
 | [v0.7](https://github.com/mry-ship/pmem/issues/15)（[设计稿](docs/superpowers/specs/2026-10-21-pmem-typesafe-design.md)） | 类型安全与规则化 | 计划中，由 v0.6 顺延 |
 
 ## 许可证

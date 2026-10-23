@@ -46,7 +46,7 @@ def run_spec(root: Path, action: str | None, check: bool) -> int:
         code, message = ensure_spec_skeletons(root)
         print(message, file=sys.stderr if code else sys.stdout)
         return code
-    if action == "fill":
+    if action in ("fill", "complete"):
         code, message = ensure_spec_skeletons(root)
         if code:
             print(message, file=sys.stderr)
@@ -56,13 +56,16 @@ def run_spec(root: Path, action: str | None, check: bool) -> int:
             return 0
         index_specs(registry, target)
         missing = incomplete(registry, target)
+        print("补全模块规格：本命令铺骨架并列出缺谁，正文由 Agent 按 pmem-spec 写到至少九成八。")
         print(message)
         if not missing:
-            print("规格首稿都已写完。")
+            print("规格首稿都已写完。单独拿走做出相似或一样的实现，仍要按 pmem-spec 合上代码反推，"
+                  "直到已实现的对外契约能从规格还原到至少九成八。")
             return 0
         print("这些模块的四份正文还没写全：" + "、".join(missing))
-        print("本命令只铺骨架、不写正文。按 pmem-spec 把上面每个模块按代码写全："
-              "程序和现状写到能重做；策划和美术只写看得到的，看不到的写「尚未写入」并留空。一句一行。")
+        print("本命令只铺骨架、不写正文。按 pmem-spec 对上面每个模块：先按代码写满骨架栏目"
+              "（含入参和出参字段闭集、失败条件、配置与环境变量、生成物、须按字面抄的原文、依赖规格），"
+              "再合上代码反推，推不出的补进规格，直到能单独拿走、已实现的对外契约能从规格还原到至少九成八。")
         return 1
     if action == "index":
         result = index_specs(registry, target)

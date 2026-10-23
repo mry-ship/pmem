@@ -18,6 +18,8 @@ aliases:
 - 冷热分层
 - 功能记录
 - 分组
+verified: '2026-10-23'
+verified_at: '2026-10-23T19:03:58.051+08:00'
 ---
 用户要求（2026-10-19）：检索时教训不能被每次都写的功能记录挤掉；功能记录要能看到但只占少量上下文。
 必须保持：MemoryIndex.search 带 feature_limit 时分层，items 只放教训（limit 条、全文），功能记录和规划另排进 features（只有标题，title_row）；

@@ -47,6 +47,11 @@ def test_init_writes_a_directory_of_four_files(root):
     assert "<!-- spec:empty -->" not in art
     assert program.count("<!-- spec:empty -->") == 1
     assert status.count("<!-- spec:empty -->") == 1
+    assert "入口：" in program and "入参字段闭集" in program and "出参字段闭集" in program
+    assert "生成物：" in program and "闭集词表" in program
+    assert "失败条件：" in program and "配置与环境变量：" in program
+    assert "所有权：" in program and "原文（须按字面抄）" in program
+    assert "一轮例子：" in status and "依赖规格" in status
     assert "上级：gameplay.Jigsaw" in (_folder(root, "gameplay.Jigsaw.Board") / "index.md").read_text(encoding="utf-8")
     assert not (root / ".memory" / "specs" / ".gitignore").exists()
 
@@ -180,6 +185,25 @@ def test_init_keeps_custom_spec_dir_and_writes_skill(root):
     assert '新模块' in skill
     assert '补全模块规格' in skill
     assert 'pmem spec fill' in skill
+    assert 'pmem spec complete' in skill
+    assert '反推' in skill
+    assert '闭集词表' in skill
+    assert '所有权' in skill
+    assert '合上代码' in skill
+    assert '单独拿走' in skill
+    assert '一样' in skill and '相似' in skill
+    assert '依赖规格' in skill
+    assert '反推循环' in skill
+    assert '入参字段闭集' in skill
+    assert '出参字段闭集' in skill
+    assert '生成物' in skill
+    assert '按字面抄' in skill
+    assert '停手' in skill
+    assert '九成' in skill
+    assert '九成八' in skill
+    assert '失败条件' in skill
+    assert '配置与环境变量' in skill
+    assert '含某某' in skill
 
 
 def test_project_init_lays_spec_skeletons(root, capsys):
@@ -196,6 +220,8 @@ def test_fill_lists_incomplete_modules_without_writing_prose(root, capsys):
     assert "gameplay.Jigsaw" in out and "gameplay.Jigsaw.Board" in out
     assert "legacy.Old" not in out
     assert "不写正文" in out
+    assert "合上代码反推" in out
+    assert "单独拿走" in out
     program = _folder(root, "gameplay.Jigsaw") / "程序设计.md"
     assert "<!-- spec:empty -->" in program.read_text(encoding="utf-8")
     for module_id in ("gameplay.Jigsaw", "gameplay.Jigsaw.Board"):
@@ -203,8 +229,24 @@ def test_fill_lists_incomplete_modules_without_writing_prose(root, capsys):
             path = _folder(root, module_id) / name
             path.write_text(path.read_text(encoding="utf-8").replace("<!-- spec:empty -->\n", ""), encoding="utf-8")
     assert main(["spec", "fill", "--root", str(root)]) == 0
-    assert "都已写完" in capsys.readouterr().out
+    done = capsys.readouterr().out
+    assert "都已写完" in done
+    assert "合上代码反推" in done
+    assert "九成八" in done
     assert "<!-- spec:empty -->" not in program.read_text(encoding="utf-8")
+
+
+def test_complete_is_the_fill_entry_and_names_the_goal(root, capsys):
+    assert main(["spec", "complete", "--root", str(root)]) == 1
+    out = capsys.readouterr().out
+    assert "补全模块规格" in out
+    assert "九成" in out
+    assert "九成八" in out
+    assert "失败条件" in out
+    assert "配置与环境变量" in out
+    assert "gameplay.Jigsaw" in out
+    assert "不写正文" in out
+    assert "<!-- spec:empty -->" in (_folder(root, "gameplay.Jigsaw") / "程序设计.md").read_text(encoding="utf-8")
 
 
 def test_fill_with_no_modules_does_not_claim_they_are_done(tmp_path, monkeypatch, capsys):

@@ -592,7 +592,7 @@ score   = (rel + bonus) * (0.7 + 0.3 * recency)
 | `pmem reindex` | 删除并重建本地索引 |
 | `pmem import --lancedb <路径>` | 从参考实现的 LanceDB 库导入 |
 | `pmem init` | 升级 pmem 后重新运行，更新规则、技能和 Hooks（已有的 config.yaml、modules.yaml 不覆盖）。首次生成配置时在终端询问是否开启规格提醒，直接回车保持关闭；没有终端时不询问 |
-| `pmem spec` | 模块规格目录 `.memory/specs/`：不加参数列出完成情况，`init` 为缺文件的模块写骨架（不覆盖已写正文），`fill` 补骨架并列出首稿未完成的模块（有未完成时返回 1，正文仍由技能写），`index` 刷新目录和文首事实，留空列标出策划或美术仍留空以及旧稿缺节，`--check` 有未完成首稿时返回 1。策划、美术、程序、现状由 `pmem-spec` 技能写；无画面的美术节写「本模块无画面」，不计入未完成。`pmem init`、`sync --apply` 和自动登记写入新模块时也补骨架。规格提醒默认不提示（`spec.reminder` 缺省 false）。`spec.dir` 指到项目外时返回 2 |
+| `pmem spec` | 模块规格目录 `.memory/specs/`：不加参数列出完成情况，`init` 为缺文件的模块写骨架（不覆盖已写正文），`complete` 是补全入口（铺骨架并列出首稿未完成的模块，有未完成时返回 1，正文仍由技能写到九成八；`fill` 是旧名），`index` 刷新目录和文首事实，留空列标出策划或美术仍留空以及旧稿缺节，`--check` 有未完成首稿时返回 1。策划、美术、程序、现状由 `pmem-spec` 技能写；无画面的美术节写「本模块无画面」，不计入未完成。`pmem init`、`sync --apply` 和自动登记写入新模块时也补骨架。规格提醒默认不提示（`spec.reminder` 缺省 false）。`spec.dir` 指到项目外时返回 2 |
 
 ### 11.1 本地统计
 

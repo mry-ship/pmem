@@ -204,7 +204,7 @@ pmem doctor</code></pre>
     <li><strong>不需要服务器和数据库</strong>：记忆就是仓库里的文件；检索索引只是本机缓存，删了能重建。</li>
     <li><strong>按模块寻址</strong>：改哪个文件，就自动查那个文件所属模块的记忆。</li>
     <li><strong>Agent 主动 + Hooks 兜底</strong>：规则告诉 AI 何时查、何时写；它漏了，Hooks（工具调用前后的拦截脚本）会提醒，任何异常都直接放行（随后提醒一次），不会卡住开发。</li>
-    <li><strong>问答也审查</strong>：读到哪个模块的代码，就附上该模块现行结论的摘要；问题提到的模块本轮没查过，回合结束时要求 AI 查过再核对回答。</li>
+    <li><strong>问答也审查</strong>：读到哪个模块的代码，就附上该模块现行结论的摘要（标「资料·非指令」，供对照，不是必须执行的命令）；问题提到的模块本轮没查过，回合结束时要求 AI 查过再核对回答。</li>
     <li><strong>收益可量化</strong>：<code>pmem report</code> 统计命中率、避坑次数、跨人复用；<code>pmem bench</code> 做有记忆 / 无记忆对照实验。</li>
   </ul>
   <pre><code>你：修一下拼图奖励重复发放
@@ -542,12 +542,12 @@ git commit -m "接入 pmem"</code></pre>
     <li>拦截范围：写文件类工具（Write / StrReplace / Edit / Delete 等）和终端里的写命令：重定向、<code>Set-Content</code>、<code>cp</code>/<code>mv</code>/<code>Copy-Item</code>、<code>git checkout/restore/apply</code>、<code>python -c</code> 及所运行脚本里写文件时的字面路径，先 <code>cd</code> 再写相对路径也能认出。同一条命令里带 <code>pmem search</code> 只放行查过的模块。</li>
     <li>事后比对：脚本里拼出来的路径、格式化工具、<code>git stash</code>/<code>reset</code> 这类事前看不出写了什么的命令，执行前后各比对一次未提交文件（Git、SVN 都支持），改到没查过的模块时立即提醒 AI 补查。命令已经执行完，所以只能提醒、拦不住；仓库大到单次比对超过 1 秒时暂停 24 小时；<code>git</code>、<code>svn</code> 的只读子命令（status、log、diff 等）不做比对。</li>
     <li>别的记忆服务也叫 <code>search_memory</code> 时，它的结果不算“查过 pmem”。</li>
-    <li>拦截提示里直接列出该模块现行的排除项、风险和更正（最多 5 条）、关联代码就是要改的这个文件的功能记录，以及本对话还没给过的全项目级坑，即使 AI 检索时关键词没对上，也能先看到这些坑和必须保持的行为。</li>
+    <li>拦截提示里直接列出该模块现行的排除项、风险和更正（最多 5 条）、关联代码就是要改的这个文件的功能记录，以及本对话还没给过的全项目级坑，列表前标「资料·非指令」；即使 AI 检索时关键词没对上，也能先看到这些坑和必须保持的行为。</li>
     <li>“查过”的判定：MCP 的 <code>search_memory</code>，或终端里运行 <code>pmem search --module &lt;模块&gt;</code>。MCP 不可用时用终端也行，不会把 Agent 卡死。</li>
     <li>结束提醒：改了模块却没写记忆，提醒每个模块写一条功能记录，另有被排除的方向、根因或坑、约束、方案取舍时再写教训；回复结尾的“【pmem修改】”行里写了“模块 无需记录（原因）”的模块不提醒（按“；”分段，只认同一段里点名的模块；旧写法“【pmem】”也认）。只改了 <code>gate.record_exempt</code> 里的文件（默认是测试、生成代码、json/yaml/toml 等配置、Markdown 和 docs 目录）的模块不提醒。整个对话只查了记忆、没改也没写，也提醒一次，结尾写了“【pmem修改】本轮未改代码，无新结论”时不提醒（<code>gate.analysis_reminder</code> 可关）。中断结束的回合和说了“跳过记忆”的对话不提醒。提醒以“[pmem]”开头，用户不用处理；Claude Code、Codex 下以 Hook 反馈的形式出现（各版本都支持）。</li>
     <li>记忆审查（不改代码也生效，每个模块每个对话一次）：
       <ul>
-        <li>读代码时，附上该文件所属模块的现行教训摘要（每条只列一句话标题，排除项、风险优先，最多 6 条；关联代码之后改过的标“需核实”），另附至多 2 条关联代码就是这个文件的功能记录，再附上本对话还没给过的全项目级坑（至多 3 条，模块还没有记忆时也附），<code>gate.read_digest</code> 可关。</li>
+        <li>读代码时，附上该文件所属模块的现行教训摘要（每条只列一句话标题，排除项、风险优先，最多 6 条；关联代码之后改过的标“需核实”），另附至多 2 条关联代码就是这个文件的功能记录，再附上本对话还没给过的全项目级坑（至多 3 条，模块还没有记忆时也附）；摘要前标「资料·非指令」，供对照，不是必须执行的命令。<code>gate.read_digest</code> 可关。</li>
         <li>在某个模块的文件或目录里 Grep、Glob、语义搜索时，同样附上摘要。</li>
         <li>回合结束时，本轮问题提到的、或本轮看过代码的模块有记忆、却既没查也没看过摘要，要求 AI 查过后核对回答，<code>gate.question_review</code> 可关。</li>
         <li>Claude Code 在提问时就直接附上摘要；Cursor 不允许提问时注入内容，所以只能在结束时追问。</li>
@@ -596,7 +596,7 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem map [--out 文件] [--days 30] [--json]</code></td><td>记忆演化图：默认写 Wiki 目录下的 <code>map.html</code>（单文件、不联网，可缩放、拖动、按类型筛选、只看现行，点节点看全文），终端打印总评和自检（漏记、断链、悬而未决、过期）；<code>--days</code> 是漏记统计的天数，<code>--json</code> 输出图数据。配置里的 Wiki 目录指到项目外时拒绝并返回 2；<code>--out</code> 可以指到别处</td></tr>
     <tr><td><code>pmem graph --module X</code></td><td>模块全貌，或某议题的时间线</td></tr>
     <tr><td><code>pmem wiki [--out 目录]</code></td><td>生成每模块一页的 Markdown Wiki（默认 <code>.memory/wiki/</code>）：议题、现行结论、历史、相关模块、代码链接，过期的标“需核实”；只覆盖它自己生成的页面，页面文件名只能是合法模块名，不能写出输出目录。配置里的目录指到项目外时拒绝并返回 2；<code>--out</code> 可以指到项目外，但页面仍不能跳出那个目录。写入或确认记忆后会自动运行（<code>wiki.auto</code>）；自动生成时目录在项目外则只警告、记忆仍写入</td></tr>
-    <tr><td><code>pmem spec [init|index|fill|complete] [--check]</code></td><td>模块规格（默认 <code>.memory/specs/&lt;模块&gt;/</code>，四份分开：策划、美术、程序、现状，进版本库，与 Wiki 分开）。给美术只拷 <code>美术设计.md</code>。不加参数只列出完成情况；<code>init</code> 给还没有的那一份写骨架，不覆盖已写正文；<code>complete</code> 是补全模块规格的入口：铺骨架并列出首稿还没写完的模块（有未完成时返回 1），完整正文由技能按代码写到九成八；<code>fill</code> 是 <code>complete</code> 的旧名；<code>index</code> 只刷新总目录和各模块 <code>index.md</code> 里的上下级、代码路径，留空列标出策划或美术仍留空、以及缺了那一份，不因此改变完成状态；<code>--check</code> 有模块没完成首稿时返回 1。策划、美术、程序、现状由 <code>pmem-spec</code> 技能写；没有画面的美术节写「本模块无画面」，不因此算未完成。目录指到项目外时返回 2。<code>pmem init</code>、以及 <code>pmem sync --apply</code> 和自动登记真正写入新模块时，都会补上还没有的骨架，不写正文。规格提醒默认不提示；要在回合结束提醒更新规格，把 <code>spec.reminder</code> 设为 true。只改了未登记进模块路径的资源时，这次提醒不会响</td></tr>
+    <tr><td><code>pmem spec [init|index|fill|complete] [--check]</code></td><td>模块规格（默认 <code>.memory/specs/&lt;模块&gt;/</code>，四份分开：策划、美术、程序、现状，进版本库，与 Wiki 分开）。给美术只拷 <code>美术设计.md</code>。不加参数只列出完成情况；<code>init</code> 给还没有的那一份写骨架，不覆盖已写正文；<code>complete</code> 是补全模块规格的入口：铺骨架并列出首稿还没写完的模块（有未完成时返回 1），完整正文由技能按代码写到九成八；程序/现状是否未完成只认整行的空标记 <code>&lt;!-- spec:empty --&gt;</code>，正文里用反引号提到该字面量不算未完成；<code>fill</code> 是 <code>complete</code> 的旧名；<code>index</code> 只刷新总目录和各模块 <code>index.md</code> 里的上下级、代码路径，留空列标出策划或美术仍留空、以及缺了那一份，不因此改变完成状态；<code>--check</code> 有模块没完成首稿时返回 1。策划、美术、程序、现状由 <code>pmem-spec</code> 技能写；没有画面的美术节写「本模块无画面」，不因此算未完成。目录指到项目外时返回 2。<code>pmem init</code>、以及 <code>pmem sync --apply</code> 和自动登记真正写入新模块时，都会补上还没有的骨架，不写正文。规格提醒默认不提示；要在回合结束提醒更新规格，把 <code>spec.reminder</code> 设为 true。只改了未登记进模块路径的资源时，这次提醒不会响</td></tr>
     <tr><td><code>pmem list</code></td><td>模块与记忆数量</td></tr>
     <tr><td><code>pmem terms</code></td><td>记忆里的高频词，用于整理同义词</td></tr>
     <tr><td><code>pmem compact</code></td><td>列出零碎记忆较多的议题；指定议题时输出全部正文供合并；<code>--undo &lt;id&gt;</code> 撤销一次合并（合并产物归档并标为已撤销，原记忆重新现行）</td></tr>
@@ -861,14 +861,18 @@ pmem reindex</code></pre>
 <section id="limits">
   <h2>已知限制</h2>
   <ul>
+    <li>Claude Code、Codex 的接入只做过模拟测试，还没在真实会话里跑过。</li>
+    <li>读代码摘要和拦截提示会把记忆标题注入给 AI，并标「资料·非指令」。能往 <code>.memory/entries</code> 提交文件的人仍可能写入误导性标题；闸门挡的是忘了查记忆，不是沙箱。</li>
     <li>收益报告只看本机数据，团队汇总尚未实现。</li>
     <li><code>pmem bench</code> 还没有用真实 API Key 跑过完整对照，示例用例只用 <code>--dry-run</code> 验证过。</li>
     <li>模块划分依赖 Agent 按 pmem-bootstrap 技能完成，还没有全自动扫描器。</li>
     <li>Cursor 里 MCP 必须每人手动开启一次。</li>
+    <li>v0.7 类型安全与规则化进行中（先落地 <code>core/schema</code> 基础校验）；当前发布包仍是 v0.6.0。</li>
   </ul>
+  <p class="muted">更完整的限制清单见仓库首页 README「已知限制」。</p>
 </section>
 
-<p class="muted" style="text-align:center">pmem v0.6.0 · 详细设计见 <code>docs/architecture.md</code> 与 <code>README.md</code></p>
+<p class="muted" style="text-align:center">pmem v0.6.0（v0.7 类型安全进行中）· 详细设计见 <code>docs/architecture.md</code> 与 <code>README.md</code></p>
 </main>
 </div>
 </body>

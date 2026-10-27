@@ -6,7 +6,7 @@ kind: decision
 status: active
 supersedes: []
 anchors:
-- src/pmem/generate/spec.py#_skeleton
+- src/pmem/generate/spec.py#_bodies
 revision: git:299dbfb
 author: 1002378395@qq.com
 note_date: '2026-10-23'
@@ -16,7 +16,7 @@ aliases:
 - 美术设计
 - 无画面
 verified: '2026-10-27'
-verified_at: '2026-10-27T14:44:45.340+08:00'
+verified_at: '2026-10-27T14:52:32.795+08:00'
 source:
   conversation: 0d888a97-1b45-4e7c-8ac3-150747ba7b2e
 ---

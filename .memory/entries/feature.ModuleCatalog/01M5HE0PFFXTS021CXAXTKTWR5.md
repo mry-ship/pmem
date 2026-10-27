@@ -11,6 +11,8 @@ revision: git:8d3a154
 author: 1002378395@qq.com
 note_date: '2026-10-22'
 summary: 自动扫描平时不读提交历史：SVN 大项目读历史 37～120 秒，找新目录本身只要约 3 秒
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:23.529+08:00'
 source:
   conversation: 9622f1ee-c79a-429b-b50b-25228d393eb8
 ---

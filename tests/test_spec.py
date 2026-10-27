@@ -124,6 +124,19 @@ def test_check_fails_until_empty_markers_are_gone(root, capsys):
     assert main(["spec", "--root", str(root)]) == 0
 
 
+def test_mentioning_empty_marker_in_prose_is_not_incomplete(root, capsys):
+    """规格正文用反引号提到空标记字面量时，不能误判为首稿未完成（feature.Spec 自述会踩）。"""
+    assert main(["spec", "init", "--root", str(root)]) == 0
+    for module_id in ("gameplay.Jigsaw", "gameplay.Jigsaw.Board"):
+        for name in ("程序设计.md", "模块现状.md"):
+            path = _folder(root, module_id) / name
+            body = path.read_text(encoding="utf-8").replace("<!-- spec:empty -->\n", "", 1)
+            path.write_text(body + "\n空标记原文是 `<!-- spec:empty -->`。\n", encoding="utf-8")
+    assert main(["spec", "--check", "--root", str(root)]) == 0
+    assert main(["spec", "--root", str(root)]) == 0
+    assert "gameplay.Jigsaw  已有规格" in capsys.readouterr().out
+
+
 def test_index_lists_gaps_without_changing_completion(root):
     assert main(["spec", "init", "--root", str(root)]) == 0
     assert main(["spec", "index", "--root", str(root)]) == 0

@@ -17,6 +17,8 @@ aliases:
 - 模块热度
 - 重复常量
 - WILDCARD
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:14.279+08:00'
 source:
   conversation: 7e7aeed7-103b-4d87-bb8d-18765c815bd5
 ---

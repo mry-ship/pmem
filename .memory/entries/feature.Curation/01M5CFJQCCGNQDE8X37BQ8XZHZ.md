@@ -20,6 +20,8 @@ aliases:
 - 合并记忆
 - compact
 - 零碎记忆
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:19.568+08:00'
 ---
 决定：零碎记忆的合并由 Agent 按 pmem-compact 技能完成。
 pmem 负责：找出可合并的议题（同模块、同实体不分大小写，有效记忆不少于 5 条）、按 (note_date, id) 输出全部正文、通过 supersedes 隐藏旧记忆，以及（更正：新增）pmem compact --undo 撤销合并。

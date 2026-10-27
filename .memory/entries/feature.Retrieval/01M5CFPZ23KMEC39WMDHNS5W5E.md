@@ -19,6 +19,8 @@ aliases:
 - 相关模块
 - 共享代码
 - 缓存上限
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:21.736+08:00'
 source:
   conversation: ca2edda2-f749-419e-aa6d-74617201a8d5
 ---

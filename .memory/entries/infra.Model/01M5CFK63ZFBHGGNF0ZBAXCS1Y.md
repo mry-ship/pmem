@@ -19,6 +19,8 @@ aliases:
 - verified
 - 确认记忆
 - confirm
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:19.568+08:00'
 ---
 更正：旧记忆说“过期核对照旧只用日期，verified_at 只给 health 判断”“锚点核对把 checked_date 当日期传给 git/svn”，都已不对。
 现在锚点核对按精确时刻判断：核对时刻取 verified_at（没有时取 verified 当天结束），与写入时刻取较晚者；

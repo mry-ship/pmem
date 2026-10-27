@@ -10,6 +10,8 @@ anchors:
 revision: git:e258c6e
 author: 1002378395@qq.com
 note_date: '2026-10-14'
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:12.602+08:00'
 ---
 决定：默认只用关键词检索（中文相邻二字 + 英文整词/驼峰拆分的 BM25）；装了 pmem[embed] 时 backend=auto 自动叠加 BAAI/bge-small-zh-v1.5（ONNX，90 MB）。
 

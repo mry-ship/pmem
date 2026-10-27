@@ -17,6 +17,8 @@ verify: uv run pytest tests/hooks/test_gate.py -k "code_is_gone or session_lock"
 aliases:
 - 读码摘要
 - 需核实
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:45.340+08:00'
 source:
   conversation: 9ef91500-0ba8-471d-b103-5d232ce0615e
 ---

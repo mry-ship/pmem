@@ -17,6 +17,8 @@ aliases:
 - 半截文件
 - 文件写坏
 - atomic
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:16.631+08:00'
 source:
   conversation: b48c143a-9675-4a7b-97ea-8ee28f06840e
 ---

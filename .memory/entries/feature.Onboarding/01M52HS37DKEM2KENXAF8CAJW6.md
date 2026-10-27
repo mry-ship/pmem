@@ -18,8 +18,8 @@ aliases:
 - 覆盖率
 - vendor
 - 构建产物
-verified: '2026-10-20'
-verified_at: '2026-10-20T18:57:28.399+08:00'
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:14.279+08:00'
 source:
   conversation: 7e7aeed7-103b-4d87-bb8d-18765c815bd5
 ---

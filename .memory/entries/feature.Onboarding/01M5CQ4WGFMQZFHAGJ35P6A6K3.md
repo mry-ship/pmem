@@ -17,6 +17,8 @@ aliases:
 - 规则精简
 - 上下文占用
 - token 开销
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:21.736+08:00'
 source:
   conversation: 9ef91500-0ba8-471d-b103-5d232ce0615e
 ---

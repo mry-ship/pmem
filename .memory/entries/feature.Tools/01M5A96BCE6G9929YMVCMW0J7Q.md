@@ -15,8 +15,8 @@ aliases:
 - 重启
 - 配置不生效
 - config.yaml
-verified: '2026-10-20'
-verified_at: '2026-10-20T18:57:28.399+08:00'
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:16.631+08:00'
 source:
   conversation: b48c143a-9675-4a7b-97ea-8ee28f06840e
 ---

@@ -20,6 +20,8 @@ aliases:
 - 自动登记
 - 自动同步
 - 新模块
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:23.529+08:00'
 source:
   conversation: 9622f1ee-c79a-429b-b50b-25228d393eb8
 ---

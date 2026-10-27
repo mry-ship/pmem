@@ -17,8 +17,8 @@ aliases:
 - matcher
 - 旧版Hooks
 - beforeMCPExecution
-verified: '2026-10-20'
-verified_at: '2026-10-20T18:57:28.399+08:00'
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:12.602+08:00'
 ---
 决定：pmem init 生成的 Cursor Hooks 中，postToolUse 的 matcher 为 "Read|Grep|Glob|SemanticSearch|codebase_search|Shell"：读代码、搜索代码时附记忆摘要，终端命令执行后核对它实际改了哪些文件。
 Claude Code 的 PostToolUse 加上 Grep、Glob、Bash，Codex 的 PostToolUse 加上 Bash。

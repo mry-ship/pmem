@@ -20,6 +20,8 @@ aliases:
 - error code
 - 恢复后状态不对
 - restore
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:19.568+08:00'
 ---
 决定：
 1) change_status 返回实际变更后的状态：restore 回到各自归档前的状态（退回的种子回到 seed）；一批里不一致时 status 为 mixed，逐条见 statuses。

@@ -1,8 +1,10 @@
 # pmem v0.7 类型安全与规则化设计
 
-日期：2026-10-21　状态：计划，待确认（进度见 [Issue #15](https://github.com/mry-ship/pmem/issues/15)）
+日期：2026-10-21　状态：进行中（2026-10-27 开工；进度见 [Issue #15](https://github.com/mry-ship/pmem/issues/15)）
 
 2026-10-23 起版本号为 v0.7。v0.6 改为模块规格，见 `2026-10-23-pmem-module-spec-design.md`。下文范围不变。
+
+开工记录：已落下 `src/pmem/core/schema.py` 基础校验（SchemaError 与 expect_*）；下一刀按 §5 阶段 1 做健康报告「可以写成规则的教训」与 `enforced_by`。
 
 ## 1. 背景与目标
 

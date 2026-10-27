@@ -15,6 +15,8 @@ aliases:
 - 错误码
 - 草稿覆盖被拒
 - error code
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:16.631+08:00'
 source:
   conversation: 6b540a20-0fb2-45fe-9ffb-9ce5b287b508
 ---

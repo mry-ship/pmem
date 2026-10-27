@@ -22,6 +22,8 @@ aliases:
 - 目录同步
 - 新目录
 - 模块同步
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:19.568+08:00'
 ---
 决定：pmem migrate split 和 pmem sync 都默认只预览，--apply 才写 modules.yaml（split 还会搬记忆文件）。
 split A --to B=路径[,路径]（可多次；--by entity 按议题拆；--assign id=模块 指定去向）：B 可以是新模块或已有模块，不能拆给 A 自己，同一路径或议题不能分给两个模块；

@@ -35,6 +35,8 @@ def dog(tmp_path, monkeypatch):
     monkeypatch.setattr(wd, "RELOAD_CHECK_SECONDS", 0)
     script = tmp_path / "child.py"
     script.write_text(FAKE_CHILD, encoding="utf-8")
+    # 写完立刻再读一次：Windows 上偶发 WinError 6 / 子进程秒退，疑似文件尚未可执行就被 Popen
+    assert script.read_text(encoding="utf-8").startswith("import json")
     cin_r, cin_w = os.pipe()
     out_r, out_w = os.pipe()
     client, replies = os.fdopen(cin_w, "wb", 0), os.fdopen(out_r, "rb", 0)

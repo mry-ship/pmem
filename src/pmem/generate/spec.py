@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
@@ -14,6 +15,9 @@ FACTS_START = "<!-- spec:facts:start -->"
 FACTS_END = "<!-- spec:facts:end -->"
 EMPTY = "<!-- spec:empty -->"
 DESIGN_GAP = "<!-- spec:design-gap -->"
+# 整行才算未写完的标记；正文里用反引号提到字面量（如规格模块自述）不算留空
+_EMPTY_LINE = re.compile(rf"(?m)^[ \t]*{re.escape(EMPTY)}[ \t]*$")
+_DESIGN_GAP_LINE = re.compile(rf"(?m)^[ \t]*{re.escape(DESIGN_GAP)}[ \t]*$")
 INDEX_MARKER = "<!-- 由 pmem spec index 生成目录；各模块正文请改对应的规格文件，重新运行会覆盖本文件 -->"
 SECTIONS = ("策划设计", "美术设计", "程序设计", "模块现状")
 CHECKED = ("程序设计", "模块现状")
@@ -166,7 +170,7 @@ def status_of(folder: Path | None, deprecated: bool) -> str:
         return "无文件"
     for title in CHECKED:
         text = _read(folder / f"{title}.md")
-        if text is None or EMPTY in text:
+        if text is None or _EMPTY_LINE.search(text):
             return "首稿未完成"
     return "已有规格"
 
@@ -180,7 +184,7 @@ def gap_label(folder: Path | None) -> str:
         text = _read(folder / f"{title}.md")
         if text is None:
             parts.append(missing)
-        elif DESIGN_GAP in text:
+        elif _DESIGN_GAP_LINE.search(text):
             parts.append(gap)
     return "、".join(parts) if parts else "无"
 

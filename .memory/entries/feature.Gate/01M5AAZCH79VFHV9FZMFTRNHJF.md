@@ -15,8 +15,8 @@ aliases:
 - 读代码摘要
 - digest
 - 摘要不准
-verified: '2026-10-20'
-verified_at: '2026-10-20T18:57:28.399+08:00'
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:45.340+08:00'
 source:
   conversation: b48c143a-9675-4a7b-97ea-8ee28f06840e
 ---

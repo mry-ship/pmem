@@ -15,8 +15,8 @@ note_date: '2026-10-20'
 summary: 主页和手册必须写明 Wiki 不能写出目录、嵌入地址不能随意指向远程
 verify: 打开 README 已知限制和手册配置示例，能看到这两条限制
 applies: 改 README、docs/pmem-guide.html 或 docs/architecture.md 里关于 Wiki 和嵌入的说明时
-verified: '2026-10-22'
-verified_at: '2026-10-22T17:50:53.012+08:00'
+verified: '2026-10-23'
+verified_at: '2026-10-23T21:07:40.165+08:00'
 source:
   conversation: 4a38d786-a560-4c0b-9fe2-0371838dfd42
 ---

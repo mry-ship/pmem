@@ -18,6 +18,8 @@ aliases:
 - 空标记
 - 首稿未完成
 - 已有规格
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:45.340+08:00'
 source:
   conversation: 70760b3a-0dd4-4cc7-a429-f7c5252b5a05
 ---

@@ -11,8 +11,8 @@ anchors:
 revision: git:4e837a8
 author: 1002378395@qq.com
 note_date: '2026-10-14'
-verified: '2026-10-20'
-verified_at: '2026-10-20T18:57:28.399+08:00'
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:12.602+08:00'
 ---
 风险：统计“本机未提交的记忆数”时，SVN 下如果 .memory 目录本身还没加入版本库，`svn status --xml <.memory/entries>` 只输出 W155010“找不到节点”警告，退出码仍为 0，返回的 XML 也没有任何 entry，计数就会是 0。
 也就是说，“刚接入、一条都没提交”这种最需要提醒的情况反而不提醒。

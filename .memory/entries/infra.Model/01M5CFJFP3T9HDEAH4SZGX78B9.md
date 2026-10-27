@@ -18,6 +18,8 @@ aliases:
 - read_digest
 - question_review
 - 默认开关
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:45.340+08:00'
 ---
 决定：记忆审查的两个开关 gate.read_digest（读代码时附摘要）和 gate.question_review（结束时要求核对问题涉及的模块）默认都开。
 原因：已接入的项目升级 pmem 后 config.yaml 里没有这两个键，读取时按默认值合并，升级后直接生效。gate.mode 为 off 时两者都不触发。

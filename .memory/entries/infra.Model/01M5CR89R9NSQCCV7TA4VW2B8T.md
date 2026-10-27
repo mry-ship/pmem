@@ -14,6 +14,8 @@ author: 1002378395@qq.com
 note_date: '2026-10-20'
 summary: 覆盖草稿现在也保留未知字段；记忆文件头写坏或缺必填项时报 ValueError
 verify: uv run pytest tests/test_service.py -k unknown_front_matter tests/core
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:21.736+08:00'
 source:
   conversation: 9ef91500-0ba8-471d-b103-5d232ce0615e
 ---

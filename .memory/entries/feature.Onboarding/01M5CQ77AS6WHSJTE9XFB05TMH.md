@@ -15,6 +15,8 @@ author: 1002378395@qq.com
 note_date: '2026-10-20'
 summary: 重跑 init 不吞用户内容、不留旧 Hook；doctor 配置写错给 ✘，有提醒不说一切正常
 verify: uv run pytest tests/test_integrations.py
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:21.736+08:00'
 source:
   conversation: 9ef91500-0ba8-471d-b103-5d232ce0615e
 ---

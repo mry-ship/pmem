@@ -14,6 +14,8 @@ aliases:
 - 测试缓存
 - PMEM_CACHE_DIR
 - 测试隔离
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:12.602+08:00'
 ---
 决定：tests/conftest.py 增加自动生效的夹具，把 PMEM_CACHE_DIR 指向每个用例自己的临时目录。
 原因：配置解析缓存（parsed/）和过期核对缓存（anchors.json）都写在用户缓存目录，测试项目建在随机临时目录，不隔离就会往 %LOCALAPPDATA%\pmem 里不断堆积文件。

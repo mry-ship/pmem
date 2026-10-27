@@ -14,8 +14,8 @@ aliases:
 - 格式化记忆
 - 断行
 - pmem format
-verified: '2026-10-20'
-verified_at: '2026-10-20T18:57:28.399+08:00'
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:14.279+08:00'
 ---
 决定：新增 pmem format [--module] [--apply]，把已有记忆里过长的正文行断开（规则见 infra.Model / ContentFormat）。
 默认只预览：打印需要整理的条数和第一条整理后的前 8 行；

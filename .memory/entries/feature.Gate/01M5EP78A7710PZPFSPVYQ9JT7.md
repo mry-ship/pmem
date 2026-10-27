@@ -18,6 +18,8 @@ verify: uv run pytest tests/test_module_hierarchy.py -k "gate or mentions"
 aliases:
 - 闸门拦截子模块
 - 上级的坑
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:45.340+08:00'
 source:
   conversation: 9622f1ee-c79a-429b-b50b-25228d393eb8
 ---

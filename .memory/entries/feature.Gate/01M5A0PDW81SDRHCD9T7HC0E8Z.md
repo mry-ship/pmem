@@ -18,6 +18,8 @@ aliases:
 - 需核实
 - stale
 - 并发 hook 慢
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:45.340+08:00'
 source:
   conversation: 6b540a20-0fb2-45fe-9ffb-9ce5b287b508
 ---

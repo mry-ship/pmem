@@ -20,6 +20,8 @@ aliases:
 - 记忆审查
 - 读码摘要
 - additional_context
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:45.340+08:00'
 ---
 决定：不改代码的问答也做记忆审查，分三层；同一模块一个对话只触发一次（reviewed 记录，search_memory 查过、看过摘要都算）。
 1. 提问时：Claude Code 和 Codex 的 UserPromptSubmit 直接返回 additionalContext，附问题提到的模块摘要（更正：旧记忆只写了 Claude）。

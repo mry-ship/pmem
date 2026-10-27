@@ -23,6 +23,8 @@ aliases:
 - archive
 - restore
 - 撤销合并
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:19.568+08:00'
 ---
 决定：记忆状态变更主要走 MemoryService.change_status 的四种动作：archive（active/seed/draft → archived）、restore（回到归档前的状态，没记录时 active）、accept（seed → active）、reject（seed → archived）。
 归档时 YAML 头记 archived: {on, from, by}，恢复后清掉（同时清 reverted）；

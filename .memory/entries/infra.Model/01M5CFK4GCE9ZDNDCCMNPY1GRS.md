@@ -19,6 +19,8 @@ aliases:
 - 类型中文名
 - 可见状态
 - 扩展 kind
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:19.568+08:00'
 ---
 决定：跨模块共用的记忆常量集中在 core/entry.py：KIND_LABELS（类型中文名）、VISIBLE_STATUSES（检索可见状态）被检索、图谱、Wiki、健康报告、CLI、闸门直接导入。
 原因：原先各自复制一份，新增 kind 或状态时只改一处会出现“检索看得见、Wiki 不显示”。

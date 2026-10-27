@@ -14,6 +14,8 @@ note_date: '2026-10-23'
 summary: init 给已登记模块铺规格骨架，并提示补全模块规格
 verify: uv run pytest tests/test_spec.py -q -k "skill or project_init"
 applies: pmem init 生成技能和配置模板时
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:23.529+08:00'
 source:
   conversation: 0d888a97-1b45-4e7c-8ac3-150747ba7b2e
 ---

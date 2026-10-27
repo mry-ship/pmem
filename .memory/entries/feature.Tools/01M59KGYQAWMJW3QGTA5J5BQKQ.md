@@ -15,6 +15,8 @@ aliases:
 - service 拆分
 - MemoryService 组合
 - 服务层结构
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:14.279+08:00'
 source:
   conversation: 7e7aeed7-103b-4d87-bb8d-18765c815bd5
 ---

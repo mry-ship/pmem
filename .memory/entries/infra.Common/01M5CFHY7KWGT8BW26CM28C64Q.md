@@ -21,6 +21,8 @@ aliases:
 - 乱码
 - content-file
 - 配置文档
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:19.568+08:00'
 ---
 决定：命令行 --content-file 读文件时 UTF-16 BOM 按 utf-16 解码，其余按 utf-8-sig；
 文件不存在、读不出或解码失败返回 {ok:false, code:"input_unreadable"} 和具体原因，不抛异常栈。

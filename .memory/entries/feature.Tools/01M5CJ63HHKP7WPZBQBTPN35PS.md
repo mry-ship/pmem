@@ -14,6 +14,8 @@ summary: 跨模块替代选拒绝不选警告：危害是读者看不到，警�
 aliases:
 - 跨模块替代
 - 替代别的模块
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:21.736+08:00'
 source:
   conversation: 56cad1c4-fae9-44ef-a1f2-9a52de89fdf1
 ---

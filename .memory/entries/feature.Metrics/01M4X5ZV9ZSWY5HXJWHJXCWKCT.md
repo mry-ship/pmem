@@ -10,6 +10,8 @@ anchors:
 revision: git:74edc08
 author: 1002378395@qq.com
 note_date: '2026-10-14'
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:12.602+08:00'
 ---
 pmem bench 对照实验的设计：每次运行在独立 git worktree 中从用例指定的提交开始；
 on 组复制本仓库当前 .memory（模拟前人已踩过坑）并内联 pmem MCP 服务、把 pmem 规则作为提示词前缀；

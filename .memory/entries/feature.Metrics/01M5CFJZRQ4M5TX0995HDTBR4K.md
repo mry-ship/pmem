@@ -18,6 +18,8 @@ aliases:
 - 事件日志
 - token 统计
 - 收益口径
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:19.568+08:00'
 ---
 收益统计的数据口径（Cursor 3.9 实测）：stop Hook 的 input_tokens / output_tokens / cache_read_tokens / cache_write_tokens 是单轮值，按对话求和；
 input_tokens 已包含 cache_read_tokens。

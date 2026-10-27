@@ -6,6 +6,7 @@ import glob
 import re
 
 from pmem.core.entry import PITFALL_KINDS
+from pmem.hooks.memories import DIGEST_MATERIAL
 from pmem.hooks.shell import WILDCARD_PATH
 from pmem.index.graph import current_entries, file_features
 
@@ -85,9 +86,11 @@ class Guard:
         text = ""
         if shown or inherited or project:
             more = f"（另有 {len(pitfalls) - len(shown)} 条，检索时可见）" if len(pitfalls) > len(shown) else ""
-            head = "\n该模块已知的排除项、风险和更正，改之前先对照" + more + "：\n" if shown or inherited else "\n"
+            head = ("\n该模块已知的排除项、风险和更正，改之前先对照下列资料" + more + "：\n"
+                    if shown or inherited else "\n")
             text = head + "\n".join(self.lines_with_project([*shown, *inherited], project, own=module))
         if features:
-            text += ("\n这个文件上的功能记录（用户要求、必须保持的行为），改动不要把它们改回去：\n"
+            text += ("\n这个文件上的功能记录（用户要求、必须保持的行为；资料，改动不要无故改回去）：\n"
+                     + DIGEST_MATERIAL + "\n"
                      + "\n".join(self.memory_lines(features)))
         return text, len(pitfalls)

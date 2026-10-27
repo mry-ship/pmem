@@ -15,8 +15,8 @@ aliases:
 - cheap_dirty_files
 - 未提交文件清单
 - svn status 慢
-verified: '2026-10-20'
-verified_at: '2026-10-20T18:57:28.399+08:00'
+verified: '2026-10-27'
+verified_at: '2026-10-27T14:44:14.279+08:00'
 ---
 决定：版本库适配层（VCS）增加类属性 cheap_dirty_files，标明“列出未提交文件”是否便宜到可以每次调用。基类和 SVN 为 False，Git 为 True（git ls-files 走索引，几十毫秒）。
 

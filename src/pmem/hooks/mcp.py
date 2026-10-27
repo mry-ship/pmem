@@ -101,10 +101,11 @@ class McpCalls:
                 # 命令行检索拿不到对话 id，先登记，让它按模块认领，好做对话内去重
                 seen.note_handoff(self.config.cache_dir, self.conversation, [module])
                 claimed.add(module)
-            elif args.get("module") or args.get("path"):
-                # --module $m 这类变量名解析不出：通配交接，避免循环检索整段正文反复占上下文
+            elif seen.looks_like_shell_var(args.get("module")) or seen.looks_like_shell_var(args.get("path")):
+                # --module $m：通配交接，避免循环检索整段正文反复占上下文
                 seen.note_handoff(self.config.cache_dir, self.conversation, [seen.HANDOFF_ANY])
             else:
+                # 拼错的模块名、未登记路径：不当通配，避免任意检索认走这个对话
                 seen.note_handoff(self.config.cache_dir, self.conversation, [])
         return claimed
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -9,14 +10,16 @@ from pathlib import Path
 from wcmatch import glob as wglob
 
 from pmem.core.entry import KIND_LABELS, PITFALL_KINDS, RECORD_KINDS, Entry
+from pmem.core.fileio import write_atomic
 from pmem.core.registry import RegistryError, ancestor_modules
 from pmem.index.anchors import ANCHOR_CACHE, STALE_LABEL, AnchorChecker
-from pmem.index.graph import current_entries, project_pitfalls
+from pmem.index.graph import current_entries, load_replaced_ids, project_pitfalls
 from pmem.metrics.events import log_event
 
 GLOB_FLAGS = wglob.GLOBSTAR | wglob.BRACE | wglob.DOTGLOB | wglob.FORCEUNIX | wglob.IGNORECASE
 MAX_PROJECT_PITFALLS = 3
 MAX_INHERITED_PITFALLS = 2
+_REPLACED_CACHE = "replaced-ids.json"
 _PROJECT_SCOPE = re.compile(r"^scope:\s*['\"]?project", re.MULTILINE)
 _PATH_TOKEN = re.compile(r"[\w.\-]*[/\\][\w./\\\-]+")
 STALE_FOOTER = (f"标“{STALE_LABEL}”的记忆写下后关联代码又改过（改了哪里见 search_memory 结果的 check），"
@@ -34,6 +37,22 @@ _FOOTER_SLOT_RE = re.compile(r"\n?\x00footer:([\w,]*)\x00")
 def _stale_mark(problems: list[str]) -> str:
     # 摘要每回合都可能出现，只标记不列明细；具体改了哪些文件由检索结果的 check 给出
     return f"（⚠ {STALE_LABEL}）" if problems else ""
+
+
+def _entries_stamp(folder: Path) -> str:
+    """记忆目录变了就要重算替代关系：文件数、最新修改时间、总大小。"""
+    if not folder.is_dir():
+        return "0"
+    count = latest = total = 0
+    for path in folder.glob("*/*.md"):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        count += 1
+        latest = max(latest, stat.st_mtime_ns)
+        total += stat.st_size
+    return f"{count}:{latest}:{total}"
 
 
 class MemoryView:
@@ -83,12 +102,37 @@ class MemoryView:
 
     def memory_count(self, module: str) -> int:
         """现行记忆条数；已被替代或停用的不算，全部作废的模块不再拦截。"""
-        return len(current_entries(self.module_entries(module)))
+        return len(current_entries(self.module_entries(module), self.replaced_ids()))
+
+    def replaced_ids(self) -> set[str]:
+        """全库仍生效的替代目标。摘要和拦截只读一个模块目录，不看这份集合就会把已被父模块替代的记忆当现行。
+        按记忆目录的文件数、最新修改时间和总大小缓存，记忆一变就重算。"""
+        cached = getattr(self, "_replaced_ids", None)
+        if cached is not None:
+            return cached
+        folder = self.config.entries_dir
+        stamp = _entries_stamp(folder)
+        path = self.config.cache_dir / _REPLACED_CACHE
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if data.get("stamp") == stamp and isinstance(data.get("ids"), list):
+                self._replaced_ids = set(data["ids"])
+                return self._replaced_ids
+        except (OSError, ValueError):
+            pass
+        found = load_replaced_ids(folder)
+        try:
+            write_atomic(path, json.dumps({"stamp": stamp, "ids": sorted(found)}, ensure_ascii=False))
+        except OSError:
+            pass
+        self._replaced_ids = found
+        return found
 
     def ancestor_pitfalls(self, module: str) -> tuple[list[Entry], int]:
         """上级模块里的排除项、风险、更正（由近到远、按类型排序，至多 MAX_INHERITED_PITFALLS 条），以及上级现行教训总数。"""
+        hidden = self.replaced_ids()
         lessons = [(n, e) for n, a in enumerate(ancestor_modules(module))
-                   for e in current_entries(self.module_entries(a)) if e.kind not in RECORD_KINDS]
+                   for e in current_entries(self.module_entries(a), hidden) if e.kind not in RECORD_KINDS]
         pitfalls = sorted(((n, e) for n, e in lessons if e.kind in PITFALL_KINDS),
                           key=lambda t: (t[0], PITFALL_KINDS.index(t[1].kind)))
         pitfalls = [e for _, e in pitfalls]
@@ -132,7 +176,7 @@ class MemoryView:
         要扫描全部记忆文件，所以都给过（或根本没有）之后记下 project_done，本对话不再扫描。"""
         if self.state is None or self.state.data["project_done"]:
             return []
-        pool = [e for e in project_pitfalls(self.project_entries(), limit=100)
+        pool = [e for e in project_pitfalls(self.project_entries(), limit=100, replaced=self.replaced_ids())
                 if not self.state.has("project_shown", e.id)]
         own = (module or "").lower()
         fresh = [e for e in pool if e.id not in skip and e.module.lower() != own][:MAX_PROJECT_PITFALLS]

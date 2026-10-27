@@ -165,6 +165,20 @@ def test_git_changed_since_is_precise_to_the_second(git_repo):
     assert vcs.changed_since([], 0) == {}
 
 
+def test_git_changed_since_includes_untracked_files_but_not_ignored_ones(git_repo):
+    """diff HEAD 列不出从未跟踪的新文件；被忽略的构建产物仍不报，避免 mtime 误报。"""
+    vcs = detect_vcs(git_repo)
+    (git_repo / "src").mkdir()
+    path = git_repo / "src" / "new.ts"
+    path.write_text("x", encoding="utf-8")
+    edited = path.stat().st_mtime
+    assert vcs.changed_since(["src/new.ts"], edited - 1) == {"src/new.ts": edited}
+    assert vcs.changed_since(["src/new.ts"], edited + 1) == {}
+    (git_repo / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    (git_repo / "src" / "noise.log").write_text("n", encoding="utf-8")
+    assert vcs.changed_since(["src/noise.log"], 0) == {}
+
+
 def test_git_local_edits_count_from_their_modification_time(git_repo):
     """未提交的修改按文件修改时间算：写记忆前就改好、还没提交的代码不算“之后改过”。"""
     vcs = detect_vcs(git_repo)

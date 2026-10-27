@@ -56,6 +56,18 @@ def write(svc, **kw):
 
 # ---- 数据模型与写入 ----
 
+def test_search_event_counts_feature_ids_when_there_are_no_lessons(svc):
+    from pmem.metrics.events import read_events
+    from pmem.metrics.health import _misses
+
+    made = write(svc)
+    result = svc.search(module="gameplay.Jigsaw")
+    assert result["features"] and not result["items"]
+    searches = [e for e in read_events(svc.config.cache_dir) if e["type"] == "search" and e.get("ok")]
+    assert made["id"] in searches[-1]["ids"] and "feature" in searches[-1]["kinds"]
+    assert _misses(searches) == []
+
+
 def test_feature_kind_and_applies_round_trip():
     entry = Entry(id=new_ulid(), module="gameplay.Jigsaw", entity="Share", kind="feature", content=FEATURE,
                   note_date="2026-10-19", author="a", applies="仅 iOS 版本 ≥ 3.2")

@@ -1,5 +1,6 @@
 """v0.3 记忆质量与上下文效率：标题、验证方法、全项目级坑、对话内去重、写作提示与度量。"""
 import json
+import threading
 import time
 from pathlib import Path
 
@@ -328,6 +329,51 @@ def test_shell_variable_module_registers_wildcard_handoff(gate_root):
     assert seen.claim_handoff(Config.load(gate_root).cache_dir, "gameplay.Jigsaw") == "c8"
 
 
+def test_parallel_handoffs_keep_every_conversation(tmp_path):
+    cache = tmp_path / "cache"
+    barrier = threading.Barrier(seen.MAX_HANDOFFS)
+
+    def note(index: int) -> None:
+        barrier.wait()
+        seen.note_handoff(cache, f"c{index}", [f"feature.M{index}"])
+
+    threads = [threading.Thread(target=note, args=(i,)) for i in range(seen.MAX_HANDOFFS)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert {row["conv"] for row in seen._handoffs(cache)} == {f"c{i}" for i in range(seen.MAX_HANDOFFS)}
+
+
+def test_project_pitfall_hidden_when_superseded_from_another_module(gate_root):
+    risk = _entry(gate_root, "economy.Shop", "risk", "风险：全项目不要用弯引号。", "scope: project\n")
+    _entry(gate_root, "gameplay.Jigsaw", "correction", "更正：弯引号的问题已经修好。", f"supersedes:\n- {risk}\n")
+    text = _read(gate_root, "src/Jigsaw/Board.cs")
+    assert "全项目不要用弯引号" not in text
+    assert "弯引号的问题已经修好" in text
+
+
+def test_unresolved_module_name_does_not_register_wildcard_handoff(gate_root):
+    """拼错或不存在的模块名不是变量，不能让任意后续检索认走这个对话。"""
+    shell = {"conversation_id": "c9", "tool_name": "Shell",
+             "tool_input": {"command": "pmem search --module feature.Hooks --brief", "cwd": ""}}
+    handle("pre-tool", shell, gate_root)
+    cache = Config.load(gate_root).cache_dir
+    assert seen.claim_handoff(cache, "gameplay.Jigsaw") is None
+    assert seen.claim_handoff(cache, None) == "c9"
+
+
+def test_looks_like_shell_var():
+    assert seen.looks_like_shell_var("$m")
+    assert seen.looks_like_shell_var("${mod}")
+    assert seen.looks_like_shell_var("$env:FOO")
+    assert seen.looks_like_shell_var("%M%")
+    assert not seen.looks_like_shell_var("feature.Gate")
+    assert not seen.looks_like_shell_var("feature.Hooks")
+    assert not seen.looks_like_shell_var("src/Jigsaw/Board.cs")
+    assert not seen.looks_like_shell_var("")
+
+
 def test_stop_reminder_asks_for_feature_record_plus_lessons(gate_root):
     handle("edited", {"conversation_id": "c1", "file_path": str(gate_root / "src/Shop/Shop.cs")}, gate_root)
     message = handle("stop", {"conversation_id": "c1", "status": "completed"}, gate_root)["followup_message"]
@@ -336,6 +382,18 @@ def test_stop_reminder_asks_for_feature_record_plus_lessons(gate_root):
 
 
 # ---- 度量 ----
+
+def test_repeats_ignore_feature_titles_that_share_the_search_event():
+    """功能记录只有标题。同一对话再次检索带上它的 id，不能算成全文又给了一遍。"""
+    events = [
+        {"type": "search", "ok": True, "conv": "c1", "ts": 1,
+         "ids": ["a", "f1"], "kinds": ["conclusion", "feature"]},
+        {"type": "search", "ok": True, "conv": "c1", "ts": 2,
+         "ids": ["a", "f1"], "kinds": ["conclusion", "feature"], "collapsed": ["a"]},
+    ]
+    assert _repeats(events) == {"items": 2, "repeated": 0, "collapsed": 1, "compactions": 0, "inferred": 0,
+                                "unsplit": 0}
+
 
 def test_repeats_counts_full_repeats_and_collapsed():
     events = [

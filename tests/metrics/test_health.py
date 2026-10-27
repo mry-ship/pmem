@@ -114,7 +114,7 @@ def test_health_lists_hot_returns_when_enough_searches(project, monkeypatch):
         log_event(cache, "stop", ts=now, conv=conv, returned=[mid], recorded=[])
     h = build_health(project)
     assert any(r["id"] == mid and r["returned"] >= 3 for r in h["hot_returns"])
-    assert "返回 3 次以上的记忆" in render(h)
+    assert "返回却未写入 3 次以上的记忆" in render(h)
 
 
 def test_health_names_unregistered_paths_that_missed(project):

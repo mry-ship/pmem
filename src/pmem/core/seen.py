@@ -7,8 +7,11 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from pmem.core.fileio import write_atomic
@@ -18,8 +21,66 @@ HANDOFF_FILE = "cli-handoff.json"
 HANDOFF_WINDOW = 120
 MAX_HANDOFFS = 8
 TTL_SECONDS = 7 * 24 * 3600
-# Hook 解析不出 --module/--path（如 PowerShell 变量 $m）时登记通配，命令行按实际模块名仍能认领对话做去重
+# Hook 认出 --module/--path 是 Shell 变量（$m）时登记通配，命令行按实际模块名仍能认领对话做去重
 HANDOFF_ANY = "*"
+_HANDOFF_LOCK = "cli-handoff.lock"
+_LOCK_TIMEOUT = 5.0
+_LOCK_POLL = 0.02
+_SHELL_VAR = re.compile(r"^(?:\$[\w.:]+|\$\{[^}]+\}|%[^%]+%)$")
+
+
+def _try_lock(fh) -> bool:
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return True
+    except OSError:
+        return False
+
+
+def _unlock(fh) -> None:
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+    except OSError:
+        pass
+
+
+@contextmanager
+def _handoff_lock(cache_dir: Path) -> Iterator[None]:
+    """交接文件是整份替换。并行的 Hook 各自读改写会丢掉另一条。等锁超时就照常写，偶尔丢一次也不卡住。"""
+    directory = cache_dir / SEEN_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+    with open(directory / _HANDOFF_LOCK, "a+b") as fh:
+        deadline = time.monotonic() + _LOCK_TIMEOUT
+        held = _try_lock(fh)
+        while not held and time.monotonic() < deadline:
+            time.sleep(_LOCK_POLL)
+            held = _try_lock(fh)
+        try:
+            yield
+        finally:
+            if held:
+                _unlock(fh)
+
+
+def looks_like_shell_var(value: str | None) -> bool:
+    """PowerShell / cmd / bash 变量占位（$m、${m}、$env:FOO、%M%），不是模块名或路径。"""
+    return bool(value and _SHELL_VAR.match(str(value).strip()))
 
 
 def _file(cache_dir: Path, conversation: str) -> Path:
@@ -80,12 +141,12 @@ def note_handoff(cache_dir: Path, conversation: str, modules: list[str]) -> None
     """Hook：终端命令里有 pmem search 时，执行前登记“哪个对话要查哪些模块”。"""
     if not conversation:
         return
-    now = time.time()
-    rows = [d for d in _handoffs(cache_dir) if now - _ts(d) < HANDOFF_WINDOW]
-    rows.append({"conv": conversation, "ts": now, "modules": [m.lower() for m in modules]})
     try:
-        (cache_dir / SEEN_DIR).mkdir(parents=True, exist_ok=True)
-        write_atomic(cache_dir / SEEN_DIR / HANDOFF_FILE, json.dumps(rows[-MAX_HANDOFFS:], ensure_ascii=False))
+        with _handoff_lock(cache_dir):
+            now = time.time()
+            rows = [d for d in _handoffs(cache_dir) if now - _ts(d) < HANDOFF_WINDOW]
+            rows.append({"conv": conversation, "ts": now, "modules": [m.lower() for m in modules]})
+            write_atomic(cache_dir / SEEN_DIR / HANDOFF_FILE, json.dumps(rows[-MAX_HANDOFFS:], ensure_ascii=False))
     except OSError:
         pass
 

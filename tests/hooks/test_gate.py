@@ -1498,6 +1498,20 @@ def test_wildcard_matching_no_module_file_is_allowed(make_project):
     assert handle("pre-tool", shell("rm *.log"), root)["permission"] == "allow"
 
 
+def test_bracket_path_is_guarded_when_a_character_class_matches_another_module(make_project):
+    """[id] 会被 glob 当成字符类，撞上别的模块里已有的 i/page.tsx 时，字面路径仍要拦截。"""
+    root = make_project("block", with_memory=False)
+    (root / ".memory" / "modules.yaml").write_text(
+        MODULES + "  economy.Letter: { paths: [src/Shop/i/**] }\n", encoding="utf-8")
+    add_entry(root, "01JA7K3M2X9F4Q8W6ZB1C2D3B9", "exclusion", "商店价格不能在客户端改", "2026-10-01",
+              module="economy.Shop")
+    folder = root / "src" / "Shop" / "i"
+    folder.mkdir(parents=True)
+    (folder / "page.tsx").write_text("x", encoding="utf-8")
+    denied = handle("pre-tool", shell('rm "src/Shop/[id]/page.tsx"'), root)
+    assert denied["permission"] == "deny" and "economy.Shop" in denied["user_message"]
+
+
 def test_editing_a_file_with_brackets_in_its_path_is_guarded(make_project):
     root = make_project("block")
     denied = handle("pre-tool", write_payload(root, "src/Jigsaw/[id]/page.tsx"), root)

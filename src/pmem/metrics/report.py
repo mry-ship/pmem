@@ -8,7 +8,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from pmem.catalog.coverage import module_heat
-from pmem.core.entry import KIND_LABELS, LESSON_KINDS, VISIBLE_STATUSES
+from pmem.core.entry import KIND_LABELS, LESSON_KINDS, RECORD_KINDS, VISIBLE_STATUSES
 from pmem.core.ids import ulid_ms
 from pmem.metrics.cite import assistant_text, judge
 from pmem.metrics.events import MIN_SEARCHES_FOR_IDLE, read_events
@@ -175,7 +175,12 @@ def _repeats(events: list[dict]) -> dict:
             pending[conv].pop(0)
             shown[conv] = set()
         folded = set(e.get("collapsed") or [])
-        for i in e.get("ids") or []:
+        ids = e.get("ids") or []
+        kinds = e.get("kinds") or []
+        for n, i in enumerate(ids):
+            # 功能记录和规划在检索里从来只有标题。ids 里带上它们之后，不能当成“全文又给了一遍”
+            if n < len(kinds) and kinds[n] in RECORD_KINDS:
+                continue
             total += 1
             if i in folded:
                 collapsed += 1

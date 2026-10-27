@@ -230,7 +230,7 @@ def _skipped(events: list[dict], entries: list, user: str, since: float) -> list
 
 
 def _hot_returns(events: list[dict], visible: list) -> list[dict]:
-    """同一对话只算一次；返回次数 ≥ MIN_RETURNS_TO_REVIEW 的现行记忆，供收口复查。"""
+    """同一对话只算一次；返回了却没在该对话写入（及对不上对话的 CLI 检索）≥ MIN_RETURNS_TO_REVIEW 的现行记忆。"""
     _link_cli_searches(events)
     known = {e.id: e for e in visible}
     returned: Counter = Counter()
@@ -398,8 +398,8 @@ def render(h: dict) -> str:
                 "可能是没人改这些模块，也可能是路径没登记全导致闸门没提醒；对照 pmem doctor 的覆盖率看；"
                 "长期冷、又确定过时的对 Agent 说“按 pmem-consolidate 收口”")
     section(
-        f"返回 {MIN_RETURNS_TO_REVIEW} 次以上的记忆（值得复查：过时 / 摘要不清 / 归错模块）",
-        [f"[{r['id']}] {r['module']}/{r['entity']} 返回 {r['returned']} 次：{r['title']}"
+        f"返回却未写入 {MIN_RETURNS_TO_REVIEW} 次以上的记忆（值得复查：过时 / 摘要不清 / 归错模块）",
+        [f"[{r['id']}] {r['module']}/{r['entity']} 返回未写 {r['returned']} 次：{r['title']}"
          for r in h.get("hot_returns") or []],
         "打开记忆核对：仍成立 pmem confirm <id>；过时写 correction 或 pmem archive <id>；"
         "摘要含糊就改写 summary；归错模块 pmem migrate move；更细的“返回却未采用”见 pmem report",

@@ -22,8 +22,12 @@ class Guard:
             matches = glob.glob(rel, root_dir=self.root, recursive=True)[:MAX_GLOB_TARGETS]
             # app/[id]/page.tsx 这类路径里的方括号多半是字面字符（Next.js 动态路由），展开不出东西时按字面检查
             if matches or re.search(r"[*?]", rel):
-                return next((v for v in (self._guard_path(m.replace("\\", "/"), searched_here) for m in matches)
-                             if v is not None), None)
+                denied = next((v for v in (self._guard_path(m.replace("\\", "/"), searched_here) for m in matches)
+                               if v is not None), None)
+                # 只有 * 或 ? 时，shell 展开到的就是这些匹配。方括号还可能是引号里的字面路径，
+                # 字符类会撞上别的文件（[id] 匹配 i/），那种情况仍要检查字面路径本身
+                if denied is not None or "[" not in rel.replace("\\", "/"):
+                    return denied
         return self._guard_path(rel, searched_here)
 
     def _guard_path(self, rel: str | None, searched_here: set[str]) -> dict | None:
@@ -74,11 +78,12 @@ class Guard:
         """检索按关键词排序，可能漏掉与这次修改相关的坑；排除项、风险、更正直接列出来，按这个顺序。
         锚点就是要改的文件的功能记录也列出来：改回用户要求的行为最常发生在这里。"""
         entries = self.module_entries(module)
-        pitfalls = sorted((e for e in current_entries(entries) if e.kind in PITFALL_KINDS),
+        hidden = self.replaced_ids()
+        pitfalls = sorted((e for e in current_entries(entries, hidden) if e.kind in PITFALL_KINDS),
                           key=lambda e: PITFALL_KINDS.index(e.kind))
         shown = pitfalls[:MAX_GUARD_PITFALLS]
         inherited, _ = self.ancestor_pitfalls(module)
-        features = file_features(entries, rel) if rel else []
+        features = file_features(entries, rel, replaced=hidden) if rel else []
         project = self.take_project_pitfalls(module, skip={e.id for e in [*shown, *inherited]})
         if not shown and not inherited and not project and not features:
             return "", 0

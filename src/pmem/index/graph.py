@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from pmem.core.entry import KIND_LABELS, PITFALL_KINDS, RECORD_KINDS, Entry
 from pmem.core.entry import VISIBLE_STATUSES as VISIBLE
@@ -24,24 +25,45 @@ def preview(text: str, limit: int = PREVIEW_CHARS) -> str:
     return flat if len(flat) <= limit else flat[:limit] + "…"
 
 
-def current_entries(entries: list[Entry]) -> list[Entry]:
-    """可见且没有被替代的记忆，从新到旧。"""
+def current_entries(entries: list[Entry], replaced: set[str] | None = None) -> list[Entry]:
+    """可见且没有被替代的记忆，从新到旧。
+
+    replaced 是这批文件之外仍生效的替代目标（Entry.replaces，例如父模块替代了下级）。
+    只读了一个模块目录时，本批文件的 supersedes 看不到它。"""
     visible = [e for e in entries if e.status in VISIBLE]
-    replaced = {old for e in entries for old in e.replaces()}
-    return sorted((e for e in visible if e.id not in replaced), key=lambda e: (e.note_date, e.id), reverse=True)
+    hidden = {old for e in entries for old in e.replaces()}
+    if replaced:
+        hidden.update(replaced)
+    return sorted((e for e in visible if e.id not in hidden), key=lambda e: (e.note_date, e.id), reverse=True)
 
 
-def file_features(entries: list[Entry], path: str, limit: int = 2) -> list[Entry]:
+def load_replaced_ids(entries_dir: Path) -> set[str]:
+    """全部记忆文件里仍然生效的替代目标。撤销了的合并不算；解析不了的文件跳过。"""
+    hidden: set[str] = set()
+    if not entries_dir.is_dir():
+        return hidden
+    for path in entries_dir.glob("*/*.md"):
+        try:
+            entry = Entry.from_markdown(path.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            continue
+        hidden.update(entry.replaces())
+    return hidden
+
+
+def file_features(entries: list[Entry], path: str, limit: int = 2, replaced: set[str] | None = None) -> list[Entry]:
     """锚点就是这个文件的现行功能记录：改这个文件时最容易把用户要求的行为改回去。"""
-    return [e for e in current_entries(entries) if e.kind == "feature" and anchor_affinity(e.anchors, path) == 2][:limit]
+    return [e for e in current_entries(entries, replaced)
+            if e.kind == "feature" and anchor_affinity(e.anchors, path) == 2][:limit]
 
 
 def digest(entries: list[Entry], limit: int = 6, per_topic: int = 2, path: str | None = None,
-           feature_slots: int = 2) -> list[Entry]:
+           feature_slots: int = 2, replaced: set[str] | None = None) -> list[Entry]:
     """一个模块最值得先看的现行教训：排除项、风险、更正、决定在前，同类从新到旧，每个议题最多 per_topic 条。
     给了 path（正在看的文件）时，锚点就是它的记忆先占至多一半名额，其余照旧，模块层面的坑仍排得进来；
-    功能记录、规划不占教训名额，只在末尾附至多 feature_slots 条锚点就是该文件的功能记录。"""
-    lessons = [e for e in current_entries(entries) if e.kind not in RECORD_KINDS]
+    功能记录、规划不占教训名额，只在末尾附至多 feature_slots 条锚点就是该文件的功能记录。
+    replaced 见 current_entries。"""
+    lessons = [e for e in current_entries(entries, replaced) if e.kind not in RECORD_KINDS]
     ordered = sorted(lessons, key=lambda e: KIND_ORDER.get(e.kind, len(KIND_ORDER)))
     if path:
         near = [e for e in ordered if anchor_affinity(e.anchors, path) == 2][:limit // 2]
@@ -55,12 +77,13 @@ def digest(entries: list[Entry], limit: int = 6, per_topic: int = 2, path: str |
             per[entry.entity.lower()] += 1
         if len(picked) == limit:
             break
-    return picked + (file_features(entries, path, feature_slots) if path and feature_slots else [])
+    return picked + (file_features(entries, path, feature_slots, replaced) if path and feature_slots else [])
 
 
-def project_pitfalls(entries: list[Entry], exclude_module: str | None = None, limit: int = 3) -> list[Entry]:
+def project_pitfalls(entries: list[Entry], exclude_module: str | None = None, limit: int = 3,
+                     replaced: set[str] | None = None) -> list[Entry]:
     """全项目级（scope: project）的排除项、风险、更正：按这个顺序、同类从新到旧；所在模块自己的摘要里已经有了，排除掉。"""
-    picked = [e for e in current_entries(entries)
+    picked = [e for e in current_entries(entries, replaced)
               if e.project_wide and e.kind in PITFALL_KINDS
               and not (exclude_module and e.module.lower() == exclude_module.lower())]
     return sorted(picked, key=lambda e: PITFALL_KINDS.index(e.kind))[:limit]

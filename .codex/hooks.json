@@ -1,0 +1,56 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pmem hook prompt"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|StrReplace|Edit|MultiEdit|EditNotebook|Delete|Shell|MCP|record_memory|search_memory",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pmem hook pre-tool"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read|Grep|Glob|SemanticSearch|codebase_search|Shell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pmem hook post-tool"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pmem hook compact"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".memory/bin/pmem-hook session"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -43,6 +43,7 @@ def test_digest_prefers_exclusions_and_caps_each_topic():
     ]
     assert [e.id for e in digest(entries)] == ["E1", "O2", "C1", "C2"]
     assert [e.id for e in digest(entries, limit=2)] == ["E1", "O2"]
+    assert [e.id for e in digest(entries, replaced={"E1"})] == ["O2", "C1", "C2"]
 
 
 def test_related_modules_via_shared_code_and_mentions():

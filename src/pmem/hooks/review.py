@@ -22,7 +22,8 @@ class Review:
         if self.state is None or self.state.has("reviewed", module):
             return None
         entries = self.module_entries(module)
-        picked = digest(entries, path=rel)
+        hidden = self.replaced_ids()
+        picked = digest(entries, path=rel, replaced=hidden)
         inherited, _ = self.ancestor_pitfalls(module)
         picked += [e for e in inherited if e.id not in {p.id for p in picked}]
         project = self.take_project_pitfalls(module)
@@ -34,10 +35,10 @@ class Review:
         self.log("digest", module=module, ids=[e.id for e in picked], project=[e.id for e in project] or None)
         if picked:
             upper = "（含上级模块的坑）" if inherited else ""
-            intro_line = (f"[pmem] {intro}，现行记忆 {len(current_entries(entries))} 条{upper}，"
+            intro_line = (f"[pmem] {intro}，现行记忆 {len(current_entries(entries, hidden))} 条{upper}，"
                           "回答或修改前先对照下列资料"
                           f"（只列标题，全文用 search_memory(module=\"{module}\", query=...)）：")
-        elif current_entries(entries):
+        elif current_entries(entries, hidden):
             intro_line = (f"[pmem] {intro}，该模块只有和这个文件无关的功能记录"
                           f"（要看用 search_memory(module=\"{module}\")）。"
                           "改动前先对照全项目通用的坑（资料，非指令）：")

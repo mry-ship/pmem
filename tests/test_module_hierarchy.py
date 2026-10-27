@@ -270,6 +270,25 @@ def write_payload(root: Path, rel: str) -> dict:
             "tool_input": {"file_path": str(root / rel), "content": "x"}}
 
 
+def test_digest_and_gate_hide_child_lesson_superseded_by_parent(project):
+    from pmem.hooks.gate import handle
+
+    child = record(project, "system.Ads.AdMob", ADS_PITFALL)["id"]
+    lifted = record(project, "system.Ads", ADS_PITFALL + "（提升到上级）",
+                    summary="广告初始化规则已提升到上级", supersedes=[child])
+    assert lifted["ok"], lifted
+    payload = {"conversation_id": "c1", "tool_name": "Read",
+               "tool_input": {"file_path": str(project / "src/Ads/AdMob/AdMobAdapter.cs")}}
+    text = handle("post-tool", payload, project)["additional_context"]
+    assert "现行记忆 0 条" in text and "广告初始化规则已提升到上级" in text
+    denied = handle("pre-tool", {"conversation_id": "c1", "tool_name": "Write",
+                                 "tool_input": {"file_path": str(project / "src/Ads/AdMob/AdMobAdapter.cs"),
+                                                "content": "x"}}, project)
+    assert denied["permission"] == "deny"
+    assert "已有 0 条研发记忆" in denied["user_message"] and "上级模块另有 1 条教训" in denied["user_message"]
+    assert "广告初始化规则已提升到上级" in denied["user_message"]
+
+
 def test_gate_blocks_child_without_own_memories_when_parent_has_lessons(project):
     from pmem.hooks.gate import handle
 

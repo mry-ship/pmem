@@ -55,6 +55,9 @@ class SearchOps(ServiceBase):
         if response.get("ok"):
             self._hints_once(response, conversation)
         items = response.get("items") or []
+        features = [i for i in response.get("features") or [] if isinstance(i, dict)]
+        # ids 与 kinds 按下标对齐：后面的报告靠下标把功能记录从“全文重复”里剔除
+        returned = [i for i in [*items, *features] if isinstance(i, dict) and i.get("id")]
         self._log(
             "search",
             conv=conversation,
@@ -63,8 +66,8 @@ class SearchOps(ServiceBase):
             path=(path or None) and self._relative(path),
             entity=entity or None,
             query=(query or None) and query[:200],
-            ids=[i["id"] for i in items],
-            kinds=[i["kind"] for i in items],
+            ids=[i["id"] for i in returned],
+            kinds=[i.get("kind") for i in returned],
             authors=[i.get("author") for i in items],
             fallback=response.get("fallback"),
             collapsed=collapsed or None,

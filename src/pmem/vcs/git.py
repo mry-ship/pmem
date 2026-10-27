@@ -92,15 +92,19 @@ class GitVCS(VCS):
             return {}
         found = {rel: times[-1] for rel, times in self.commit_times(paths, since).items()}
         now = time.time()
+        wanted = {p.replace("\\", "/") for p in paths}
         for batch in path_batches(paths):
-            # status --porcelain 的路径总是相对仓库根，这里用 diff --relative 保持与项目根一致
-            dirty = self._git("diff", "HEAD", "--name-only", "--relative", "--", *batch) or ""
-            for rel in (r.strip() for r in dirty.splitlines()):
+            # status --porcelain 的路径总是相对仓库根，这里用 diff --relative 保持与项目根一致。
+            # diff HEAD 看不到从未跟踪的新文件，补上 ls-files --others；被忽略的构建产物不列，避免 mtime 误报
+            listed = self._git("diff", "HEAD", "--name-only", "--relative", "--", *batch) or ""
+            listed += "\n" + (self._git("ls-files", "--others", "--exclude-standard", "--", *batch) or "")
+            for rel in (r.strip().replace("\\", "/") for r in listed.splitlines()):
+                if rel not in wanted:
+                    continue
                 # 未提交的修改按文件修改时间算：写记忆之前就改好、还没提交的代码不算“之后改过”
                 moment = file_mtime(self.root / rel) or now
-                if rel and moment > since:
+                if moment > since:
                     found[rel] = max(found.get(rel, 0.0), moment)
-        wanted = {p.replace("\\", "/") for p in paths}
         return {k: v for k, v in found.items() if k in wanted}
 
     def commits_since(self, since: str) -> list[tuple[str, list[str]]]:

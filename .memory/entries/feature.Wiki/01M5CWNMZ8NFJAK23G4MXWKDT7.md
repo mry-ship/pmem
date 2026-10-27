@@ -19,6 +19,8 @@ verify: uv run pytest tests/test_wiki.py -k "escape or symlink or outside_projec
 aliases:
 - 路径穿越
 - wiki.dir
+verified: '2026-10-27'
+verified_at: '2026-10-27T17:32:43.454+08:00'
 source:
   conversation: 4a38d786-a560-4c0b-9fe2-0371838dfd42
 ---

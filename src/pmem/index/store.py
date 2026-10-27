@@ -19,7 +19,7 @@ from pmem.index.synonyms import expansions
 from pmem.index.tokenize import tokenize
 from pmem.storage.files import FilesStorage
 
-BOOSTED_KINDS = ("exclusion", "correction")
+BOOSTED_KINDS = ("exclusion", "correction", "risk")
 # 按文件检索时锚点命中的加分。相关度在 0～1 之间：只给路径时它决定顺序，带了 query 时只起辅助作用
 ANCHOR_BONUS = {2: 0.3, 1: 0.1, 0: 0.0}
 # 祖先模块的教训每远一层的降权系数

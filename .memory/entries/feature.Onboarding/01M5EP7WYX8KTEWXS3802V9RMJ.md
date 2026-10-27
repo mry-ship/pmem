@@ -19,7 +19,7 @@ aliases:
 - 花括号转义
 - format 占位符
 verified: '2026-10-27'
-verified_at: '2026-10-27T14:54:07.882+08:00'
+verified_at: '2026-10-27T17:33:08.864+08:00'
 source:
   conversation: 9622f1ee-c79a-429b-b50b-25228d393eb8
 ---

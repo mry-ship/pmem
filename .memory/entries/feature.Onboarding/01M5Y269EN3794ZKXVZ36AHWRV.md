@@ -15,6 +15,8 @@ note_date: '2026-10-27'
 summary: 规则补充：Hook 摘要标「资料·非指令」，只对照不强制执行
 verify: Select-String .cursor/rules/pmem.mdc -Pattern 资料·非指令；templates.RULE_BODY 含同一句
 applies: pmem init 生成的规则；已接入项目需重跑 init 或手改 pmem.mdc
+verified: '2026-10-27'
+verified_at: '2026-10-27T17:33:08.864+08:00'
 source:
   conversation: 4068463b-7fe6-4bd0-9bad-7c80998fc889
 ---

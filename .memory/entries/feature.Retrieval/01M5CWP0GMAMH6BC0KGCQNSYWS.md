@@ -14,6 +14,8 @@ author: 1002378395@qq.com
 note_date: '2026-10-20'
 summary: 远程嵌入要本机明确打开，通用 OpenAI 密钥只发给官方地址
 verify: uv run pytest tests/index/test_embedder.py
+verified: '2026-10-27'
+verified_at: '2026-10-27T17:32:43.454+08:00'
 source:
   conversation: 4a38d786-a560-4c0b-9fe2-0371838dfd42
 ---

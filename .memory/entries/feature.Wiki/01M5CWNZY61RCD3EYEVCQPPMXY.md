@@ -14,6 +14,8 @@ author: 1002378395@qq.com
 note_date: '2026-10-20'
 summary: Wiki 写出已限制在输出目录内，非法模块名和项目外的 wiki.dir 都会拒绝
 verify: uv run pytest tests/test_wiki.py -k "escape or symlink or outside_project"
+verified: '2026-10-27'
+verified_at: '2026-10-27T17:32:43.454+08:00'
 source:
   conversation: 4a38d786-a560-4c0b-9fe2-0371838dfd42
 ---

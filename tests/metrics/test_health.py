@@ -97,6 +97,26 @@ def test_health_lists_problems_for_owners(project, capsys):
     assert "pmem 健康报告" in capsys.readouterr().out
 
 
+def test_health_lists_hot_returns_when_enough_searches(project, monkeypatch):
+    from pmem.core.config import Config
+    from pmem.metrics.events import MIN_SEARCHES_FOR_IDLE, log_event
+
+    service = MemoryService(project)
+    try:
+        mid = service.record("gameplay.Jigsaw", "Reward", "conclusion", TEXT)["id"]
+    finally:
+        service.close()
+    cache = Config.load(project).cache_dir
+    now = __import__("time").time()
+    for i in range(MIN_SEARCHES_FOR_IDLE):
+        log_event(cache, "search", ts=now - i, ok=True, module="gameplay.Jigsaw", ids=[mid] if i < 3 else [])
+    for conv in ("a", "b", "c"):
+        log_event(cache, "stop", ts=now, conv=conv, returned=[mid], recorded=[])
+    h = build_health(project)
+    assert any(r["id"] == mid and r["returned"] >= 3 for r in h["hot_returns"])
+    assert "返回 3 次以上的记忆" in render(h)
+
+
 def test_health_names_unregistered_paths_that_missed(project):
     service = MemoryService(project)
     try:

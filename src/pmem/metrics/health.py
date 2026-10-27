@@ -18,7 +18,12 @@ from pmem.index.tokenize import tokenize
 from pmem.metrics.audit import promotion_hints, recall_audit, render_recall, render_unregistered
 from pmem.metrics.cleanup import cleanup_candidates
 from pmem.metrics.events import MIN_SEARCHES_FOR_IDLE, read_events
-from pmem.metrics.report import _conversations, _feature_coverage
+from pmem.metrics.report import (
+    MIN_RETURNS_TO_REVIEW,
+    _conversations,
+    _feature_coverage,
+    _link_cli_searches,
+)
 from pmem.service import COMPACT_MIN_GROUP, MemoryService
 
 TOP = 10
@@ -224,6 +229,27 @@ def _skipped(events: list[dict], entries: list, user: str, since: float) -> list
     return Counter(m["module"] for m in missed).most_common(TOP)
 
 
+def _hot_returns(events: list[dict], visible: list) -> list[dict]:
+    """同一对话只算一次；返回次数 ≥ MIN_RETURNS_TO_REVIEW 的现行记忆，供收口复查。"""
+    _link_cli_searches(events)
+    known = {e.id: e for e in visible}
+    returned: Counter = Counter()
+    for c in _conversations(events).values():
+        returned.update(i for i in c["returned"] - c["recorded"] if i in known)
+    for e in events:
+        if e["type"] == "search" and e.get("ok") and not e.get("conv"):
+            returned.update(i for i in e.get("ids") or [] if i in known)
+    rows = []
+    for i, n in returned.most_common():
+        if n < MIN_RETURNS_TO_REVIEW or i not in known:
+            continue
+        e = known[i]
+        rows.append({"id": i, "module": e.module, "entity": e.entity, "returned": n, "title": e.title})
+        if len(rows) >= TOP:
+            break
+    return rows
+
+
 def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
     now = now or time.time()
     since = now - days * 86400
@@ -304,6 +330,7 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
         "seeds": Counter(e.module for e in visible if e.status == "seed").most_common(),
         "compact": [(g["module"], g["entity"], g["count"]) for g in compact.get("groups", [])][:TOP],
         "entity_pairs": [(m, a, b) for m, names in sorted(entities.items()) for a, b in similar_entity_pairs(names)][:TOP],
+        "hot_returns": _hot_returns(events, visible) if enough else [],
     }
 
 
@@ -368,7 +395,15 @@ def render(h: dict) -> str:
             "打开记忆和当前代码对照：仍成立 pmem confirm <id>；代码搬家了用 pmem anchors --rename；不成立写 correction 替代")
     if h["idle_modules"]:
         section(f"统计期内本机没检索过的模块（{len(h['idle_modules'])} 个）", ["、".join(h["idle_modules"][:20])],
-                "可能是没人改这些模块，也可能是路径没登记全导致闸门没提醒；对照 pmem doctor 的覆盖率看")
+                "可能是没人改这些模块，也可能是路径没登记全导致闸门没提醒；对照 pmem doctor 的覆盖率看；"
+                "长期冷、又确定过时的对 Agent 说“按 pmem-consolidate 收口”")
+    section(
+        f"返回 {MIN_RETURNS_TO_REVIEW} 次以上的记忆（值得复查：过时 / 摘要不清 / 归错模块）",
+        [f"[{r['id']}] {r['module']}/{r['entity']} 返回 {r['returned']} 次：{r['title']}"
+         for r in h.get("hot_returns") or []],
+        "打开记忆核对：仍成立 pmem confirm <id>；过时写 correction 或 pmem archive <id>；"
+        "摘要含糊就改写 summary；归错模块 pmem migrate move；更细的“返回却未采用”见 pmem report",
+    )
     section("召回偏低（记忆多、常被检索，但大部分教训从没被返回过）", [render_recall(r) for r in h.get("recall") or []],
             "用 pmem search --module <模块> --entity <议题> 看从没返回的议题：常问却查不到的给记忆补 aliases、"
             "按 pmem-normalize 登记同义词；模块管得太宽就 pmem migrate split <模块> --by entity --to <新模块>=<议题> 拆开；已过时的按清理候选处理")

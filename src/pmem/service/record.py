@@ -31,7 +31,7 @@ ANCHOR_HINT = (
 )
 HINTS_FOOTER = "以上只是提示，已写入；如需修改，带上 draft_id 再写一次即可覆盖。"
 SUMMARY_HINT = ("没填 summary：已按正文第一句生成标题“{title}”。读代码摘要、Wiki 和去重后的检索只显示标题，"
-                "不准确就带 draft_id 补一句 {limit} 字以内、说清结论的 summary。")
+                "不准确就带 draft_id 补一句 {limit} 字以内、可直接复述的结论（Agent 换说法复述时收益报告会漏计采用）。")
 SUMMARY_LONG_HINT = "summary 有 {n} 字，超过建议的 {limit} 字：标题只写一句结论，细节放正文。"
 MAX_VERIFY_CHARS = 300
 MAX_APPLIES_CHARS = 120

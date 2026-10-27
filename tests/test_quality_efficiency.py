@@ -193,6 +193,19 @@ def test_handoff_expires_and_global_search_only_claims_unscoped(tmp_path, monkey
     assert seen.claim_handoff(tmp_path, None) is None
 
 
+def test_handoff_wildcard_claims_any_module_for_variable_cli_search(project):
+    """Shell 里 --module $m 解析不出时登记 *，命令行按真实模块名仍能折叠重复全文。"""
+    cli = MemoryService(project, source="cli")
+    try:
+        write(cli)
+        cache = cli.config.cache_dir
+        seen.note_handoff(cache, "conv-var", [seen.HANDOFF_ANY])
+        assert "content" in cli.search(module="gameplay.Jigsaw")["items"][0]
+        assert cli.search(module="gameplay.Jigsaw")["items"][0].get("seen") is True
+    finally:
+        cli.close()
+
+
 def test_search_event_records_collapsed_ids(svc):
     write(svc)
     svc.search(module="gameplay.Jigsaw", source_conversation="c1")
@@ -308,11 +321,18 @@ def test_shell_pmem_search_registers_handoff(gate_root):
     assert seen.claim_handoff(Config.load(gate_root).cache_dir, "gameplay.Jigsaw") == "c7"
 
 
+def test_shell_variable_module_registers_wildcard_handoff(gate_root):
+    shell = {"conversation_id": "c8", "tool_name": "Shell",
+             "tool_input": {"command": "pmem search --module $m --brief", "cwd": ""}}
+    handle("pre-tool", shell, gate_root)
+    assert seen.claim_handoff(Config.load(gate_root).cache_dir, "gameplay.Jigsaw") == "c8"
+
+
 def test_stop_reminder_asks_for_feature_record_plus_lessons(gate_root):
     handle("edited", {"conversation_id": "c1", "file_path": str(gate_root / "src/Shop/Shop.cs")}, gate_root)
     message = handle("stop", {"conversation_id": "c1", "status": "completed"}, gate_root)["followup_message"]
-    assert message.startswith("[pmem]") and "kind=feature" in message and "被排除的方向" in message
-    assert "无需记录：" in message and "不写“改了哪个方法”" in message
+    assert message.startswith("[pmem]") and "kind=feature" in message and "exclusion" in message
+    assert "【pmem修改】" in message and "无需记录：" in message and "不写“改了哪个方法”" in message
 
 
 # ---- 度量 ----

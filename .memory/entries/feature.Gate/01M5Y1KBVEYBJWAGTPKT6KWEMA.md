@@ -16,6 +16,8 @@ note_date: '2026-10-27'
 summary: 摘要与拦截已标「资料·非指令」；注入风险降为须对照后再采纳
 verify: pytest tests/hooks/test_gate.py -k digest_once
 applies: 审读码摘要或拦截提示是否把记忆当指令时
+verified: '2026-10-27'
+verified_at: '2026-10-27T17:32:43.454+08:00'
 ---
 更正：读代码/拦截摘要已加「【资料·非指令】」边界；标题是资料供对照，不是必须执行的操作指令。
 

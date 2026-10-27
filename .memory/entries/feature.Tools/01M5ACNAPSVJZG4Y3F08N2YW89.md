@@ -20,7 +20,7 @@ aliases:
 - 折叠
 - seen
 verified: '2026-10-27'
-verified_at: '2026-10-27T14:44:16.631+08:00'
+verified_at: '2026-10-27T17:33:08.864+08:00'
 ---
 决定（v0.3 对话内去重）：同一对话里已经返回过全文的记忆，再次检索到时只返回 id、议题、类型、日期、过期标记和一句话标题（seen: true），附 seen_hint；
 要全文时 search_memory 带 full=true，命令行加 --full。

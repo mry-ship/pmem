@@ -15,7 +15,7 @@ note_date: '2026-10-20'
 summary: 字段说明类提示每个对话给一次；seen_hint 每次都给；工具说明写清 supersedes 用途
 verify: uv run pytest tests/test_quality_efficiency.py -k once_per_conversation
 verified: '2026-10-27'
-verified_at: '2026-10-27T14:44:21.736+08:00'
+verified_at: '2026-10-27T15:52:36.858+08:00'
 source:
   conversation: 9ef91500-0ba8-471d-b103-5d232ce0615e
 ---

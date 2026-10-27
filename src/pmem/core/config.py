@@ -24,7 +24,7 @@ DEFAULTS: dict = {
         "skip_markers": ["跳过记忆", "skip-memory"],
         "resume_markers": ["恢复记忆", "resume-memory"],
         "stop_reminder": True,
-        "analysis_reminder": True,
+        "analysis_reminder": False,
         "read_digest": True,
         "question_review": True,
         # 只改了这些文件的模块，结束时不提醒写功能记录（改前的记忆检查照旧）

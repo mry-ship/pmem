@@ -8,12 +8,14 @@ from pathlib import Path
 
 import pytest
 
+from pmem.core import seen
 from pmem.core.config import Config
 from pmem.hooks.gate import cli_args, handle, may_change_unseen, shell_write_targets
 from pmem.hooks.state import SessionState
 from pmem.metrics.events import read_events
 
-CONFIG = "project: {{ name: demo }}\nvcs: none\ngate: {{ mode: {mode} }}\nspec: {{ reminder: false }}\n"
+CONFIG = ("project: {{ name: demo }}\nvcs: none\n"
+          "gate: {{ mode: {mode}, analysis_reminder: true }}\nspec: {{ reminder: false }}\n")
 MODULES = """
 categories: { gameplay: {}, economy: {} }
 modules:
@@ -798,16 +800,104 @@ def _last_stop(root: Path) -> dict:
 def test_consulted_only_conversation_is_reminded_once(make_project):
     root = make_project()
     first = _analysis_turn(root, "拼图奖励为什么会重复发放？")
-    assert "查了 gameplay.Jigsaw 的记忆" in first["followup_message"]
-    assert "不要询问用户" in first["followup_message"]
-    assert "无需记录" not in first["followup_message"]
+    msg = first["followup_message"]
+    assert "gameplay.Jigsaw" in msg
+    assert "排查类对话" in msg
+    assert "exclusion" in msg
+    assert "【pmem修改】" in msg and "无新结论" in msg
+    assert "不要询问用户" in msg
+    assert "无需记录" not in msg
     assert _last_stop(root)["analyzed"] == ["gameplay.Jigsaw"]
     assert _analysis_turn(root, "再看看") == {}
 
 
 def test_consulted_reminder_does_not_need_analysis_wording(make_project):
     root = make_project()
-    assert "gameplay.Jigsaw" in _analysis_turn(root, "给拼图加一个新关卡")["followup_message"]
+    msg = _analysis_turn(root, "给拼图加一个新关卡")["followup_message"]
+    assert "查了 gameplay.Jigsaw 的记忆" in msg
+    assert "exclusion" in msg
+
+
+def test_analysis_gap_reminded_even_if_other_module_written(make_project):
+    """排查时查了 A，却只给 B 写了记忆：结束仍要催 A 落防错类结论。"""
+    root = make_project()
+    handle("prompt", {"conversation_id": "c1", "prompt": "排查一下拼图奖励为什么重复发放？"}, root)
+    search_done(root)
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    after = {"conversation_id": "c1", "tool_name": "record_memory",
+             "result_json": json.dumps({"ok": True, "id": "01JA7K3M2X9F4Q8W6ZB1C2D3E9",
+                                        "module": "economy.Shop", "kind": "feature"})}
+    handle("after-mcp", after, root)
+    result = handle("stop", {"conversation_id": "c1", "status": "completed"}, root)
+    msg = result["followup_message"]
+    assert "排查类对话" in msg and "gameplay.Jigsaw" in msg
+    assert "exclusion" in msg
+    assert _last_stop(root)["analyzed"] == ["gameplay.Jigsaw"]
+    assert "gameplay.Jigsaw" in (_last_stop(root).get("nudged") or [])
+
+
+def test_lookup_nudge_does_not_block_later_feature_reminder(make_project):
+    """查阅催写记在另一本账上：同一对话后来改了这个模块，仍要催功能记录。"""
+    root = make_project()
+    first = _analysis_turn(root, "排查一下拼图奖励为什么重复发放？")
+    assert "排查类对话" in first["followup_message"]
+    state = SessionState(Config.load(root).cache_dir, "c1").data
+    assert state["consult_nudged"] == ["gameplay.Jigsaw"]
+    assert "gameplay.Jigsaw" not in state["nudged"]
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Jigsaw/Board.cs")}, root)
+    second = handle("stop", {"conversation_id": "c1", "status": "completed"}, root)["followup_message"]
+    assert "还没有写研发记忆" in second and "gameplay.Jigsaw" in second
+    assert "排查类对话" not in second
+
+
+def test_named_no_conclusion_leaves_other_modules(make_project, tmp_path):
+    root = make_project()
+    handle("prompt", {"conversation_id": "c1", "prompt": "排查一下拼图奖励和商店价格"}, root)
+    search_done(root, module="gameplay.Jigsaw")
+    search_done(root, module="economy.Shop")
+    reply = "【pmem修改】gameplay.Jigsaw 已核对，无新结论"
+    message = handle("stop", stop_payload(reply_transcript(tmp_path, reply)), root)["followup_message"]
+    assert "economy.Shop" in message
+    assert "gameplay.Jigsaw" not in message
+
+
+def test_query_line_title_does_not_count_as_no_conclusion(make_project, tmp_path):
+    root = make_project()
+    handle("prompt", {"conversation_id": "c1", "prompt": "排查一下拼图奖励为什么重复发放？"}, root)
+    search_done(root)
+    reply = ("【pmem查询】gameplay.Jigsaw，用到「无新结论分段逻辑」\n\n"
+             "【pmem修改】economy.Shop 已写功能记录「x」")
+    message = handle("stop", stop_payload(reply_transcript(tmp_path, reply)), root).get("followup_message", "")
+    assert "gameplay.Jigsaw" in message
+
+
+def test_modify_line_title_does_not_count_as_no_conclusion(make_project, tmp_path):
+    root = make_project()
+    handle("prompt", {"conversation_id": "c1", "prompt": "排查一下拼图奖励为什么重复发放？"}, root)
+    search_done(root)
+    reply = "【pmem修改】feature.Gate 已写功能记录「无新结论分段逻辑」"
+    message = handle("stop", stop_payload(reply_transcript(tmp_path, reply)), root).get("followup_message", "")
+    assert "gameplay.Jigsaw" in message
+
+
+def test_global_no_conclusion_wins_even_after_named_segment(make_project, tmp_path):
+    root = make_project()
+    handle("prompt", {"conversation_id": "c1", "prompt": "排查一下拼图奖励和商店价格"}, root)
+    search_done(root, module="gameplay.Jigsaw")
+    search_done(root, module="economy.Shop")
+    reply = "【pmem修改】gameplay.Jigsaw 已核对，无新结论；已核对，无新结论"
+    assert handle("stop", stop_payload(reply_transcript(tmp_path, reply)), root) == {}
+
+
+def test_unnamed_no_conclusion_clears_lookups_but_not_feature_reminder(make_project, tmp_path):
+    root = make_project()
+    handle("prompt", {"conversation_id": "c1", "prompt": "排查一下拼图奖励为什么重复发放？"}, root)
+    search_done(root)
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    reply = "【pmem修改】已核对，无新结论"
+    message = handle("stop", stop_payload(reply_transcript(tmp_path, reply)), root)["followup_message"]
+    assert "排查类对话" not in message and "gameplay.Jigsaw" not in message
+    assert "economy.Shop" in message and "还没有写研发记忆" in message
 
 
 def test_lookups_during_coding_are_not_reminded(make_project):
@@ -823,9 +913,25 @@ def test_lookups_during_coding_are_not_reminded(make_project):
 def test_consulted_reminder_can_be_disabled(make_project):
     root = make_project()
     config = root / ".memory" / "config.yaml"
-    text = config.read_text(encoding="utf-8").replace("mode: warn", "mode: warn, analysis_reminder: false")
+    text = config.read_text(encoding="utf-8").replace("analysis_reminder: true", "analysis_reminder: false")
     config.write_text(text, encoding="utf-8")
     assert _analysis_turn(root, "Why does the reward get granted twice?") == {}
+    assert _last_stop(root)["analyzed"] == ["gameplay.Jigsaw"]
+
+
+def test_analysis_reminder_defaults_off(tmp_path, monkeypatch):
+    """产品缺省关：config 未写 analysis_reminder 时不发查阅/排查结束催写。"""
+    monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
+    root = tmp_path / "proj"
+    (root / ".memory").mkdir(parents=True)
+    (root / ".memory" / "config.yaml").write_text(
+        "project: { name: demo }\nvcs: none\ngate: { mode: warn }\n", encoding="utf-8")
+    (root / ".memory" / "modules.yaml").write_text(MODULES, encoding="utf-8")
+    folder = root / ".memory" / "entries" / "gameplay.Jigsaw"
+    folder.mkdir(parents=True)
+    (folder / "01JA7K3M2X9F4Q8W6ZB1C2D3E4.md").write_text(
+        ENTRY.format(id="01JA7K3M2X9F4Q8W6ZB1C2D3E4", module="gameplay.Jigsaw"), encoding="utf-8")
+    assert _analysis_turn(root, "拼图奖励为什么会重复发放？") == {}
     assert _last_stop(root)["analyzed"] == ["gameplay.Jigsaw"]
 
 
@@ -839,6 +945,14 @@ def test_non_analysis_or_recorded_conversations_are_not_counted(make_project):
               record_output("gameplay.Jigsaw"), conv="rec")
     handle("stop", {"conversation_id": "rec", "status": "completed"}, root)
     assert "analyzed" not in _last_stop(root)
+
+
+def test_shell_graph_registers_handoff(make_project):
+    root = make_project()
+    shell = {"conversation_id": "c9", "tool_name": "Shell",
+             "tool_input": {"command": "pmem graph --module gameplay.Jigsaw", "cwd": ""}}
+    handle("pre-tool", shell, root)
+    assert seen.claim_handoff(Config.load(root).cache_dir, "gameplay.Jigsaw") == "c9"
 
 
 def test_cli_search_in_shell_counts_as_searched(make_project):

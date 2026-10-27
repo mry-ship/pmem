@@ -20,6 +20,8 @@ aliases:
 - TileMatch 报告
 - 近30天列
 - pmem report 主页
+verified: '2026-10-27'
+verified_at: '2026-10-27T15:55:04.467+08:00'
 source:
   conversation: 4068463b-7fe6-4bd0-9bad-7c80998fc889
 ---

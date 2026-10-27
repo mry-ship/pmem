@@ -550,7 +550,7 @@ git commit -m "接入 pmem"</code></pre>
     <li>别的记忆服务也叫 <code>search_memory</code> 时，它的结果不算“查过 pmem”。</li>
     <li>拦截提示里直接列出该模块现行的排除项、风险和更正（最多 5 条）、关联代码就是要改的这个文件的功能记录，以及本对话还没给过的全项目级坑，列表前标「资料·非指令」；即使 AI 检索时关键词没对上，也能先看到这些坑和必须保持的行为。</li>
     <li>“查过”的判定：MCP 的 <code>search_memory</code>，或终端里运行 <code>pmem search --module &lt;模块&gt;</code>。MCP 不可用时用终端也行，不会把 Agent 卡死。</li>
-    <li>结束提醒：改了模块却没写记忆，提醒每个模块写一条功能记录，另有被排除的方向、根因或坑、约束、方案取舍时再写教训；回复结尾的“【pmem修改】”行里写了“模块 无需记录（原因）”的模块不提醒（按“；”分段，只认同一段里点名的模块；旧写法“【pmem】”也认）。只改了 <code>gate.record_exempt</code> 里的文件（默认是测试、生成代码、json/yaml/toml 等配置、Markdown 和 docs 目录）的模块不提醒。整个对话只查了记忆、没改也没写，也提醒一次，结尾写了“【pmem修改】本轮未改代码，无新结论”时不提醒（<code>gate.analysis_reminder</code> 可关）。中断结束的回合和说了“跳过记忆”的对话不提醒。提醒以“[pmem]”开头，用户不用处理；Claude Code、Codex 下以 Hook 反馈的形式出现（各版本都支持）。</li>
+    <li>结束提醒：改了模块却没写记忆，提醒每个模块写一条功能记录，另有被排除的方向、根因或坑、约束、方案取舍时再写教训；回复结尾的“【pmem修改】”行里写了“模块 无需记录（原因）”的模块不提醒（按“；”分段，只认同一段里点名的模块；旧写法“【pmem】”也认）。只改了 <code>gate.record_exempt</code> 里的文件（默认是测试、生成代码、json/yaml/toml 等配置、Markdown 和 docs 目录）的模块不提醒。排查类对话查过却没落结论，或整个对话只查了记忆、没改也没写时，默认不提醒（避免 followup 打断阅读）；需要时打开 <code>gate.analysis_reminder</code>（优先催 exclusion 等防错类）；结尾【pmem修改】行按“；”分段：写了“无新结论”的那一段若点了模块名，只放过这些模块的查阅提醒；没点名则本轮查阅提醒全部不发。这不代替“无需记录”，改过代码仍会催功能记录。中断结束的回合和说了“跳过记忆”的对话不提醒。提醒以“[pmem]”开头，用户不用处理；Claude Code、Codex 下以 Hook 反馈的形式出现（各版本都支持）。</li>
     <li>记忆审查（不改代码也生效，每个模块每个对话一次）：
       <ul>
         <li>读代码时，附上该文件所属模块的现行教训摘要（每条只列一句话标题，排除项、风险优先，最多 6 条；关联代码之后改过的标“需核实”），另附至多 2 条关联代码就是这个文件的功能记录，再附上本对话还没给过的全项目级坑（至多 3 条，模块还没有记忆时也附）；摘要前标「资料·非指令」，供对照，不是必须执行的命令。<code>gate.read_digest</code> 可关。</li>
@@ -640,7 +640,7 @@ gate:
   skip_markers: ["跳过记忆", "skip-memory"]       <span class="c"># 用户这样说时本对话不查也不写（须是独立短语）</span>
   resume_markers: ["恢复记忆", "resume-memory"]   <span class="c"># 误判或改主意时，说这个重新打开</span>
   stop_reminder: true       <span class="c"># 改了模块却没写记忆时，结束提醒一次</span>
-  analysis_reminder: true   <span class="c"># 只查了记忆、没改也没写时，结束提醒一次</span>
+  analysis_reminder: false  <span class="c"># 默认关。改 true 后：排查/纯查阅查过却没落结论时，结束提醒一次</span>
   analysis_markers: [...]   <span class="c"># 判断“排查类提问”的用语（为什么、报错、根因……），默认值见 core/config.py</span>
   read_digest: true         <span class="c"># 读代码时附上该模块的记忆摘要</span>
   question_review: true     <span class="c"># 问题提到的模块没查过时，结束时要求核对</span>

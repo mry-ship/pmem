@@ -24,6 +24,8 @@ aliases:
 - 改动日期
 - 旧版文件
 - unversioned
+verified: '2026-10-27'
+verified_at: '2026-10-27T17:32:43.454+08:00'
 ---
 更正（替代 ChangedAfter、FileAt 两条）：版本库适配层查“文件何时改过”和“取旧版文件”的接口改为精确到秒（Unix 时间戳），供过期判定（AnchorChecker）使用。
 原接口 changed_after(paths, 日期) / file_at(rel, 日期) 只到天，导致基准日当天之后的改动全部漏报，已删除。

@@ -94,11 +94,19 @@ class McpCalls:
                     pending[command_key(command)] = calls
                     self.state.data[field] = dict(list(pending.items())[-MAX_PENDING_SNAPSHOTS:])
             self.save()
-        modules = [self.module_from_args(args) for args in cli_args(command, "search")]
-        for module in modules:
-            # 命令行检索拿不到对话 id，先登记，让它按模块认领，好做对话内去重
-            seen.note_handoff(self.config.cache_dir, self.conversation, [module] if module else [])
-        return {m for m in map(self.module_from_args, searches) if m}
+        claimed: set[str] = set()
+        for args in cli_args(command, "search") + cli_args(command, "graph"):
+            module = self.module_from_args(args)
+            if module:
+                # 命令行检索拿不到对话 id，先登记，让它按模块认领，好做对话内去重
+                seen.note_handoff(self.config.cache_dir, self.conversation, [module])
+                claimed.add(module)
+            elif args.get("module") or args.get("path"):
+                # --module $m 这类变量名解析不出：通配交接，避免循环检索整段正文反复占上下文
+                seen.note_handoff(self.config.cache_dir, self.conversation, [seen.HANDOFF_ANY])
+            else:
+                seen.note_handoff(self.config.cache_dir, self.conversation, [])
+        return claimed
 
     def _pop_cli_pending(self, field: str, command: str, calls: list[dict]) -> list[dict] | None:
         pending = self.state.data[field]

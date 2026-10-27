@@ -254,13 +254,19 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
 
   <h3>能省多少</h3>
   <table>
-    <tr><th>指标</th><th>数字</th><th>口径</th></tr>
-    <tr><td>读写 token</td><td><strong>下降 18%</strong></td><td>上一代系统上线前后。pmem 端到端还没测</td></tr>
-    <tr><td>每次改代码的耗时</td><td><strong>下降 36%～44%</strong></td><td>同上。前后对比，不是对照实验。样本：改过代码的对话 122 个对 62 个</td></tr>
-    <tr><td>被用户纠正的比例</td><td><strong>下降 54%～69%</strong></td><td>同上。长对话全程不回退从 27% 到 52%</td></tr>
-    <tr><td>零碎记忆合并</td><td>13 条约 2500 字收成 2 条约 1150 字</td><td>本仓库实测</td></tr>
-    <tr><td>开销是否随记忆变多</td><td>853 条和几十条相近</td><td>只返回前几条，被替代的旧结论不返回</td></tr>
+    <tr><th>指标</th><th>数字</th><th>本仓库近 30 天</th><th>TileMatch 近 14 天</th><th>口径</th></tr>
+    <tr><td>读写 token</td><td><strong>下降 18%</strong></td><td>—</td><td>—</td><td>上一代系统上线前后。pmem 端到端还没测</td></tr>
+    <tr><td>每次改代码的耗时</td><td><strong>下降 36%～44%</strong></td><td>—</td><td>—</td><td>同上。前后对比，不是对照实验。样本：改过代码的对话 122 个对 62 个</td></tr>
+    <tr><td>被用户纠正的比例</td><td><strong>下降 54%～69%</strong></td><td>—</td><td>—</td><td>同上。长对话全程不回退从 27% 到 52%</td></tr>
+    <tr><td>零碎记忆合并</td><td>13 条约 2500 字收成 2 条约 1150 字</td><td>—</td><td>—</td><td>本仓库实测</td></tr>
+    <tr><td>开销是否随记忆变多</td><td>853 条和几十条相近</td><td>—</td><td>—</td><td>只返回前几条，被替代的旧结论不返回</td></tr>
+    <tr><td>检索命中率</td><td>—</td><td><strong>99%</strong>（1038 次里 1023 次）</td><td><strong>99%</strong>（173 次里 172 次）</td><td><code>pmem report</code>，仅本机</td></tr>
+    <tr><td>改前被拦后真去查</td><td>—</td><td><strong>95%</strong>（187 次里 177 次）</td><td><strong>98%</strong>（47 次里 46 次）</td><td>同上</td></tr>
+    <tr><td>功能记录覆盖</td><td>—</td><td><strong>91%</strong>（目标 ≥80%）</td><td><strong>79%</strong>（14 次改码中 11 次有 feature）</td><td>同上</td></tr>
+    <tr><td>结束提醒后真去写</td><td>—</td><td><strong>67%</strong>（39 次里 26 次）</td><td><strong>47%</strong>（19 次里 9 次）</td><td>同上</td></tr>
+    <tr><td>跨人复用</td><td>—</td><td>0</td><td><strong>108</strong> 次</td><td>同上。用到同事写的记忆</td></tr>
   </table>
+  <p class="muted">「数字」列里带下降比例的仍是上一代口径；后两列是现行 pmem 本机使用。TileMatch 为真实业务项目（2026-10-27 报告，窗口 14 天，现行记忆 639 条）。也可用 <code>pmem bench</code> 做对照实验。</p>
 
   <h3>检索有多准</h3>
   <table>

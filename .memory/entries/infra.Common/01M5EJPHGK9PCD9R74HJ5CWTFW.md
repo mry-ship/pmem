@@ -21,8 +21,8 @@ verify: uv run pytest tests/test_cli.py
 aliases:
 - 乱码
 - 命令行参数
-verified: '2026-10-27'
-verified_at: '2026-10-27T14:44:21.736+08:00'
+verified: '2026-10-29'
+verified_at: '2026-10-29T22:58:21.921+08:00'
 ---
 命令行参数、输出与编码约定（现行）：
 1) main.py 只解析参数和分发，逻辑在各 *_cmd.py 或 catalog/metrics 里（migrate move/split/sync 在 catalog，anchors --rename 在 anchors_cmd）；

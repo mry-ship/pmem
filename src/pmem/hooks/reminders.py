@@ -135,6 +135,7 @@ class Reminders:
                 if not self.state.has("consult_nudged", m) and not self._deprecated(m)]
 
     def on_stop(self) -> dict:
+        self._lazy_doctor("stop")
         if self.state is None:
             return {}
         self.state.cleanup_old()

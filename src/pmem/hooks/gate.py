@@ -60,6 +60,7 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
     # 事件
 
     def on_prompt(self) -> dict:
+        self._lazy_doctor("prompt")
         text = str(self.payload.get("prompt") or "")
         markers = self.config.get("gate.skip_markers") or []
         skip_marker = next((str(m) for m in markers if asks_to_skip(text, str(m))), None)
@@ -90,6 +91,7 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
 
 
     def on_pre_tool(self) -> dict:
+        self._lazy_doctor("pre-tool")
         name = str(self.payload.get("tool_name") or "")
         args = tool_input(self.payload)
         if any(t in name for t in PMEM_TOOLS) and foreign_tool(self.payload):
@@ -145,6 +147,7 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
             self.save()
         if rel is not None:
             self.log("edit", module=module, file=rel)
+            self._lazy_doctor("edited")
             if module is None and self._unregistered_code(rel):
                 self._autosync("edit", rel.rsplit("/", 1)[0] if "/" in rel else "")
 
@@ -183,13 +186,24 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
             started = autosync.spawn(self.root, self.config.cache_dir, reason)
             self.log("autosync_spawn", reason=reason, ok=started)
 
+    def _lazy_doctor(self, event: str) -> str | None:
+        try:
+            from pmem.cli.doctor_cmd import maybe_lazy_doctor_on_hook
+            tip = maybe_lazy_doctor_on_hook(self.root, event, self.config.cache_dir)
+        except Exception:  # noqa: BLE001
+            return None
+        if tip:
+            self.log("lazy_doctor_tip", event=event)
+        return tip
+
     def on_session(self) -> dict:
         self._autosync("session")
-        return {}
+        tip = self._lazy_doctor("session")
+        return {"additional_context": tip} if tip else {}
 
     def on_post_tool(self) -> dict:
         result = self._post_tool()
-        notices = [self.error_notice()]
+        notices = [self.error_notice(), self._lazy_doctor("post-tool")]
         if self.config.get("sync.auto") != "off":
             notices.append(autosync.take_notice(self.config.cache_dir))
         if any(notices):

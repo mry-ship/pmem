@@ -14,6 +14,7 @@ def _isolated_cache(tmp_path_factory, monkeypatch):
     monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path_factory.mktemp("pmem-cache")))
     # Hook 改到没登记的目录会拉起后台扫描进程；需要时用例自己 delenv
     monkeypatch.setenv("PMEM_NO_AUTOSYNC", "1")
+    monkeypatch.setenv("PMEM_NO_LAZY_DOCTOR", "1")
 
 
 @pytest.fixture

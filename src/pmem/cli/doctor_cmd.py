@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
+import os
 import re
 import shutil
+import subprocess
 import sys
 import time
 from collections import Counter
+from contextlib import redirect_stdout
 from pathlib import Path
 
 from pmem.catalog.coverage import coverage_report
@@ -23,6 +27,14 @@ MAX_LISTED_PAIRS = 10
 RECENT_ERROR_SECONDS = 24 * 3600
 _STAMP = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) ")
 _CODEX_MCP = re.compile(r'^\s*\[\s*mcp_servers\s*\.\s*"?pmem"?\s*\]', re.MULTILINE)
+
+DOCTOR_STATE_FILE = "last_doctor.json"
+DOCTOR_CLAIM_LOCK = "last_doctor.claim"
+DOCTOR_INTERVAL_HOURS = 24.0
+DOCTOR_CLAIM_TTL_SECONDS = 30 * 60
+DOCTOR_SPAWN_EVENTS = frozenset({"session", "prompt", "pre-tool", "post-tool", "edited", "stop"})
+# 只有会把返回值交给 Agent 的事件才消费提示；pre-tool / stop 等会把提示吃掉却不展示。
+DOCTOR_TIP_EVENTS = frozenset({"session", "post-tool"})
 
 
 def _recent_errors(path: Path, now: float | None = None) -> list[str]:
@@ -42,7 +54,24 @@ def _recent_errors(path: Path, now: float | None = None) -> list[str]:
     return recent
 
 
-def run_doctor(root: Path) -> int:
+def run_doctor(root: Path, *, quiet: bool = False, source: str = "cli") -> int:
+    """前台自检打印；quiet 只写本机 last_doctor.json，不改记忆文件。"""
+    if quiet:
+        buf = io.StringIO()
+        try:
+            with redirect_stdout(buf):
+                _run_doctor_body(root, warmup_embed=False)
+            _save_quiet_state(root, buf.getvalue(), source)
+            return 0
+        except Exception:
+            _mark_quiet_failed(root)
+            raise
+        finally:
+            _clear_doctor_claim(root)
+    return _run_doctor_body(root, warmup_embed=True)
+
+
+def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
     problems = warnings = 0
 
     def line(mark: str, text: str) -> None:
@@ -152,23 +181,24 @@ def run_doctor(root: Path) -> int:
             line(OK, f"{label} 已接入（Hooks、MCP 与技能）")
     line(OK if shutil.which("pmem") else BAD, "PATH 中可以找到 pmem 命令" if shutil.which("pmem") else "PATH 中找不到 pmem，Agent 无法启动服务和 Hook")
 
-    backend = config.get("embedding.backend")
-    has_fastembed = importlib.util.find_spec("fastembed") is not None
-    if backend == "none" or (backend == "auto" and not has_fastembed):
-        line(OK, "检索：关键词（安装 pmem[embed] 可启用语义检索）")
-    else:
-        from pmem.core.config import user_cache_base
-        from pmem.index.embedder import make_embedder
+    if warmup_embed:
+        backend = config.get("embedding.backend")
+        has_fastembed = importlib.util.find_spec("fastembed") is not None
+        if backend == "none" or (backend == "auto" and not has_fastembed):
+            line(OK, "检索：关键词（安装 pmem[embed] 可启用语义检索）")
+        else:
+            from pmem.core.config import user_cache_base
+            from pmem.index.embedder import make_embedder
 
-        print("  … 准备语义模型（首次会下载约 90 MB）", flush=True)
-        embedder, problem = make_embedder(config.get("embedding") or {}, user_cache_base() / "models")
-        try:
-            if embedder is None:
-                raise RuntimeError(problem)
-            embedder.embed(["预热"])
-            line(OK, f"检索：关键词 + 语义（{embedder.id}）")
-        except Exception as exc:  # noqa: BLE001
-            line(WARN, f"语义模型不可用，将只用关键词检索：{exc}")
+            print("  … 准备语义模型（首次会下载约 90 MB）", flush=True)
+            embedder, problem = make_embedder(config.get("embedding") or {}, user_cache_base() / "models")
+            try:
+                if embedder is None:
+                    raise RuntimeError(problem)
+                embedder.embed(["预热"])
+                line(OK, f"检索：关键词 + 语义（{embedder.id}）")
+            except Exception as exc:  # noqa: BLE001
+                line(WARN, f"语义模型不可用，将只用关键词检索：{exc}")
 
     errors = config.cache_dir / "hook-errors.log"
     recent_errors = _recent_errors(errors) if errors.exists() else []
@@ -215,3 +245,199 @@ def _load(path: Path) -> dict:
         return json.loads(path.read_text(encoding="utf-8-sig")) if path.exists() else {}
     except json.JSONDecodeError:
         return {}
+
+
+def _doctor_cache_dir(root: Path) -> Path | None:
+    try:
+        return Config.load(root).cache_dir
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def doctor_state_path(cache_dir: Path) -> Path:
+    return cache_dir / DOCTOR_STATE_FILE
+
+
+def doctor_claim_path(cache_dir: Path) -> Path:
+    return cache_dir / DOCTOR_CLAIM_LOCK
+
+
+def load_doctor_state(cache_dir: Path) -> dict:
+    path = doctor_state_path(cache_dir)
+    if not path.is_file():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        return raw if isinstance(raw, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_doctor_state(cache_dir: Path, state: dict) -> None:
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    tmp = cache_dir / f"{DOCTOR_STATE_FILE}.{os.getpid()}.tmp"
+    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, cache_dir / DOCTOR_STATE_FILE)
+
+
+def _clear_doctor_claim(root: Path, cache_dir: Path | None = None) -> None:
+    cache_dir = cache_dir or _doctor_cache_dir(root)
+    if cache_dir is None:
+        return
+    try:
+        doctor_claim_path(cache_dir).unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def is_doctor_due(cache_dir: Path, *, interval_hours: float = DOCTOR_INTERVAL_HOURS, now: float | None = None) -> bool:
+    last = load_doctor_state(cache_dir).get("last_run")
+    if last is None:
+        return True
+    try:
+        return (now or time.time()) - float(last) >= interval_hours * 3600
+    except (TypeError, ValueError):
+        return True
+
+
+def try_claim_lazy_doctor(
+    cache_dir: Path,
+    *,
+    interval_hours: float = DOCTOR_INTERVAL_HOURS,
+    claim_ttl: float = DOCTOR_CLAIM_TTL_SECONDS,
+    now: float | None = None,
+) -> bool:
+    """抢后台巡检槽。成功跑完才写 last_run，崩溃不烧掉整个 24 小时窗口。"""
+    now = now or time.time()
+    if not is_doctor_due(cache_dir, interval_hours=interval_hours, now=now):
+        return False
+    lock = doctor_claim_path(cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    if lock.is_file():
+        age = max(0.0, now - lock.stat().st_mtime)
+        if age < claim_ttl:
+            return False
+        lock.unlink(missing_ok=True)
+    try:
+        fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        try:
+            os.write(fd, str(int(now)).encode("ascii"))
+        finally:
+            os.close(fd)
+    except OSError:
+        return False
+    state = load_doctor_state(cache_dir)
+    state["claimed_at"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now))
+    state["status"] = "running"
+    save_doctor_state(cache_dir, state)
+    return True
+
+
+def _signals_from_output(text: str) -> list[str]:
+    signals = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith(BAD) or line.startswith(WARN):
+            signals.append(line[1:].strip())
+    return signals
+
+
+def _save_quiet_state(root: Path, output: str, source: str) -> None:
+    cache_dir = _doctor_cache_dir(root)
+    if cache_dir is None:
+        return
+    signals = _signals_from_output(output)
+    needs = bool(signals)
+    tip = ""
+    if needs:
+        tip = "🩺 记忆医生：" + " · ".join(signals[:4]) + "（可 pmem doctor）"
+    state = load_doctor_state(cache_dir)
+    now = time.time()
+    state.update({
+        "last_run": now,
+        "last_run_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)),
+        "claimed_at": "",
+        "status": "ok",
+        "source": source,
+        "needs_attention": needs,
+        "tip_pending": needs,
+        "tip_line": tip,
+        "signals": signals[:12],
+        "inspect_only": True,
+    })
+    save_doctor_state(cache_dir, state)
+
+
+def _mark_quiet_failed(root: Path) -> None:
+    cache_dir = _doctor_cache_dir(root)
+    if cache_dir is None:
+        return
+    state = load_doctor_state(cache_dir)
+    state["claimed_at"] = ""
+    state["status"] = "quiet_failed"
+    save_doctor_state(cache_dir, state)
+
+
+def spawn_lazy_doctor(root: Path, cache_dir: Path, *, source: str = "hook") -> bool:
+    """后台 `pmem doctor --quiet`。调用方须先 try_claim_lazy_doctor。"""
+    code = "import sys; from pmem.cli.main import main; sys.exit(main(sys.argv[1:]))"
+    cmd = [sys.executable, "-c", code, "doctor", "--quiet", "--source", source, "--root", str(root)]
+    kwargs: dict = {
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "cwd": str(root),
+        "close_fds": True,
+    }
+    try:
+        if sys.platform == "win32":
+            flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+            try:
+                subprocess.Popen(cmd, creationflags=flags | subprocess.CREATE_BREAKAWAY_FROM_JOB, **kwargs)
+            except OSError:
+                subprocess.Popen(cmd, creationflags=flags, **kwargs)
+        else:
+            subprocess.Popen(cmd, start_new_session=True, **kwargs)
+        return True
+    except OSError:
+        state = load_doctor_state(cache_dir)
+        state["claimed_at"] = ""
+        state["status"] = "spawn_failed"
+        save_doctor_state(cache_dir, state)
+        _clear_doctor_claim(root, cache_dir)
+        return False
+
+
+def consume_doctor_tip(cache_dir: Path, *, now: float | None = None) -> str | None:
+    """高信号提示每天最多一句，不把完整体检塞进 Hook。"""
+    state = load_doctor_state(cache_dir)
+    if not state.get("tip_pending") or not state.get("needs_attention"):
+        return None
+    tip = str(state.get("tip_line") or "").strip()
+    if not tip:
+        state["tip_pending"] = False
+        save_doctor_state(cache_dir, state)
+        return None
+    day = time.strftime("%Y%m%d", time.localtime(now or time.time()))
+    if state.get("tip_consumed_day") == day:
+        state["tip_pending"] = False
+        save_doctor_state(cache_dir, state)
+        return None
+    state["tip_pending"] = False
+    state["tip_consumed_day"] = day
+    save_doctor_state(cache_dir, state)
+    return tip
+
+
+def maybe_lazy_doctor_on_hook(root: Path, event: str, cache_dir: Path | None = None) -> str | None:
+    """到期则后台巡检；只在会展示给 Agent 的事件上取出高信号提示。"""
+    if os.environ.get("PMEM_NO_LAZY_DOCTOR"):
+        return None
+    cache_dir = cache_dir or _doctor_cache_dir(root)
+    if cache_dir is None:
+        return None
+    if event in DOCTOR_SPAWN_EVENTS and try_claim_lazy_doctor(cache_dir):
+        spawn_lazy_doctor(root, cache_dir, source=f"hook:{event}")
+    if event not in DOCTOR_TIP_EVENTS:
+        return None
+    return consume_doctor_tip(cache_dir)

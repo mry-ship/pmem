@@ -22,8 +22,8 @@ author: 1002378395@qq.com
 note_date: '2026-10-21'
 summary: 命令行功能：record/search 写读功能记录、map 与 compact --undo、统一报错退出码 2
 applies: pmem 命令行（终端调用）
-verified: '2026-10-27'
-verified_at: '2026-10-27T14:44:21.736+08:00'
+verified: '2026-10-29'
+verified_at: '2026-10-29T22:58:21.921+08:00'
 ---
 需求来源：用户 2026-10-19～20 陆续要求命令行能写功能记录、v0.3.2 记忆图和合并回滚（Issue #13）、修复 search.limit 不生效，以及两轮复查后的统一报错。
 必须保持：

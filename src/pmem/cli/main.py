@@ -42,6 +42,8 @@ def build_parser():
 
     p = sub.add_parser("doctor", help="自检：配置、模块覆盖率、Cursor 接入状态")
     p.add_argument("--root", default=".")
+    p.add_argument("--quiet", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--source", default="cli", help=argparse.SUPPRESS)
 
     p = sub.add_parser("serve", help="启动 MCP 服务（由 Cursor 调用；带看门狗，服务崩溃或卡死时自动重启）")
     p.add_argument("--root", default=None)
@@ -349,7 +351,11 @@ def _sync(args) -> int:
 def _doctor(args) -> int:
     from pmem.cli.doctor_cmd import run_doctor
 
-    return run_doctor(_project_root(args.root))
+    return run_doctor(
+        _project_root(args.root),
+        quiet=bool(getattr(args, "quiet", False)),
+        source=str(getattr(args, "source", None) or "cli"),
+    )
 
 
 def _import(args) -> int:

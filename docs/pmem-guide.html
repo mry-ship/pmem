@@ -176,6 +176,7 @@ pmem doctor</code></pre>
     <tr><th>什么时候</th><th>做什么</th></tr>
     <tr><td>日常开发</td><td>什么都不用做；记忆由 AI 自动写；不想被打扰时写“跳过记忆”</td></tr>
     <tr><td>提交代码时</td><td>把 <code>.memory/</code> 新增的记忆一起提交，<code>pmem doctor</code> 会提示还有几条没提交</td></tr>
+    <tr><td>记忆库该体检时</td><td>不必自己跑。接入后约每 24 小时后台自检一次，有问题 AI 会提一行；仍可随时 <code>pmem doctor</code></td></tr>
     <tr><td>新增业务模块</td><td>默认自动：改到新目录或会话开始时后台扫描并登记（<code>sync.auto</code>）；也可手动 <code>pmem sync</code> 预览、<code>--apply</code> 写入（只追加），或直接在 <code>.memory/modules.yaml</code> 里加</td></tr>
     <tr><td>同一议题记忆变多</td><td>对 AI 说“按 pmem-compact 技能合并记忆”</td></tr>
     <tr><td>换个说法搜不到</td><td>对 AI 说“按 pmem-normalize 技能整理同义词”</td></tr>
@@ -508,6 +509,7 @@ git commit -m "接入 pmem"</code></pre>
     <div class="node"><b>4. 结束追问</b>AI 在回复开头写“【pmem检索】模块（要点）”，结尾分行写“【pmem查询】模块，用到「…」”和“【pmem修改】模块 已写功能记录「…」；模块 无需记录（原因）”。只有改了模块却既没写记忆、也没在结尾说明无需记录时，回合结束才追加提醒。不需要你回复。Cursor 会把它显示成一条以“[pmem]”开头的用户消息，由 AI 处理。</div>
   </div>
   <p><b>新目录自动登记</b>（v0.5.1）：AI 改到没登记的代码目录、或会话开始时，Hook 在后台扫描并追加到 <code>modules.yaml</code>，AI 会在回复里告诉你“这次新增了几个模块、几个冷候选”；记得把 <code>.memory/modules.yaml</code> 一起提交。真正写入新模块时，会给还没有规格的模块铺四份空骨架，正文不在这里写。细节见“整理与维护 → 目录同步”。</p>
+  <p><b>记忆医生</b>（v0.6.1）：接入后约每 24 小时后台跑一次 <code>pmem doctor</code>，不阻塞对话，也不改记忆文件。有问题才让 AI 提一行（例如未提交的记忆、覆盖率不足），需要时再手动跑一遍看全文。对外帮助里这条命令仍然只有 <code>--root</code>。</p>
   <p><b>模块规格</b>：<code>.memory/specs/&lt;模块&gt;/</code> 里四份文件记这个模块现在的完整策划、完整美术、完整程序、完整现状，和 Wiki 分开，进版本库。划分模块后对 AI 说“补全模块规格”，或跑 <code>pmem spec complete</code>（<code>fill</code> 是旧名）。这条命令列出缺谁，正文由技能写到九成八。之后某一轮改了这个模块，对 AI 说更新这个模块的规格，它只改变了的段落，已有内容留在原处。规格提醒默认不提示。没有画面的美术文件写「本模块无画面」。</p>
 
   <h3>写记忆的约定</h3>
@@ -589,7 +591,7 @@ git commit -m "接入 pmem"</code></pre>
   <table>
     <tr><th>命令</th><th>用途</th></tr>
     <tr><td><code>pmem init</code></td><td>在项目中接入（生成 <code>.memory/</code> 和各工具配置）</td></tr>
-    <tr><td><code>pmem doctor</code></td><td>自检：配置、模块覆盖率、路径重叠、各工具接入、语义模型、可合并议题、最近 Hook 错误</td></tr>
+    <tr><td><code>pmem doctor</code></td><td>自检：配置、模块覆盖率、路径重叠、各工具接入、语义模型、可合并议题、最近 Hook 错误。接入后约每 24 小时后台巡检一次，有问题才提一行；只检查、不改库</td></tr>
     <tr><td><code>pmem scan</code></td><td>输出目录概览和提交热度，供 Agent 划分模块</td></tr>
     <tr><td><code>pmem search</code></td><td>检索：<code>--path</code> / <code>--module</code> / <code>--entity</code> / <code>--as-of</code>，加关键词；<code>--brief</code> 每条一行（<code>graph</code>、<code>record</code> 同样支持）；同一对话里给过全文的记忆再查到只显示标题，<code>--full</code> 取全文；<code>--id</code> 按 id 取全文</td></tr>
     <tr><td><code>pmem record</code></td><td>写入一条记忆，规则与 MCP 相同；长正文用 <code>--content-file</code>；<code>--alias</code>、<code>--anchor</code>、<code>--supersedes</code> 可跟多个值；<code>--seed</code> 写成种子记忆；<code>--kind feature</code> 写功能记录，<code>--summary</code> 一句话标题，<code>--verify</code> 怎么验证，<code>--applies</code> 适用条件，<code>--scope project</code> 标为全项目都会踩的坑（读任何模块的代码时都会附上）</td></tr>
@@ -859,6 +861,8 @@ pmem reindex</code></pre>
   <p>不会。任何异常都直接放行，错误记在本机日志里；随后 AI 会在回复里提醒你一次“那次没做记忆检查”，用 <code>pmem doctor</code> 看原因。</p>
   <h3>队友没装 pmem 会怎样？</h3>
   <p>不会卡住，但闸门和审查都不生效。新对话开始时 AI 会收到提示，告诉他先安装；<code>pmem doctor</code> 也会检查。项目接入较早、没有 <code>.memory/bin/pmem-hook</code> 的，重新运行一次 <code>pmem init</code>。</p>
+  <h3>记忆医生会自动改记忆吗？</h3>
+  <p>不会。它只检查、不改库。接入后约每 24 小时后台跑一次，有问题才让 AI 提一行；状态写在本机缓存，不进版本库。需要看全文时再手动跑 <code>pmem doctor</code>。</p>
   <h3>多个项目会互相影响吗？</h3>
   <p>不会。每个项目的记忆在各自仓库的 <code>.memory/</code>，本机缓存按“项目名 + 路径哈希”分目录；只有语义模型是共享的。</p>
 </section>

@@ -49,6 +49,7 @@ pmem 把这些结论按**业务模块**沉淀成仓库里的 Markdown 文件。A
 | AI 准备改文件 | 按文件找到所属模块（如 `gameplay.Jigsaw`），把根因、排除过的方向、风险作为资料交给 AI；没查就改会被拦下，直到查过为止 |
 | AI 改完代码 | 为每个改过的模块写一条功能记录，另有教训各写一条；漏记时回合结束提醒补上（确实不用记时说明原因） |
 | 新增了代码目录（v0.5.1） | 后台扫描并追加到 `modules.yaml`，不阻塞对话；AI 转告“这次新增了几个模块” |
+| 记忆库该体检时（v0.6.1） | 后台跑 `pmem doctor`，不阻塞对话、也不改记忆文件；有问题才让 AI 提一行，需要时再手动跑一遍 |
 | 提交代码 | `.memory/` 随代码进版本库，队友拉代码后 AI 就能查到 |
 
 几个设计要点：
@@ -124,7 +125,7 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 
 | 命令 | 用途 |
 |---|---|
-| `pmem doctor` | 没提交的记忆、可以合并的议题、团队版本提示 |
+| `pmem doctor` | 没提交的记忆、可以合并的议题、团队版本提示。接入后约每 24 小时后台巡检一次，有问题才提一行 |
 | `pmem health` | 负责人收口用的健康报告：疑似矛盾、可能过时、零碎记忆、反复查不到的问题、待确认的种子、未登记或重复的模块、召回偏低的模块、漏写功能记录的模块、清理候选（只建议归档，由你确认）。对 AI 说“按 pmem-consolidate 技能整理记忆库”逐节处理 |
 | `pmem report` | 本机收益：命中率、避坑次数、跨人复用、功能记录覆盖率、防错类记忆占比、对话内重复返回率 |
 
@@ -295,6 +296,7 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 - 终端里的写操作靠解析命令识别：重定向、`Set-Content`、`cp`/`mv`、`git checkout/restore/apply`、`python -c`、套一层的 `powershell -Command`/`cmd /c`/`bash -c`、先 `cd` 再写相对路径，以及所运行脚本里的字面路径都能认出。脚本里拼接出来的路径、格式化工具和 `git stash`/`reset` 这类命令事前认不出：执行后比对未提交文件（Git、SVN 都支持），改到没查过的模块时立即提醒补查（只能事后提醒，拦不住）。仓库大到单次比对超过 1 秒时，这项比对暂停 24 小时。
 - 队友没装 pmem 时，闸门和审查都不生效（Hook 起不来，按设置放行，不会卡住）；新对话开始时会提示 Agent 让用户先安装。
 - Hook 自身出错时那次直接放行、不做记忆检查；之后闸门会让 AI 在回复里提醒一次，原因用 `pmem doctor` 查看。
+- 记忆医生只检查、不改库；后台巡检的状态写在本机缓存，不进版本库。
 - 新模块自动登记只追加：手工从 `modules.yaml` 删掉的模块下次会被加回来，不想登记的目录要写进 `ignored`；`modules.yaml` 正文里有注释时退回只提醒。
 - 按函数判断过期只支持 Git；SVN 和找不到函数时按文件判断。
 - Windows PowerShell 5 里把 pmem 输出再接给 `Select-String` 等命令会乱码（它按 GBK 解码），直接看输出或用 `--brief`。
@@ -326,7 +328,7 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 | v0.5（[设计稿](docs/superpowers/specs/2026-10-21-pmem-module-hierarchy-design.md)） | 父子模块与回复格式 | 已完成 |
 | v0.5.1 | 新模块自动登记 | 已完成 |
 | [v0.6](https://github.com/mry-ship/pmem/issues/16)（[设计稿](docs/superpowers/specs/2026-10-23-pmem-module-spec-design.md)） | 模块规格：每个模块一份可拿走重做的当前文档；`pmem spec complete` 写到九成八。规格提醒默认不提示 | 已完成 |
-| v0.6.1 | 检索采用与防错记忆：无关键词速览防错优先、同一对话再查先给未见全文、写过的模块不再催、compact 保留 exclusion/risk/correction | 已完成（当前版本 0.6.1） |
+| v0.6.1 | 检索采用与防错记忆：无关键词速览防错优先、同一对话再查先给未见全文、写过的模块不再催、compact 保留 exclusion/risk/correction。到期后台巡检记忆医生，有问题才提一行 | 已完成（当前版本 0.6.1） |
 | [v0.7](https://github.com/mry-ship/pmem/issues/15)（[设计稿](docs/superpowers/specs/2026-10-21-pmem-typesafe-design.md)） | 类型安全与规则化 | 进行中（2026-10-27 开工；先落地 core/schema 基础校验） |
 
 ## 许可证

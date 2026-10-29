@@ -196,7 +196,7 @@ description: 把同一议题下积累的多条零碎 pmem 记忆合并成一条�
    - 保留原因、证据、排除过的方向和风险；删掉“改了哪个方法”“编译 0 错误”这类版本库已有或无长期价值的信息。
    - 现象写上常用的不同叫法，方便以后搜到。
    - 一条放不下（超过 5000 字）时，按子议题拆成 2～3 条，每条只 `--supersedes` 它覆盖的那几条旧记忆。
-   - 类型：有排除项或风险且是重点时用 exclusion / risk，否则用 conclusion。
+   - 类型：排除过的方向用 exclusion，风险用 risk，推翻旧结论用 correction；旧记忆已是这三类的，合并后保持，不要收成 conclusion。其余用 conclusion 或 decision。
    - 写一句 `--summary`（60 字以内的现状结论）；旧记忆里有验证方法的，合并进 `--verify`。
 4. 执行上一步 `pmem compact` 输出里给出的 `pmem record ... --supersedes <id> ...` 命令写入。旧记忆不会被删除，只是不再出现在检索结果里；关联代码自动继承。
 5. 全部处理完后运行 `pmem doctor` 确认提示消失，并提醒用户提交 `.memory/`。

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pmem.core.entry import RECORD_KINDS, VISIBLE_STATUSES, Entry
+from pmem.core.entry import PITFALL_KINDS, RECORD_KINDS, VISIBLE_STATUSES, Entry
 from pmem.core.ids import ulid_ms
 from pmem.index.anchors import ANCHOR_CACHE, AnchorChecker, anchor_affinity
 from pmem.index.embedder import Embedder
@@ -20,6 +20,8 @@ from pmem.index.tokenize import tokenize
 from pmem.storage.files import FilesStorage
 
 BOOSTED_KINDS = ("exclusion", "correction", "risk")
+# 无关键词/锚点命中的模块速览：非防错类最多占这么多，免得结论占满默认名额
+DUMP_OTHER_MAX = 2
 # 按文件检索时锚点命中的加分。相关度在 0～1 之间：只给路径时它决定顺序，带了 query 时只起辅助作用
 ANCHOR_BONUS = {2: 0.3, 1: 0.1, 0: 0.0}
 # 祖先模块的教训每远一层的降权系数
@@ -334,6 +336,8 @@ class MemoryIndex:
                                           max_per_batch, related)
             own = [t for t in own if t[2].kind not in RECORD_KINDS]
         chosen = _spread_batches(own, limit, max_per_batch, related)
+        if not related:
+            chosen = _dump_pitfalls_first(chosen, limit)
         upper = [t for t in ranked if t[2].id not in own_ids]
         if upper:
             extra = _spread_batches(upper, max(limit, inherit_max), max_per_batch, related)
@@ -382,6 +386,15 @@ def _score(entry: Entry, relevance: float, entity: str | None, today: date, half
         age = 0
     recency = 0.5 ** (age / half_life_days)
     return (relevance + bonus) * (0.7 + 0.3 * recency)
+
+
+def _dump_pitfalls_first(entries: list[Entry], limit: int) -> list[Entry]:
+    """无关键词/锚点命中时：防错类排前；默认名额内非防错最多 DUMP_OTHER_MAX 条。
+    有关键词命中时不要调用：名额内须保持原排序。"""
+    pitfalls = [e for e in entries if e.kind in PITFALL_KINDS]
+    others = [e for e in entries if e.kind not in PITFALL_KINDS]
+    cap = DUMP_OTHER_MAX if limit <= 5 else len(others)
+    return (pitfalls + others[:cap])[:limit]
 
 
 def _merge_by_score(own: list[Entry], inherited: list[Entry], score: dict[str, float]) -> list[Entry]:

@@ -29,7 +29,25 @@ def _segment_plain(segment: str) -> str:
 
 class Reminders:
     def _written(self) -> set[str]:
-        return {key.split("|", 1)[0] for key in self.state.data["written"]} | set(self.state.data["cli_recorded"])
+        modules = {key.split("|", 1)[0] for key in self.state.data["written"]}
+        modules.update(self.state.data["cli_recorded"])
+        modules.update(self._modules_of_recorded_ids())
+        return modules
+
+    def _modules_of_recorded_ids(self) -> set[str]:
+        """written 损坏被重置时，凭本对话已写入的记忆 id 认出模块，避免写过了还催。"""
+        ids = self.state.data.get("recorded") or []
+        folder = self.config.entries_dir
+        if not ids or not folder.is_dir():
+            return set()
+        found: set[str] = set()
+        for eid in ids:
+            if not eid or "/" in str(eid) or "\\" in str(eid):
+                continue
+            path = next(folder.glob(f"*/{eid}.md"), None)
+            if path is not None:
+                found.add(path.parent.name)
+        return found
 
     def _reminders_on(self, setting: str, default: bool | None = None) -> bool:
         return bool(self.config.get(setting, default)) and self.config.get("gate.mode") != "off"

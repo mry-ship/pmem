@@ -10,7 +10,7 @@
 让 AI 编程助手记住项目里踩过的坑、排除过的方向和做过的决定，<br>
 并在下次改代码前自动想起来。
 
-![Version](https://img.shields.io/badge/version-0.6.0-blue)
+![Version](https://img.shields.io/badge/version-0.6.1-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Cursor](https://img.shields.io/badge/Cursor-支持-000000)
@@ -325,7 +325,8 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 | [v0.4](https://github.com/mry-ship/pmem/issues/14) | 治理闭环与团队化 | 已关闭：转正提示和召回审计已实现，团队汇总与中心服务长期搁置 |
 | v0.5（[设计稿](docs/superpowers/specs/2026-10-21-pmem-module-hierarchy-design.md)） | 父子模块与回复格式 | 已完成 |
 | v0.5.1 | 新模块自动登记 | 已完成 |
-| [v0.6](https://github.com/mry-ship/pmem/issues/16)（[设计稿](docs/superpowers/specs/2026-10-23-pmem-module-spec-design.md)） | 模块规格：每个模块一份可拿走重做的当前文档；`pmem spec complete` 写到九成八。规格提醒默认不提示 | 已完成（当前版本 0.6.0） |
+| [v0.6](https://github.com/mry-ship/pmem/issues/16)（[设计稿](docs/superpowers/specs/2026-10-23-pmem-module-spec-design.md)） | 模块规格：每个模块一份可拿走重做的当前文档；`pmem spec complete` 写到九成八。规格提醒默认不提示 | 已完成 |
+| v0.6.1 | 检索采用与防错记忆：无关键词速览防错优先、同一对话再查先给未见全文、写过的模块不再催、compact 保留 exclusion/risk/correction | 已完成（当前版本 0.6.1） |
 | [v0.7](https://github.com/mry-ship/pmem/issues/15)（[设计稿](docs/superpowers/specs/2026-10-21-pmem-typesafe-design.md)） | 类型安全与规则化 | 进行中（2026-10-27 开工；先落地 core/schema 基础校验） |
 
 ## 许可证

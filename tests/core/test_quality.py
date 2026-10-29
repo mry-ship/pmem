@@ -29,6 +29,19 @@ def test_too_long_is_hinted():
     assert any("超过建议" in h for h in hints)
 
 
+def test_exclusion_shaped_conclusion_or_decision_is_hinted():
+    for kind, text in (
+        ("conclusion", "排除：不要按采用率调检索排序，每人结果会不同。"),
+        ("decision", "不要用时间排序，相关度低的老结论会被挤掉。"),
+        ("conclusion", "决定：排除按相关度阈值过滤，真实分数会重叠。"),
+    ):
+        hints = content_hints(text, 600, kind)
+        assert any("exclusion" in h for h in hints), (kind, text, hints)
+    assert content_hints("根因：领取按钮没有防连点，断线重连时会调用两次。", 600, "conclusion") == []
+    assert not any("exclusion" in h for h in content_hints("排除：客户端去重无效。", 600, "exclusion"))
+    assert not any("exclusion" in h for h in content_hints("别人改了配置表字段名，对账对不上。", 600, "conclusion"))
+
+
 def test_known_or_empty_entity_has_no_hint():
     assert entity_hint("Reward", ["reward", "Config"]) is None
     assert entity_hint("Reward", []) is None

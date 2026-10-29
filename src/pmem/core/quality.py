@@ -28,6 +28,8 @@ _REQUIREMENT = re.compile(
     r"|require|must|should|expect"
 )
 _LABEL_PREFIX = re.compile(r"^\s*(?:决定|结论)(?:\s*[（(][^）)]{0,40}[）)])?\s*[：:]\s*")
+# 正文开头像在说“排除/不要做某事”，却写成了普通结论或决定
+_PITFALL_HEAD = re.compile(r"^(?:排除项?|不要|别(?:再|去|用)|禁止)")
 
 
 def content_hints(content: str, recommend_max: int, kind: str | None = None) -> list[str]:
@@ -46,6 +48,8 @@ def content_hints(content: str, recommend_max: int, kind: str | None = None) -> 
         hints.append("没看到原因、结论或风险：下一个人最需要的是“为什么”和“别怎么做”。")
     elif kind == "decision" and not _WHY.search(body):
         hints.append("这条决定只写了怎么做：做法看代码就知道，记忆要写为什么这样选、排除了哪些做法、代价或风险是什么。")
+    if kind in ("conclusion", "decision") and _PITFALL_HEAD.match(body):
+        hints.append("正文开头像排除项：kind 请改用 exclusion，否则合并和统计会把防错记成普通结论。")
     if len(text) > recommend_max:
         hints.append(f"正文 {len(text)} 字，超过建议的 {recommend_max} 字：只留下一个人最需要的结论，细节放进文档或提交说明。")
     return hints

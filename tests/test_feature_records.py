@@ -294,6 +294,8 @@ def test_cli_accepts_feature_kind_applies_and_ids():
 def test_rule_and_compact_skill_describe_two_layers():
     assert "功能记录（改了模块就写）" in RULE_BODY and "search_memory(ids=[...])" in RULE_BODY
     assert "适用条件不同的记忆不合并" in COMPACT_SKILL
+    assert "不要收成 conclusion" in COMPACT_SKILL
+    assert "否则用 conclusion" not in COMPACT_SKILL
 
 
 def test_trimmed_rule_keeps_every_instruction_that_changes_behaviour():

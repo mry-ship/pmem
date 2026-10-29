@@ -155,6 +155,37 @@ def test_exclusion_gets_bonus(storage, tmp_path):
     assert ids(result) == [excl.id, plain.id]
 
 
+def test_empty_query_prefers_pitfalls_and_caps_other_lessons(storage, tmp_path):
+    """无关键词命中的模块速览：防错类排前，默认名额内结论最多占 2 条。"""
+    excl = add(storage, "不要按采用率调检索排序，每人结果会不同", kind="exclusion",
+               entity="Ranking", source_conversation="c-ex")
+    conclusions = [
+        add(storage, f"模块说明结论 {i}", entity=f"Note{i}", kind="conclusion",
+            source_conversation=f"c-{i}")
+        for i in range(6)
+    ]
+    result = make_index(storage, tmp_path).search(module="gameplay.Jigsaw", today=TODAY, limit=5)
+    got = ids(result)
+    assert got[0] == excl.id
+    assert len(got) == 3
+    assert set(got[1:]).issubset({e.id for e in conclusions})
+
+
+def test_keyword_query_keeps_in_quota_order(storage, tmp_path):
+    """有关键词命中时名额内保持原排序，不能把无关防错挤到命中前面。"""
+    hit = add(storage, "奖励弹窗的关闭逻辑", kind="conclusion", entity="Popup")
+    add(storage, "不要用时间排序", kind="exclusion", entity="Ranking", source_conversation="other")
+    result = make_index(storage, tmp_path).search(module="gameplay.Jigsaw", query="奖励弹窗", today=TODAY)
+    assert ids(result)[0] == hit.id
+
+
+def test_empty_query_high_limit_does_not_cap_other_lessons(storage, tmp_path):
+    items = [add(storage, f"模块说明 {i}", entity=f"Note{i}", source_conversation=f"c-{i}") for i in range(6)]
+    result = make_index(storage, tmp_path).search(module="gameplay.Jigsaw", today=TODAY, limit=10, max_per_batch=10)
+    assert len(result.items) == 6
+    assert set(ids(result)) == {e.id for e in items}
+
+
 def test_keyword_only_when_no_embedder(storage, tmp_path):
     target = add(storage, "奖励重复发放的根因是领取按钮没有防连点")
     add(storage, "拼图关卡加载慢，原因是图集未压缩", entity="Loading")

@@ -140,6 +140,35 @@ def test_second_search_in_same_conversation_returns_titles_only(svc):
     assert "content" not in row and "seen_hint" in second
 
 
+def test_path_only_second_search_does_not_undo_dump_cap(svc, project):
+    """只带 path、没有锚点命中时按模块速览截结论条数；再查不能靠扩页把结论填满。"""
+    (project / "src" / "Jigsaw").mkdir(parents=True, exist_ok=True)
+    (project / "src" / "Jigsaw" / "Board.cs").write_text("class Board {}", encoding="utf-8")
+    for i in range(6):
+        write(svc, entity=f"Note{i}", content=CONTENT + f"议题{i}。")
+    first = svc.search(path="src/Jigsaw/Board.cs", source_conversation="c1", limit=5)
+    assert len(first["items"]) == 2
+    second = svc.search(path="src/Jigsaw/Board.cs", source_conversation="c1", limit=5)
+    assert len(second["items"]) == 2
+    assert all(row.get("seen") for row in second["items"])
+
+
+def test_second_search_fills_limit_with_unseen_before_collapsed_titles(svc):
+    """已返回过全文的标题不能占满名额，同一对话再查应先给出还没看过的记忆。"""
+    made = [write(svc, entity=f"Note{i}", content=CONTENT + f"议题{i}。")["id"] for i in range(6)]
+    first = svc.search(module="gameplay.Jigsaw", query="奖励", source_conversation="c1", limit=5)
+    assert len(first["items"]) == 5
+    shown = {row["id"] for row in first["items"]}
+    second = svc.search(module="gameplay.Jigsaw", query="奖励", source_conversation="c1", limit=5)
+    unseen = [row for row in second["items"] if not row.get("seen")]
+    collapsed = [row for row in second["items"] if row.get("seen")]
+    assert unseen and all(row["id"] not in shown for row in unseen)
+    assert {row["id"] for row in unseen} <= set(made)
+    assert len(second["items"]) == 5
+    assert len(unseen) + len(collapsed) == 5
+    assert all(row["id"] in shown for row in collapsed)
+
+
 def test_field_hints_are_given_once_per_conversation(svc):
     write(svc)
     write(svc, entity="Share", kind="feature", content="用户要求：完成拼图后弹出分享面板。")

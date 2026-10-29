@@ -43,15 +43,24 @@ class SearchOps(ServiceBase):
         ids: list[str] | None = None,
     ) -> dict:
         started = time.perf_counter()
+        keep = None
         try:
             if ids:
                 response, full = self._by_ids(ids), True
             else:
-                response = self._search(module, path, entity, query, limit, valid_date(as_of))
+                fetch_limit = limit
+                # 带关键词、且本对话已给过全文时多取一页，好用未见记忆填满名额。
+                # 无 query 的模块速览（含只带 path、没有锚点命中）不扩：扩了会把结论条数上限冲掉。
+                if source_conversation and not full and query:
+                    shown = seen.load(self.config.cache_dir, source_conversation)
+                    if shown:
+                        keep = max(1, min(int(limit or self.config.get("search.limit")), MAX_LIMIT))
+                        fetch_limit = min(MAX_LIMIT, keep * 2)
+                response = self._search(module, path, entity, query, fetch_limit, valid_date(as_of))
         except ValueError as exc:  # 含 RegistryError
             response = fail(str(exc))
         conversation = source_conversation or self._claim_conversation(response)
-        collapsed = self._collapse_seen(response, conversation, full) if response.get("ok") else []
+        collapsed = self._collapse_seen(response, conversation, full, keep) if response.get("ok") else []
         if response.get("ok"):
             self._hints_once(response, conversation)
         items = response.get("items") or []
@@ -81,24 +90,32 @@ class SearchOps(ServiceBase):
             return None
         return seen.claim_handoff(self.config.cache_dir, response.get("module"))
 
-    def _collapse_seen(self, response: dict, conversation: str | None, full: bool) -> list[str]:
-        """同一对话里已返回过全文的记忆只给标题，其余照常返回并记为已返回；返回被折叠的 id。"""
+    def _collapse_seen(self, response: dict, conversation: str | None, full: bool,
+                       keep: int | None = None) -> list[str]:
+        """同一对话里已返回过全文的记忆只给标题，其余照常返回并记为已返回；返回被折叠的 id。
+        有 keep 时先排未见全文的，再补已见标题，截到 keep 条，避免已见标题占满名额。"""
         items = response.get("items") or []
         if not conversation or not items:
             return []
         cache_dir = self.config.cache_dir
         shown = set() if full else seen.load(cache_dir, conversation)
-        rows, collapsed, fresh = [], [], []
+        unseen, seen_rows, collapsed, fresh = [], [], [], []
         for item in items:
             if item["id"] in shown:
                 row = {k: item[k] for k in _KEPT_ON_COLLAPSE if k in item}
                 row["summary"] = item.get("summary") or auto_summary(item.get("content") or "")
                 row["seen"] = True
-                rows.append(row)
+                seen_rows.append(row)
                 collapsed.append(item["id"])
             else:
-                rows.append(item)
+                unseen.append(item)
                 fresh.append(item["id"])
+        rows = unseen + seen_rows
+        if keep is not None:
+            rows = rows[:keep]
+            kept_ids = {row["id"] for row in rows}
+            collapsed = [i for i in collapsed if i in kept_ids]
+            fresh = [i for i in fresh if i in kept_ids]
         seen.add(cache_dir, conversation, fresh)
         response["items"] = rows
         if collapsed:

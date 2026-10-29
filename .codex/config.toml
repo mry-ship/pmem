@@ -1,0 +1,3 @@
+[mcp_servers.pmem]
+command = "pmem"
+args = ["serve"]

@@ -5,29 +5,32 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pmem hook prompt"
+            "command": "pmem hook prompt --agent codex",
+            "timeout": 30
           }
         ]
       }
     ],
     "PreToolUse": [
       {
-        "matcher": "Write|StrReplace|Edit|MultiEdit|EditNotebook|Delete|Shell|MCP|record_memory|search_memory",
+        "matcher": "^(Bash|apply_patch|mcp__pmem__.*)$",
         "hooks": [
           {
             "type": "command",
-            "command": "pmem hook pre-tool"
+            "command": "pmem hook pre-tool --agent codex",
+            "timeout": 30
           }
         ]
       }
     ],
     "PostToolUse": [
       {
-        "matcher": "Read|Grep|Glob|SemanticSearch|codebase_search|Shell",
+        "matcher": "^(Bash|apply_patch|mcp__pmem__.*)$",
         "hooks": [
           {
             "type": "command",
-            "command": "pmem hook post-tool"
+            "command": "pmem hook post-tool --agent codex",
+            "timeout": 30
           }
         ]
       }
@@ -37,17 +40,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pmem hook compact"
+            "command": "pmem hook compact --agent codex",
+            "timeout": 30
           }
         ]
       }
     ],
-    "SessionStart": [
+    "Stop": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": ".memory/bin/pmem-hook session"
+            "command": "pmem hook stop --agent codex",
+            "timeout": 30
           }
         ]
       }

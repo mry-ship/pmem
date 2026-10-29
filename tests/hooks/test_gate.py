@@ -565,6 +565,30 @@ def test_stop_is_quiet_when_module_was_recorded(make_project):
     assert handle("stop", {"conversation_id": "c1", "status": "completed"}, root) == {}
 
 
+def test_stop_is_quiet_when_recorded_ids_exist_but_written_cleared(make_project):
+    """written 损坏被重置后，仍能凭 recorded 里的记忆 id 认出本对话已写过该模块。"""
+    root = make_project()
+    entry_id = "01JA7K3M2X9F4Q8W6ZB1C2D3E9"
+    folder = root / ".memory" / "entries" / "economy.Shop"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / f"{entry_id}.md").write_text(ENTRY.format(id=entry_id, module="economy.Shop"), "utf-8")
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    state = SessionState(Config.load(root).cache_dir, "c1")
+    state.data["written"] = {}
+    state.add("recorded", entry_id)
+    state.save()
+    assert handle("stop", {"conversation_id": "c1", "status": "completed"}, root) == {}
+
+
+def test_stop_still_reminds_when_recorded_id_has_no_file(make_project):
+    root = make_project()
+    handle("edited", {"conversation_id": "c1", "file_path": str(root / "src/Shop/Shop.cs")}, root)
+    state = SessionState(Config.load(root).cache_dir, "c1")
+    state.add("recorded", "01JA7K3M2X9F4Q8W6ZB1C2D3E9")
+    state.save()
+    assert "economy.Shop" in handle("stop", {"conversation_id": "c1", "status": "completed"}, root)["followup_message"]
+
+
 def reply_transcript(tmp_path: Path, reply: str) -> str:
     path = tmp_path / "reply.jsonl"
     lines = [{"role": "user", "message": {"content": [{"type": "text", "text": "<user_query>改一下商店</user_query>"}]}},

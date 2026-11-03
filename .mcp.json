@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "pmem": {
+      "command": "pmemw",
+      "args": [
+        "serve"
+      ]
+    }
+  }
+}

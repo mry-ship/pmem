@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "pmem": {
-      "command": "pmem",
+      "command": "pmemw",
       "args": [
         "serve",
         "--root",

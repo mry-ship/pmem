@@ -74,7 +74,8 @@ def _write_json(path: Path, data: dict) -> None:
 
 
 def _is_pmem(command) -> bool:
-    return str(command or "").startswith(("pmem hook", HOOK_WRAPPER))
+    text = str(command or "")
+    return text.startswith(("pmem hook", "pmemw hook", HOOK_WRAPPER))
 
 
 def _is_pmem_handler(handler) -> bool:
@@ -155,9 +156,18 @@ def merge_mcp(path: Path, server: dict = MCP_SERVER) -> None:
 
 
 def merge_codex_mcp(path: Path) -> bool:
-    """在 .codex/config.toml 里登记 pmem；已有 [mcp_servers.pmem] 时不改。返回是否写入。"""
+    """在 .codex/config.toml 里登记 pmem；已有段时只把 command 升到无控制台入口。返回是否写入。"""
     text = path.read_text(encoding="utf-8-sig") if path.exists() else ""
     if re.search(r'^\s*\[\s*mcp_servers\s*\.\s*"?pmem"?\s*\]', text, re.MULTILINE):
+        updated = re.sub(
+            r'(?m)^(\s*\[\s*mcp_servers\s*\.\s*"?pmem"?\s*\][^\[]*?^\s*command\s*=\s*)"pmem"',
+            r'\1"pmemw"',
+            text,
+            count=1,
+        )
+        if updated != text:
+            write_text(path, updated)
+            return True
         return False
     separator = "" if not text or text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
     write_text(path, text + separator + CODEX_MCP_TOML)

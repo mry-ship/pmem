@@ -29,10 +29,11 @@ def test_init_creates_project_files_and_merges_existing_cursor_config(tmp_path, 
     modules = yaml.safe_load((tmp_path / ".memory" / "modules.yaml").read_text(encoding="utf-8"))
     assert "activity" in modules["categories"]
     hooks = json.loads((cursor / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-    assert [h["command"] for h in hooks["stop"]] == ["my-own-hook", "pmem hook stop"]
+    assert [h["command"] for h in hooks["stop"]] == ["my-own-hook", "pmemw hook stop"]
     assert "preToolUse" in hooks
     servers = json.loads((cursor / "mcp.json").read_text(encoding="utf-8"))["mcpServers"]
     assert set(servers) == {"other", "pmem"}
+    assert servers["pmem"]["command"] == "pmemw"
     assert (cursor / "rules" / "pmem.mdc").exists()
     assert (cursor / "skills" / "pmem-bootstrap" / "SKILL.md").exists()
     assert "pmem compact" in (cursor / "skills" / "pmem-compact" / "SKILL.md").read_text(encoding="utf-8")
@@ -104,20 +105,22 @@ def test_init_wires_claude_and_codex_without_touching_their_other_settings(tmp_p
     settings = json.loads((claude / "settings.json").read_text(encoding="utf-8"))
     assert settings["permissions"] == {"allow": ["Bash(ls)"]}
     stop = [h["command"] for g in settings["hooks"]["Stop"] for h in g["hooks"]]
-    assert stop == ["notify.sh", "pmem hook stop --agent claude"]
+    assert stop == ["notify.sh", "pmemw hook stop --agent claude"]
     assert settings["hooks"]["PreToolUse"][0]["matcher"].startswith("^(Write|Edit")
     assert all("PowerShell" in settings["hooks"][e][0]["matcher"] for e in ("PreToolUse", "PostToolUse"))
     assert all(h["onFailure"] == "continue" for e in ("PreToolUse", "UserPromptSubmit")
                for g in settings["hooks"][e] for h in g["hooks"])
-    assert json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["pmem"]["args"] == ["serve"]
+    mcp = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["pmem"]
+    assert mcp["command"] == "pmemw" and mcp["args"] == ["serve"]
     assert (claude / "skills" / "pmem-normalize" / "SKILL.md").exists()
     consolidate = (claude / "skills" / "pmem-consolidate" / "SKILL.md").read_text(encoding="utf-8")
     assert consolidate.startswith("---\nname: pmem-consolidate") and "pmem migrate split" in consolidate
 
     toml = (codex / "config.toml").read_text(encoding="utf-8")
     assert toml.startswith('model = "gpt-5"\n') and toml.count("[mcp_servers.pmem]") == 1
+    assert 'command = "pmemw"' in toml
     codex_hooks = json.loads((codex / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-    assert [h["command"] for g in codex_hooks["PreToolUse"] for h in g["hooks"]] == ["pmem hook pre-tool --agent codex"]
+    assert [h["command"] for g in codex_hooks["PreToolUse"] for h in g["hooks"]] == ["pmemw hook pre-tool --agent codex"]
     assert "onFailure" not in codex_hooks["PreToolUse"][0]["hooks"][0]
     assert (tmp_path / ".agents" / "skills" / "pmem-consolidate" / "SKILL.md").exists()
     assert (tmp_path / "AGENTS.md").read_text(encoding="utf-8").count("<!-- pmem:end -->") == 1

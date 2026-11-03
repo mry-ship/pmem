@@ -68,6 +68,8 @@ _GIT_READ_ONLY = {"status", "log", "diff", "show", "blame", "branch", "rev-parse
 _SVN_READ_ONLY = {"status", "st", "stat", "log", "diff", "di", "info", "cat", "list", "ls", "blame", "praise",
                   "annotate", "ann", "propget", "pg", "proplist", "pl", "help", "?", "h", "--version"}
 _PMEM_READ_ONLY = {"search", "graph", "list", "terms", "doctor", "report", "compact", "scan", "--help", "-h"}
+# pmemw 是 Hook/MCP 用的无控制台入口，终端里等价于 pmem
+_PMEM_CLI = {"pmem", "pmemw"}
 # 只改变后面命令运行方式的前缀（sudo rm x 真正执行的是 rm），值为会吞掉下一个参数的选项
 _PREFIXES = {
     "sudo": {"-u", "-g", "-p", "-C", "-D", "-U", "-h", "-r", "-t"}, "doas": {"-u", "-C"},
@@ -598,8 +600,8 @@ def _changes_unseen(segment: str, piped: bool) -> bool:
     if not tokens or not tokens[0]:
         return False
     names = [_program(t) for t in tokens]
-    if names[0] in _LAUNCHERS and "pmem" in names:
-        tokens = tokens[names.index("pmem"):]
+    if names[0] in _LAUNCHERS and any(n in _PMEM_CLI for n in names):
+        tokens = tokens[next(i for i, n in enumerate(names) if n in _PMEM_CLI):]
     head, rest = _program(tokens[0]), tokens[1:]
     if head == "git":
         rest = _git_global(rest)[1]
@@ -614,7 +616,7 @@ def _changes_unseen(segment: str, piped: bool) -> bool:
     if head in ("sort", "git") and _output_option(rest, short="-o" if head == "sort" else None):
         # 目标已由 scan 认出，但只读白名单会跳过它；按写命令处理
         return False
-    if head in _READ_ONLY or (head == "pmem" and sub in _PMEM_READ_ONLY):
+    if head in _READ_ONLY or (head in _PMEM_CLI and sub in _PMEM_READ_ONLY):
         return False
     if head == "git" and (sub in _GIT_READ_ONLY or (sub in ("checkout", "restore") and "--" in rest)):
         return False
@@ -660,7 +662,7 @@ def cli_args(command: str, subcommand: str) -> list[dict]:
             names = [_program(t) for t in tokens]
             start = next(
                 (i + 2 for i in range(len(tokens) - 1)
-                 if names[i] == "pmem" and tokens[i + 1] == subcommand and (i == 0 or names[0] in _LAUNCHERS)),
+                 if names[i] in _PMEM_CLI and tokens[i + 1] == subcommand and (i == 0 or names[0] in _LAUNCHERS)),
                 None,
             )
             if start is None:

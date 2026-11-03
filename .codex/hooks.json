@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pmem hook prompt --agent codex",
+            "command": "pmemw hook prompt --agent codex",
             "timeout": 30
           }
         ]
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pmem hook pre-tool --agent codex",
+            "command": "pmemw hook pre-tool --agent codex",
             "timeout": 30
           }
         ]
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pmem hook post-tool --agent codex",
+            "command": "pmemw hook post-tool --agent codex",
             "timeout": 30
           }
         ]
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pmem hook compact --agent codex",
+            "command": "pmemw hook compact --agent codex",
             "timeout": 30
           }
         ]
@@ -51,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pmem hook stop --agent codex",
+            "command": "pmemw hook stop --agent codex",
             "timeout": 30
           }
         ]

@@ -1,6 +1,9 @@
 #!/bin/sh
 # 由 pmem init 生成，重新运行 pmem init 会覆盖；如需调整请改 .memory/config.yaml
-# Hook 入口：装了 pmem 就交给它；没装时给出提醒，而不是让 Hook 报错后静默放行。
+# Hook 入口：装了 pmemw（或旧版 pmem）就交给它；没装时给出提醒，而不是让 Hook 报错后静默放行。
+if command -v pmemw >/dev/null 2>&1; then
+  exec pmemw hook "$@"
+fi
 if command -v pmem >/dev/null 2>&1; then
   exec pmem hook "$@"
 fi

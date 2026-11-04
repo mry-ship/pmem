@@ -156,12 +156,12 @@ def merge_mcp(path: Path, server: dict = MCP_SERVER) -> None:
 
 
 def merge_codex_mcp(path: Path) -> bool:
-    """在 .codex/config.toml 里登记 pmem；已有段时只把 command 升到无控制台入口。返回是否写入。"""
+    """在 .codex/config.toml 里登记 pmem；已有段若误用 pmemw 则改回 pmem（MCP stdio）。返回是否写入。"""
     text = path.read_text(encoding="utf-8-sig") if path.exists() else ""
     if re.search(r'^\s*\[\s*mcp_servers\s*\.\s*"?pmem"?\s*\]', text, re.MULTILINE):
         updated = re.sub(
-            r'(?m)^(\s*\[\s*mcp_servers\s*\.\s*"?pmem"?\s*\][^\[]*?^\s*command\s*=\s*)"pmem"',
-            r'\1"pmemw"',
+            r'(?m)^(\s*\[\s*mcp_servers\s*\.\s*"?pmem"?\s*\][^\[]*?^\s*command\s*=\s*)"pmemw"',
+            r'\1"pmem"',
             text,
             count=1,
         )

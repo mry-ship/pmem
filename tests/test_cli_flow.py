@@ -33,11 +33,11 @@ def test_init_creates_project_files_and_merges_existing_cursor_config(tmp_path, 
     assert "preToolUse" in hooks
     servers = json.loads((cursor / "mcp.json").read_text(encoding="utf-8"))["mcpServers"]
     assert set(servers) == {"other", "pmem"}
-    assert servers["pmem"]["command"] == "pmemw"
+    assert servers["pmem"]["command"] == "pmem"
     assert (cursor / "rules" / "pmem.mdc").exists()
     assert (cursor / "skills" / "pmem-bootstrap" / "SKILL.md").exists()
     assert "pmem compact" in (cursor / "skills" / "pmem-compact" / "SKILL.md").read_text(encoding="utf-8")
-    assert [h["command"] for h in hooks["sessionStart"]] == [".memory/bin/pmem-hook session"]
+    assert [h["command"] for h in hooks["sessionStart"]] == ["pmemw hook session"]
     assert (tmp_path / ".memory" / "bin" / "pmem-hook").exists()
     assert b"\r\n" in (tmp_path / ".memory" / "bin" / "pmem-hook.cmd").read_bytes()
     main(["init", "--root", str(tmp_path)])
@@ -111,14 +111,14 @@ def test_init_wires_claude_and_codex_without_touching_their_other_settings(tmp_p
     assert all(h["onFailure"] == "continue" for e in ("PreToolUse", "UserPromptSubmit")
                for g in settings["hooks"][e] for h in g["hooks"])
     mcp = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["pmem"]
-    assert mcp["command"] == "pmemw" and mcp["args"] == ["serve"]
+    assert mcp["command"] == "pmem" and mcp["args"] == ["serve"]
     assert (claude / "skills" / "pmem-normalize" / "SKILL.md").exists()
     consolidate = (claude / "skills" / "pmem-consolidate" / "SKILL.md").read_text(encoding="utf-8")
     assert consolidate.startswith("---\nname: pmem-consolidate") and "pmem migrate split" in consolidate
 
     toml = (codex / "config.toml").read_text(encoding="utf-8")
     assert toml.startswith('model = "gpt-5"\n') and toml.count("[mcp_servers.pmem]") == 1
-    assert 'command = "pmemw"' in toml
+    assert 'command = "pmem"' in toml
     codex_hooks = json.loads((codex / "hooks.json").read_text(encoding="utf-8"))["hooks"]
     assert [h["command"] for g in codex_hooks["PreToolUse"] for h in g["hooks"]] == ["pmemw hook pre-tool --agent codex"]
     assert "onFailure" not in codex_hooks["PreToolUse"][0]["hooks"][0]

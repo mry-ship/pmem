@@ -119,7 +119,7 @@ def arm_options(arm: str, workspace: Path) -> tuple[str, dict]:
     rule = "\n".join(line for line in body.strip().splitlines() if not line.startswith("<!--"))
     servers = {
         "pmem": {
-            "command": "pmemw",
+            "command": "pmem",
             "args": ["serve", "--root", str(workspace)],
             "env": {"PMEM_NO_EVENTS": "1"},
         }

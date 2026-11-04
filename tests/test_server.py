@@ -91,3 +91,10 @@ def test_resolve_root_ignores_unexpanded_variables(project, monkeypatch):  # noq
     monkeypatch.chdir(project / ".memory")
     assert resolve_root("${workspaceFolder}") == project.resolve()
     assert resolve_root(str(project)) == project.resolve()
+
+
+def test_resolve_root_uses_workspace_folder_paths(project, tmp_path, monkeypatch):  # noqa: F811
+    monkeypatch.chdir(tmp_path)  # Temp-like cwd with no .memory
+    monkeypatch.setenv("WORKSPACE_FOLDER_PATHS", str(project))
+    assert resolve_root("${workspaceFolder}") == project.resolve()
+    assert resolve_root(None) == project.resolve()

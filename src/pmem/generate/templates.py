@@ -327,8 +327,10 @@ description: 按 pmem health 健康报告定期收口记忆库：核对过时记
 """
 
 HOOK_WRAPPER = ".memory/bin/pmem-hook"
-# Hook/MCP 用无控制台入口（Windows gui-scripts）；人在终端里仍用 pmem
+# Hook 用无控制台入口（Windows gui-scripts）；人在终端里仍用 pmem
 HOOK_BIN = "pmemw"
+# MCP 必须用控制台版 pmem：pmemw/uv trampoline 在 Windows 上会掐断 MCP stdio（Connection closed）
+MCP_BIN = "pmem"
 # 新对话开始时经包装脚本调用：本机没装 pmem 时，其他 Hook 都起不来、静默放行，只有这里能告诉 Agent
 MISSING_PMEM = (
     "[pmem] 本机找不到 pmem 命令：本项目的研发记忆检查和改代码前的闸门都没有生效。"
@@ -385,7 +387,8 @@ exit /b 0
 """
 
 CURSOR_HOOKS = {
-    "sessionStart": {"command": f"{HOOK_WRAPPER} session"},
+    # 不用 .cmd 包装：Windows 上 Cursor 一跑 .cmd 就弹控制台；没装 pmemw 时由 doctor/PATH 暴露
+    "sessionStart": {"command": f"{HOOK_BIN} hook session"},
     "beforeSubmitPrompt": {"command": f"{HOOK_BIN} hook prompt"},
     "preToolUse": {
         "command": f"{HOOK_BIN} hook pre-tool",
@@ -399,9 +402,9 @@ CURSOR_HOOKS = {
     "stop": {"command": f"{HOOK_BIN} hook stop", "loop_limit": 1},
 }
 
-MCP_SERVER = {"command": HOOK_BIN, "args": ["serve", "--root", "${workspaceFolder}"]}
+MCP_SERVER = {"command": MCP_BIN, "args": ["serve", "--root", "${workspaceFolder}"]}
 # Claude Code / Codex 启动 MCP 时工作目录就是项目（Claude Code 另有 CLAUDE_PROJECT_DIR），无需 --root
-PLAIN_MCP_SERVER = {"command": HOOK_BIN, "args": ["serve"]}
+PLAIN_MCP_SERVER = {"command": MCP_BIN, "args": ["serve"]}
 
 
 def _agent_hooks(agent: str, pre_matcher: str, post_matcher: str, extra: dict | None = None) -> dict:
@@ -426,7 +429,7 @@ CLAUDE_HOOKS = _agent_hooks(
     {"onFailure": "continue"},
 )
 CODEX_HOOKS = _agent_hooks("codex", "^(Bash|apply_patch|mcp__pmem__.*)$", "^(Bash|apply_patch|mcp__pmem__.*)$")
-CODEX_MCP_TOML = f'[mcp_servers.pmem]\ncommand = "{HOOK_BIN}"\nargs = ["serve"]\n'
+CODEX_MCP_TOML = f'[mcp_servers.pmem]\ncommand = "{MCP_BIN}"\nargs = ["serve"]\n'
 
 SPEC_SKILL = """\
 ---

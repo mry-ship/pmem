@@ -165,13 +165,16 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
             line(WARN, "Hooks 是旧版：搜索代码（Grep / Glob）时不附记忆摘要，请重新运行 pmem init 更新")
         elif post and "Shell" not in str(post[0].get("matcher", "Shell")):
             line(WARN, "Hooks 是旧版：终端命令改了文件时不做事后核对，请重新运行 pmem init 更新")
-        elif wired_hooks and not (root / ".memory" / "bin" / "pmem-hook.cmd").exists():
-            line(WARN, "Hooks 是旧版：队友没装 pmem 时不会提醒（缺 .memory/bin/pmem-hook），请重新运行 pmem init 更新")
+        elif "pmem-hook session" in hooks:
+            line(WARN, "Hooks 是旧版：sessionStart 仍走 .cmd/.sh 包装，Windows 上易弹黑框；请重新运行 pmem init 更新")
         elif sys.platform == "win32" and "pmem hook" in hooks and "pmemw hook" not in hooks:
             line(WARN, "Windows 上 Hook 仍用控制台版 pmem，会弹黑框；请升级 pmem 后重新运行 pmem init")
         mcp_cmd = str((mcp.get("pmem") or {}).get("command") or "")
-        if sys.platform == "win32" and mcp_cmd == "pmem":
-            line(WARN, "Windows 上 MCP 仍用控制台版 pmem，打开窗口可能弹黑框；请升级 pmem 后重新运行 pmem init")
+        if mcp_cmd in ("pmemw", "pmemw.exe"):
+            line(WARN, "MCP 用了 pmemw：Windows 上容易掐断 stdio（Connection closed）；请重新运行 pmem init 改回 pmem")
+        user_mcp = Path.home() / ".cursor" / "mcp.json"
+        if user_mcp.is_file() and "pmem" in json.dumps(_load(user_mcp).get("mcpServers", {})):
+            line(WARN, "用户级 ~/.cursor/mcp.json 也注册了 pmem，可能盖住项目配置；多项目时请清空用户级 pmem，只用各项目 .cursor/mcp.json")
         line(OK if (cursor / "rules" / "pmem.mdc").exists() else WARN, "规则文件 .cursor/rules/pmem.mdc")
     for agent, label, wired_mcp, skills in (
         ("claude", "Claude Code", "pmem" in _load(root / ".mcp.json").get("mcpServers", {}), root / ".claude" / "skills"),
@@ -198,7 +201,7 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
     has_pmemw = shutil.which("pmemw") is not None
     line(OK if has_pmem else BAD, "PATH 中可以找到 pmem 命令" if has_pmem else "PATH 中找不到 pmem，Agent 无法启动服务和 Hook")
     if has_pmem and not has_pmemw:
-        line(WARN, "PATH 中有 pmem 但没有 pmemw（Hook/MCP 无控制台入口），请重新安装当前版 pmem")
+        line(WARN, "PATH 中有 pmem 但没有 pmemw（Hook 无控制台入口），请重新安装当前版 pmem")
 
     if warmup_embed:
         backend = config.get("embedding.backend")
@@ -238,6 +241,9 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
                 print("  i Windows 非 UTF-8 代码页：Cursor 传给 Hook 的中文会被转码，pmem 已自动兼容")
         except Exception:  # noqa: BLE001, S110
             pass
+        print("  i 若对话时仍反复弹控制台：多半是 Cursor 起 Hook 未隐藏窗口（一轮可弹多次）。"
+              "可在用户 settings.json 设 terminal.integrated.windowsUseConptyDll=true 后重启 Cursor；"
+              "并确认 hooks 已是 pmemw（pmem init）。仍弹则需升级 Cursor。")
 
     print("自检完成" + ("，有需要处理的问题" if problems else f"，有 {warnings} 项提醒" if warnings else "，一切正常"))
     return 1 if problems else 0

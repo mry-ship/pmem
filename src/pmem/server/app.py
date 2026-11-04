@@ -21,9 +21,27 @@ def _dump(data: dict) -> str:
     return json.dumps({**data, "server": "pmem"}, ensure_ascii=False, separators=(",", ":"))
 
 
+def _workspace_folder_paths() -> list[str]:
+    """Cursor 用户级 MCP 常在 Temp 启动，但会带 WORKSPACE_FOLDER_PATHS。"""
+    raw = os.environ.get("WORKSPACE_FOLDER_PATHS") or ""
+    out: list[str] = []
+    for part in raw.replace(";", ",").split(","):
+        part = part.strip().strip('"')
+        if part and "${" not in part:
+            out.append(part)
+    return out
+
+
 def resolve_root(raw: str | None) -> Path | None:
-    """优先用 --root（忽略未被替换的 ${...} 变量），否则从工作目录向上找 .memory/config.yaml。"""
-    for candidate in (raw, os.environ.get("PMEM_ROOT"), os.environ.get("CLAUDE_PROJECT_DIR"), os.getcwd()):
+    """优先用 --root（忽略未被替换的 ${...} 变量），再环境变量与工作区路径，最后从 cwd 向上找 .memory。"""
+    candidates: list[str | None] = [
+        raw,
+        os.environ.get("PMEM_ROOT"),
+        os.environ.get("CLAUDE_PROJECT_DIR"),
+        *_workspace_folder_paths(),
+        os.getcwd(),
+    ]
+    for candidate in candidates:
         if candidate and "${" not in candidate:
             root = find_root(candidate)
             if root is not None:

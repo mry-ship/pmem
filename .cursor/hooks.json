@@ -42,7 +42,7 @@
     ],
     "sessionStart": [
       {
-        "command": ".memory/bin/pmem-hook session"
+        "command": "pmemw hook session"
       }
     ]
   }

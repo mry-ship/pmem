@@ -68,7 +68,7 @@ _GIT_READ_ONLY = {"status", "log", "diff", "show", "blame", "branch", "rev-parse
 _SVN_READ_ONLY = {"status", "st", "stat", "log", "diff", "di", "info", "cat", "list", "ls", "blame", "praise",
                   "annotate", "ann", "propget", "pg", "proplist", "pl", "help", "?", "h", "--version"}
 _PMEM_READ_ONLY = {"search", "graph", "list", "terms", "doctor", "report", "compact", "scan", "--help", "-h"}
-# pmemw 是 Hook/MCP 用的无控制台入口，终端里等价于 pmem
+# pmemw 是 Hook 用的无控制台入口；MCP 仍用 pmem。终端里两者等价
 _PMEM_CLI = {"pmem", "pmemw"}
 # 只改变后面命令运行方式的前缀（sudo rm x 真正执行的是 rm），值为会吞掉下一个参数的选项
 _PREFIXES = {

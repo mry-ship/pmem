@@ -79,7 +79,7 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 5. **提交**：运行 `pmem doctor` 自检，然后把 `.memory/` 和 `.cursor/` 提交到版本库。
 6. **（建议）种子记忆**：对 AI 说“按 pmem-seed 技能提炼种子记忆”，从提交说明和文档里为常改的模块先补一批结论，确认后转正，记忆库就不是从空开始。
 
-队友拉代码后，只需要做第 1 步和第 3 步。升级：`uv tool upgrade pmem`，再在项目里运行一次 `pmem init`（不会覆盖已有配置；这时给的 `--gate`、`--type` 不生效，直接改 `.memory/config.yaml`）。
+队友拉代码后，只需要做第 1 步和第 3 步。升级：`uv tool upgrade pmem`，再在**每个已接入项目**里运行一次 `pmem init`（会按当前模板合并 Hooks / MCP，不覆盖已有 `config.yaml`；这时给的 `--gate`、`--type` 不生效，要改直接编辑配置）。Windows 上默认 `Hooks=quiet`（只留闸门与 MCP 登记，并清空与 Cursor 同开的 Claude Hooks），减轻弹控制台；改完后**重开该项目的 Cursor 窗口**。要读码摘要再用 `pmem init --hooks full`；应急可 `pmem init --hooks off`。
 
 ## 日常使用
 
@@ -300,6 +300,7 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 - 新模块自动登记只追加：手工从 `modules.yaml` 删掉的模块下次会被加回来，不想登记的目录要写进 `ignored`；`modules.yaml` 正文里有注释时退回只提醒。
 - 按函数判断过期只支持 Git；SVN 和找不到函数时按文件判断。
 - Windows PowerShell 5 里把 pmem 输出再接给 `Select-String` 等命令会乱码（它按 GBK 解码），直接看输出或用 `--brief`。
+- Windows 上 Cursor 经 PowerShell 转发每个 Hook，都可能闪一下控制台（与 `pmemw` 是否 GUI 无关）。升级后务必再跑 `pmem init` 并用 quiet；若仍烦，用 `--hooks off` 暂时关掉全部 pmem Hook（闸门也停）。
 - 功能记录（`feature` / `plan`）和 `applies` 字段需要较新的 pmem：团队里还在用旧版的人读到这类记忆文件会跳过它，请一起升级。
 - 子模块（三段、四段的模块名）需要 v0.5：旧版能读写已登记的子模块，但不会带上父模块的教训，`pmem doctor` 检测到子模块时会提示团队升级。
 - 撤销合并（`compact --undo`）写的 `reverted` 字段旧版不认：旧版仍把撤销的合并当作替代，原记忆在旧版里还是隐藏的。

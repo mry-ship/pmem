@@ -158,17 +158,29 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
         wired_hooks = "pmemw hook" in hooks or "pmem hook" in hooks or HOOK_WRAPPER in hooks
         line(OK if wired_hooks else WARN, "Hooks 已接入" if wired_hooks else "Hooks 未接入（闸门不生效），请运行 pmem init")
         post = [h for h in hooks_data.get("hooks", {}).get("postToolUse", [])
-                if _is_hook_command(h.get("command"), "post-tool")]
+                if isinstance(h, dict) and _is_hook_command(h.get("command"), "post-tool")]
+        post_matcher = str(post[0].get("matcher", "")) if post else ""
+        # Windows quiet：postToolUse 只留 Shell（终端 search 登记 / 写文件核对）；带 Read|Grep 才会疯狂弹
+        read_heavy = bool(re.search(r"Read|Grep|Glob|SemanticSearch|codebase_search", post_matcher))
         if wired_hooks and not post:
-            line(WARN, "读代码时的记忆摘要未接入（postToolUse），请重新运行 pmem init")
-        elif post and "Grep" not in str(post[0].get("matcher", "Grep")):
+            line(WARN, "postToolUse 未接入：终端 pmem search 无法登记「已查过」，闸门可能一直拦；请重新运行 pmem init")
+        elif post and sys.platform == "win32" and read_heavy:
+            line(WARN, "Windows 上 postToolUse 匹配读代码会疯狂弹 shell；建议 pmem init --hooks quiet（仅 Shell）")
+        elif post and sys.platform == "win32" and "Shell" in post_matcher and not read_heavy:
+            line(OK, "Hooks=quiet（postToolUse 仅 Shell，少弹；要读码摘要用 pmem init --hooks full）")
+        elif post and not read_heavy and "Shell" in post_matcher:
+            line(WARN, "Hooks=quiet：读代码不附记忆摘要；需要时 pmem init --hooks full")
+        elif post and "Grep" not in post_matcher:
             line(WARN, "Hooks 是旧版：搜索代码（Grep / Glob）时不附记忆摘要，请重新运行 pmem init 更新")
-        elif post and "Shell" not in str(post[0].get("matcher", "Shell")):
+        elif post and "Shell" not in post_matcher:
             line(WARN, "Hooks 是旧版：终端命令改了文件时不做事后核对，请重新运行 pmem init 更新")
         elif "pmem-hook session" in hooks:
             line(WARN, "Hooks 是旧版：sessionStart 仍走 .cmd/.sh 包装，Windows 上易弹黑框；请重新运行 pmem init 更新")
         elif sys.platform == "win32" and "pmem hook" in hooks and "pmemw hook" not in hooks:
             line(WARN, "Windows 上 Hook 仍用控制台版 pmem，会弹黑框；请升级 pmem 后重新运行 pmem init")
+        if any("||" in str(h.get("command") or "") for entries in hooks_data.get("hooks", {}).values()
+               for h in entries if isinstance(h, dict)):
+            line(WARN, "hooks.json 命令含 ||，Cursor 会经 cmd/PowerShell 启动，Windows 必弹控制台；请改成单个可执行文件")
         mcp_cmd = str((mcp.get("pmem") or {}).get("command") or "")
         if mcp_cmd in ("pmemw", "pmemw.exe"):
             line(WARN, "MCP 用了 pmemw：Windows 上容易掐断 stdio（Connection closed）；请重新运行 pmem init 改回 pmem")
@@ -241,9 +253,9 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
                 print("  i Windows 非 UTF-8 代码页：Cursor 传给 Hook 的中文会被转码，pmem 已自动兼容")
         except Exception:  # noqa: BLE001, S110
             pass
-        print("  i 若对话时仍反复弹控制台：多半是 Cursor 起 Hook 未隐藏窗口（一轮可弹多次）。"
-              "可在用户 settings.json 设 terminal.integrated.windowsUseConptyDll=true 后重启 Cursor；"
-              "并确认 hooks 已是 pmemw（pmem init）。仍弹则需升级 Cursor。")
+        print("  i 若对话时仍反复弹控制台：先确认已是 Hooks=quiet + pmemw（pmem init --hooks quiet）；"
+              "命令里不要写 || 或 .cmd/.sh。仍弹时可试 settings.json 的 "
+              "terminal.integrated.windowsUseConptyDll=true 后重启 Cursor；最终需 Cursor 对 Hook 隐藏窗口。")
 
     print("自检完成" + ("，有需要处理的问题" if problems else f"，有 {warnings} 项提醒" if warnings else "，一切正常"))
     return 1 if problems else 0

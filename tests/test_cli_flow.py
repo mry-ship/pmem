@@ -38,6 +38,13 @@ def test_init_creates_project_files_and_merges_existing_cursor_config(tmp_path, 
     assert (cursor / "skills" / "pmem-bootstrap" / "SKILL.md").exists()
     assert "pmem compact" in (cursor / "skills" / "pmem-compact" / "SKILL.md").read_text(encoding="utf-8")
     assert [h["command"] for h in hooks["sessionStart"]] == ["pmemw hook session"]
+    # Windows 默认 quiet：postToolUse 仅 Shell（终端 search 仍能登记），无读码类 matcher
+    if sys.platform == "win32":
+        assert "afterFileEdit" not in hooks and "preCompact" not in hooks
+        assert hooks["postToolUse"][0]["matcher"] == "Shell"
+    else:
+        assert "postToolUse" in hooks and "afterFileEdit" in hooks
+        assert "Read" in hooks["postToolUse"][0]["matcher"]
     assert (tmp_path / ".memory" / "bin" / "pmem-hook").exists()
     assert b"\r\n" in (tmp_path / ".memory" / "bin" / "pmem-hook.cmd").read_bytes()
     main(["init", "--root", str(tmp_path)])
@@ -224,11 +231,21 @@ def test_doctor_reports_coverage(tmp_path, capsys, monkeypatch):
     assert "模块覆盖率 100.0%" in out
     assert "feature.Ghost" in out
     assert "Hooks 是旧版" not in out
+    if sys.platform == "win32":
+        assert "Hooks=quiet" in out
     hooks = tmp_path / ".cursor" / "hooks.json"
-    hooks.write_text(hooks.read_text(encoding="utf-8").replace("Read|Grep|Glob|SemanticSearch|codebase_search", "Read"),
-                     encoding="utf-8")
-    main(["doctor", "--root", str(tmp_path)])
-    assert "Hooks 是旧版" in capsys.readouterr().out
+    data = json.loads(hooks.read_text(encoding="utf-8"))
+    # 故意写成只有 Read、缺 Grep 的旧版 matcher
+    data["hooks"]["postToolUse"] = [{
+        "command": "pmemw hook post-tool",
+        "matcher": "Read",
+    }]
+    hooks.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    doctor_out = (main(["doctor", "--root", str(tmp_path)]), capsys.readouterr().out)[1]
+    if sys.platform == "win32":
+        assert "疯狂弹 shell" in doctor_out or "Hooks 是旧版" in doctor_out
+    else:
+        assert "Hooks 是旧版" in doctor_out
 
 
 def test_doctor_checks_claude_and_codex_without_requiring_cursor(tmp_path, capsys, monkeypatch):

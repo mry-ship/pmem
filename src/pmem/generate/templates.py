@@ -386,7 +386,8 @@ echo {{"continue":true}}
 exit /b 0
 """
 
-CURSOR_HOOKS = {
+# 闸门与 MCP 检索登记：缺了闸门不生效
+_CURSOR_HOOK_CORE = {
     # 不用 .cmd 包装：Windows 上 Cursor 一跑 .cmd 就弹控制台；没装 pmemw 时由 doctor/PATH 暴露
     "sessionStart": {"command": f"{HOOK_BIN} hook session"},
     "beforeSubmitPrompt": {"command": f"{HOOK_BIN} hook prompt"},
@@ -396,11 +397,36 @@ CURSOR_HOOKS = {
         "failClosed": False,
     },
     "afterMCPExecution": {"command": f"{HOOK_BIN} hook after-mcp"},
+    "stop": {"command": f"{HOOK_BIN} hook stop", "loop_limit": 1},
+}
+# 读码摘要 / 编辑跟踪 / 压缩重置：每次 Read 都会起进程；Cursor Windows 不藏窗时会疯狂弹 shell
+_CURSOR_HOOK_EXTRA = {
     "afterFileEdit": {"command": f"{HOOK_BIN} hook edited"},
     "postToolUse": {"command": f"{HOOK_BIN} hook post-tool", "matcher": "Read|Grep|Glob|SemanticSearch|codebase_search|Shell"},
     "preCompact": {"command": f"{HOOK_BIN} hook compact"},
-    "stop": {"command": f"{HOOK_BIN} hook stop", "loop_limit": 1},
 }
+# quiet 必须保留 Shell：终端 pmem search / 写文件事后核对靠 post-tool；去掉 Read|Grep 才是少弹的关键
+_CURSOR_HOOK_QUIET_SHELL = {
+    "postToolUse": {"command": f"{HOOK_BIN} hook post-tool", "matcher": "Shell"},
+}
+CURSOR_HOOKS_FULL = {**_CURSOR_HOOK_CORE, **_CURSOR_HOOK_EXTRA}
+CURSOR_HOOKS_QUIET = {**_CURSOR_HOOK_CORE, **_CURSOR_HOOK_QUIET_SHELL}
+# 兼容旧引用：默认指向完整集；实际写入由 cursor_hooks() 按平台选择
+CURSOR_HOOKS = CURSOR_HOOKS_FULL
+
+
+def cursor_hooks(mode: str = "auto") -> dict:
+    """auto：Windows 用 quiet（少弹 shell），其它平台 full；也可强制 full / quiet。"""
+    import sys
+
+    normalized = (mode or "auto").strip().lower()
+    if normalized == "auto":
+        normalized = "quiet" if sys.platform == "win32" else "full"
+    if normalized == "quiet":
+        return dict(CURSOR_HOOKS_QUIET)
+    if normalized == "full":
+        return dict(CURSOR_HOOKS_FULL)
+    raise SystemExit(f"--hooks 只支持 auto / full / quiet，收到：{mode}")
 
 MCP_SERVER = {"command": MCP_BIN, "args": ["serve", "--root", "${workspaceFolder}"]}
 # Claude Code / Codex 启动 MCP 时工作目录就是项目（Claude Code 另有 CLAUDE_PROJECT_DIR），无需 --root

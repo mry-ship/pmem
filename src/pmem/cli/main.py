@@ -28,6 +28,9 @@ def build_parser():
     p.add_argument("--agents", default="auto",
                    help="要接入的 Agent，逗号分隔：cursor,claude,codex 或 all；"
                         "auto = Cursor 加上项目里已有配置的（.claude/、CLAUDE.md、.codex/、AGENTS.md）")
+    p.add_argument("--hooks", choices=("auto", "full", "quiet"), default="auto",
+                   help="Cursor Hooks 密度：auto=Windows 用 quiet（少弹 shell）、其它平台 full；"
+                        "quiet=闸门/MCP/结束提醒 + postToolUse 仅 Shell；full 另含读码摘要")
 
     p = sub.add_parser("scan", help="输出目录概览，供 Agent 划分模块")
     p.add_argument("--root", default=".")
@@ -326,7 +329,7 @@ def _serve(args) -> int:
 def _init(args) -> int:
     from pmem.cli.init_cmd import run_init
 
-    return run_init(Path(args.root), args.type, args.gate, args.agents)
+    return run_init(Path(args.root), args.type, args.gate, args.agents, hooks=args.hooks)
 
 
 def _scan(args) -> int:

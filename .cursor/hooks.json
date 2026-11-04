@@ -13,25 +13,9 @@
         "failClosed": false
       }
     ],
-    "postToolUse": [
-      {
-        "command": "pmemw hook post-tool",
-        "matcher": "Read|Grep|Glob|SemanticSearch|codebase_search|Shell"
-      }
-    ],
     "afterMCPExecution": [
       {
         "command": "pmemw hook after-mcp"
-      }
-    ],
-    "afterFileEdit": [
-      {
-        "command": "pmemw hook edited"
-      }
-    ],
-    "preCompact": [
-      {
-        "command": "pmemw hook compact"
       }
     ],
     "stop": [
@@ -43,6 +27,12 @@
     "sessionStart": [
       {
         "command": "pmemw hook session"
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "pmemw hook post-tool",
+        "matcher": "Shell"
       }
     ]
   }

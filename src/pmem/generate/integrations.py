@@ -28,6 +28,7 @@ from pmem.generate.templates import (
     RULE_BLOCK,
     SEED_SKILL,
     SPEC_SKILL,
+    cursor_hooks,
 )
 
 SUPPORTED_AGENTS = ("cursor", "claude", "codex")
@@ -103,18 +104,19 @@ def write_hook_wrappers(root: Path) -> None:
         subprocess.run(["git", "add", "--chmod=+x", "--", str(script)], cwd=root, capture_output=True, check=False)
 
 
-def merge_hooks(path: Path) -> None:
+def merge_hooks(path: Path, wanted: dict | None = None) -> None:
+    wanted = wanted or CURSOR_HOOKS
     data = _read_json(path)
     data.setdefault("version", 1)
     hooks = _hook_table(data, path)
     for event in list(hooks):
-        if event not in CURSOR_HOOKS:
+        if event not in wanted:
             kept = [h for h in hooks[event] if not _is_pmem_handler(h)]
             if kept:
                 hooks[event] = kept
             else:
                 del hooks[event]
-    for event, entry in CURSOR_HOOKS.items():
+    for event, entry in wanted.items():
         kept = [h for h in hooks.get(event, []) if not _is_pmem_handler(h)]
         hooks[event] = [*kept, dict(entry)]
     _write_json(path, data)
@@ -196,15 +198,21 @@ def _write_skills(folder: Path) -> None:
         write_text(folder / name / "SKILL.md", body.format(generated=GENERATED))
 
 
-def setup_cursor(root: Path) -> str:
+def setup_cursor(root: Path, hooks_mode: str = "auto") -> str:
     cursor = root / ".cursor"
     write_text(cursor / "rules" / "pmem.mdc", RULE.format(generated=GENERATED))
     _write_skills(cursor / "skills")
-    merge_hooks(cursor / "hooks.json")
+    wanted = cursor_hooks(hooks_mode)
+    merge_hooks(cursor / "hooks.json", wanted)
     merge_mcp(cursor / "mcp.json")
     write_hook_wrappers(root)
+    post = wanted.get("postToolUse") or {}
+    matcher = str(post.get("matcher") or "")
+    mode = "quiet" if post and "Read" not in matcher else ("full" if post else "quiet")
     return ("Cursor：.cursor/rules/pmem.mdc、.cursor/skills/pmem-*、合并 .cursor/hooks.json 与 .cursor/mcp.json、"
-            ".memory/bin/pmem-hook*（没装 pmem 时提醒）")
+            f".memory/bin/pmem-hook*（没装 pmem 时提醒）；Hooks={mode}"
+            + ("（Windows 默认少弹：postToolUse 仅 Shell；要读码摘要用 pmem init --hooks full）"
+               if mode == "quiet" else ""))
 
 
 def setup_claude(root: Path) -> str:

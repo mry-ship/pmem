@@ -40,7 +40,7 @@ def choose_spec_reminder(stdin=None) -> bool | None:
 
 
 def run_init(root: Path, project_type: str | None, gate: str | None = None, agents: str = "auto",
-             stdin=None) -> int:
+             hooks: str = "auto", stdin=None) -> int:
     root = root.resolve()
     memory = root / ".memory"
     config_path = memory / "config.yaml"
@@ -84,7 +84,13 @@ def run_init(root: Path, project_type: str | None, gate: str | None = None, agen
         write_text(modules_path, text)
         done.append(f"创建 {modules_path.relative_to(root)}（大类：{' / '.join(CATEGORY_PRESETS[project_type])}）")
     (memory / "entries").mkdir(exist_ok=True)
-    done += [SETUP[agent](root) for agent in chosen]
+    for agent in chosen:
+        if agent == "cursor":
+            from pmem.generate.integrations import setup_cursor
+
+            done.append(setup_cursor(root, hooks_mode=hooks))
+        else:
+            done.append(SETUP[agent](root))
 
     print("pmem 接入完成：")
     for line in done:

@@ -16,8 +16,8 @@ aliases:
 - integrations
 - init 合并
 - hooks.json 合并
-verified: '2026-10-27'
-verified_at: '2026-10-27T17:33:08.864+08:00'
+verified: '2026-11-04'
+verified_at: '2026-11-04T17:02:26.538+08:00'
 source:
   conversation: 6b540a20-0fb2-45fe-9ffb-9ce5b287b508
 ---

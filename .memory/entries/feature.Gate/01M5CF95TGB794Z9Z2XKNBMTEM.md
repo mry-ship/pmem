@@ -19,8 +19,8 @@ aliases:
 - Claude 适配
 - PowerShell 工具
 - additionalContext
-verified: '2026-10-27'
-verified_at: '2026-10-27T17:33:08.864+08:00'
+verified: '2026-11-04'
+verified_at: '2026-11-04T17:02:26.538+08:00'
 source:
   conversation: ca2edda2-f749-419e-aa6d-74617201a8d5
 ---

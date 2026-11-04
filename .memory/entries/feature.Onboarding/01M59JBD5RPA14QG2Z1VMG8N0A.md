@@ -16,8 +16,8 @@ aliases:
 - 子目录项目
 - monorepo
 - 提交历史取不到
-verified: '2026-10-27'
-verified_at: '2026-10-27T17:33:08.864+08:00'
+verified: '2026-11-04'
+verified_at: '2026-11-04T17:02:26.538+08:00'
 source:
   conversation: 7e7aeed7-103b-4d87-bb8d-18765c815bd5
 ---

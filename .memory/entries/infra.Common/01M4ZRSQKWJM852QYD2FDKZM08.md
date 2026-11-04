@@ -15,6 +15,8 @@ aliases:
 - BOM
 - UTF-16
 - PowerShell
+verified: '2026-11-04'
+verified_at: '2026-11-04T17:02:26.538+08:00'
 ---
 风险：在 Windows PowerShell 5 里用命令改含中文的源码或文档，很容易把文件编码弄坏，而且测试不一定能发现。
 

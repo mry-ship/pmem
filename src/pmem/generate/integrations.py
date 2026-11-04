@@ -207,25 +207,32 @@ def setup_cursor(root: Path, hooks_mode: str = "auto") -> str:
     merge_hooks(cursor / "hooks.json", wanted)
     merge_mcp(cursor / "mcp.json")
     write_hook_wrappers(root)
-    post = wanted.get("postToolUse") or {}
-    matcher = str(post.get("matcher") or "")
-    mode = "quiet" if post and "Read" not in matcher else ("full" if post else "quiet")
+    if not wanted:
+        mode = "off"
+    elif "postToolUse" in wanted or "sessionStart" in wanted:
+        mode = "full"
+    else:
+        mode = "quiet"
     return ("Cursor：.cursor/rules/pmem.mdc、.cursor/skills/pmem-*、合并 .cursor/hooks.json 与 .cursor/mcp.json、"
             f".memory/bin/pmem-hook*（没装 pmem 时提醒）；Hooks={mode}"
-            + ("（Windows 默认少弹：postToolUse 仅 Shell；要读码摘要用 pmem init --hooks full）"
-               if mode == "quiet" else ""))
+            + ("（仅闸门+MCP 登记；Cursor 经 PowerShell 起 Hook 会弹窗，要摘要用 --hooks full）"
+               if mode == "quiet" else ("（已去掉全部 pmem Hook）" if mode == "off" else "")))
 
 
-def setup_claude(root: Path, hooks_mode: str = "auto") -> str:
+def setup_claude(root: Path, hooks_mode: str = "auto", *, paired_with_cursor: bool = False) -> str:
     upsert_block(root / "CLAUDE.md", RULE_BLOCK)
     _write_skills(root / ".claude" / "skills")
-    wanted = claude_hooks(hooks_mode)
+    wanted = claude_hooks(hooks_mode, paired_with_cursor=paired_with_cursor)
     merge_group_hooks(root / ".claude" / "settings.json", wanted)
     merge_mcp(root / ".mcp.json", PLAIN_MCP_SERVER)
-    quiet = "Read" not in str((wanted.get("PostToolUse") or [{}])[0].get("matcher", "Read"))
+    if not wanted:
+        extra = "；Hooks 已清空（与 Cursor 同开时避免双开翻倍弹窗）"
+    elif "Read" not in str((wanted.get("PostToolUse") or [{}])[0].get("matcher", "")):
+        extra = "；Hooks=quiet（PostToolUse 无 Read|Grep）"
+    else:
+        extra = ""
     return ("Claude Code：CLAUDE.md 中的 pmem 段落、.claude/skills/pmem-*、合并 .claude/settings.json 与 .mcp.json"
-            + ("；Hooks=quiet（Cursor 也会加载这份配置，PostToolUse 已去掉 Read|Grep）" if quiet else ""))
-
+            + extra)
 
 def setup_codex(root: Path, hooks_mode: str = "auto") -> str:
     del hooks_mode  # Codex PostToolUse 本就没有 Read；保留参数与 cursor/claude 对齐

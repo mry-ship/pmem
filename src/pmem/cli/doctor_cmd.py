@@ -159,17 +159,21 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
         line(OK if wired_hooks else WARN, "Hooks 已接入" if wired_hooks else "Hooks 未接入（闸门不生效），请运行 pmem init")
         post = [h for h in hooks_data.get("hooks", {}).get("postToolUse", [])
                 if isinstance(h, dict) and _is_hook_command(h.get("command"), "post-tool")]
+        pre = [h for h in hooks_data.get("hooks", {}).get("preToolUse", [])
+               if isinstance(h, dict) and _is_hook_command(h.get("command"), "pre-tool")]
+        after_mcp = [h for h in hooks_data.get("hooks", {}).get("afterMCPExecution", [])
+                     if isinstance(h, dict) and _is_hook_command(h.get("command"), "after-mcp")]
         post_matcher = str(post[0].get("matcher", "")) if post else ""
-        # Windows quiet：postToolUse 只留 Shell（终端 search 登记 / 写文件核对）；带 Read|Grep 才会疯狂弹
         read_heavy = bool(re.search(r"Read|Grep|Glob|SemanticSearch|codebase_search", post_matcher))
-        if wired_hooks and not post:
-            line(WARN, "postToolUse 未接入：终端 pmem search 无法登记「已查过」，闸门可能一直拦；请重新运行 pmem init")
+        # Windows quiet：只留闸门+afterMCP；Cursor 经 PowerShell 起 Hook，多一项就多弹一次
+        if wired_hooks and not post and pre and after_mcp and sys.platform == "win32":
+            line(OK, "Hooks=quiet（仅闸门+MCP 登记；要读码摘要/终端 search 登记用 pmem init --hooks full）")
+        elif wired_hooks and not post:
+            line(WARN, "postToolUse 未接入：终端 pmem search 无法登记「已查过」；需要时 pmem init --hooks full")
         elif post and sys.platform == "win32" and read_heavy:
-            line(WARN, "Windows 上 postToolUse 匹配读代码会疯狂弹 shell；建议 pmem init --hooks quiet（仅 Shell）")
-        elif post and sys.platform == "win32" and "Shell" in post_matcher and not read_heavy:
-            line(OK, "Hooks=quiet（postToolUse 仅 Shell，少弹；要读码摘要用 pmem init --hooks full）")
-        elif post and not read_heavy and "Shell" in post_matcher:
-            line(WARN, "Hooks=quiet：读代码不附记忆摘要；需要时 pmem init --hooks full")
+            line(WARN, "Windows 上 postToolUse 匹配读代码会疯狂弹 shell；建议 pmem init --hooks quiet")
+        elif post and sys.platform == "win32":
+            line(WARN, "Windows 上每个 Hook 经 PowerShell 都可能弹窗；建议 pmem init --hooks quiet（仅闸门+MCP）")
         elif post and "Grep" not in post_matcher:
             line(WARN, "Hooks 是旧版：搜索代码（Grep / Glob）时不附记忆摘要，请重新运行 pmem init 更新")
         elif post and "Shell" not in post_matcher:
@@ -196,7 +200,11 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
             continue
         handlers = _agent_handlers(_load(others[agent]), agent)
         wired_hooks = bool(handlers)
-        if not (wired_hooks and wired_mcp):
+        cursor_pmem = "pmem" in json.dumps(_load(cursor / "hooks.json")) if (cursor / "hooks.json").exists() else False
+        if (agent == "claude" and sys.platform == "win32" and wired_mcp and not wired_hooks
+                and cursor_pmem):
+            line(OK, f"{label} MCP 已接入；Windows quiet 故意不装 Claude Hooks（Cursor 会双开翻倍弹窗）")
+        elif not (wired_hooks and wired_mcp):
             missing = "、".join(x for x, ok in (("Hooks", wired_hooks), ("MCP", wired_mcp)) if not ok)
             line(WARN, f"{label} 缺少 {missing}，请运行 pmem init --agents {agent}")
         elif agent == "claude" and not all(
@@ -205,6 +213,8 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
                        f"出错会拦下工具；请重新运行 pmem init --agents {agent} 更新")
         elif sys.platform == "win32" and any(h["command"].startswith("pmem hook") for _, h in handlers):
             line(WARN, f"{label} 的 Hooks 仍用控制台版 pmem，Windows 会弹黑框；请升级 pmem 后重新运行 pmem init --agents {agent}")
+        elif agent == "claude" and sys.platform == "win32" and wired_hooks and cursor_pmem:
+            line(WARN, f"{label} 在 Windows 上仍装了 Hooks：Cursor 会与 .cursor/hooks 双开弹窗；建议 pmem init --hooks quiet")
         elif not (skills / "pmem-bootstrap" / "SKILL.md").exists():
             line(WARN, f"{label} 缺少 pmem 技能（{skills.relative_to(root).as_posix()}），请重新运行 pmem init --agents {agent}")
         else:

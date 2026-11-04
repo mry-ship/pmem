@@ -29,7 +29,6 @@ def test_init_creates_project_files_and_merges_existing_cursor_config(tmp_path, 
     modules = yaml.safe_load((tmp_path / ".memory" / "modules.yaml").read_text(encoding="utf-8"))
     assert "activity" in modules["categories"]
     hooks = json.loads((cursor / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-    assert [h["command"] for h in hooks["stop"]] == ["my-own-hook", "pmemw hook stop"]
     assert "preToolUse" in hooks
     servers = json.loads((cursor / "mcp.json").read_text(encoding="utf-8"))["mcpServers"]
     assert set(servers) == {"other", "pmem"}
@@ -37,19 +36,24 @@ def test_init_creates_project_files_and_merges_existing_cursor_config(tmp_path, 
     assert (cursor / "rules" / "pmem.mdc").exists()
     assert (cursor / "skills" / "pmem-bootstrap" / "SKILL.md").exists()
     assert "pmem compact" in (cursor / "skills" / "pmem-compact" / "SKILL.md").read_text(encoding="utf-8")
-    assert [h["command"] for h in hooks["sessionStart"]] == ["pmemw hook session"]
-    # Windows 默认 quiet：postToolUse 仅 Shell（终端 search 仍能登记），无读码类 matcher
+    # Windows 默认 quiet：只留闸门 + afterMCP（Cursor 经 PowerShell 起 Hook 会弹窗）
     if sys.platform == "win32":
-        assert "afterFileEdit" not in hooks and "preCompact" not in hooks
-        assert hooks["postToolUse"][0]["matcher"] == "Shell"
+        assert "sessionStart" not in hooks and "postToolUse" not in hooks
+        assert "preToolUse" in hooks and "afterMCPExecution" in hooks
+        assert hooks["stop"] == [{"command": "my-own-hook"}]  # 外键保留，pmem stop 已撤
     else:
+        assert [h["command"] for h in hooks["stop"]] == ["my-own-hook", "pmemw hook stop"]
+        assert [h["command"] for h in hooks["sessionStart"]] == ["pmemw hook session"]
         assert "postToolUse" in hooks and "afterFileEdit" in hooks
         assert "Read" in hooks["postToolUse"][0]["matcher"]
     assert (tmp_path / ".memory" / "bin" / "pmem-hook").exists()
     assert b"\r\n" in (tmp_path / ".memory" / "bin" / "pmem-hook.cmd").read_bytes()
     main(["init", "--root", str(tmp_path)])
     again = json.loads((cursor / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-    assert len(again["sessionStart"]) == 1
+    if sys.platform == "win32":
+        assert "sessionStart" not in again and "preToolUse" in again
+    else:
+        assert len(again["sessionStart"]) == 1
 
 
 def test_rerun_init_says_which_options_were_not_applied(tmp_path, capsys):
@@ -111,12 +115,17 @@ def test_init_wires_claude_and_codex_without_touching_their_other_settings(tmp_p
     assert "confirm_memory" in claude_md
     settings = json.loads((claude / "settings.json").read_text(encoding="utf-8"))
     assert settings["permissions"] == {"allow": ["Bash(ls)"]}
-    stop = [h["command"] for g in settings["hooks"]["Stop"] for h in g["hooks"]]
-    assert stop == ["notify.sh", "pmemw hook stop --agent claude"]
-    assert settings["hooks"]["PreToolUse"][0]["matcher"].startswith("^(Write|Edit")
-    assert all("PowerShell" in settings["hooks"][e][0]["matcher"] for e in ("PreToolUse", "PostToolUse"))
-    assert all(h["onFailure"] == "continue" for e in ("PreToolUse", "UserPromptSubmit")
-               for g in settings["hooks"][e] for h in g["hooks"])
+    stop = [h["command"] for g in settings["hooks"].get("Stop", []) for h in g["hooks"]]
+    if sys.platform == "win32":
+        # auto 含 Cursor：quiet 清空 Claude 侧 pmem Hook，只留别人的 notify.sh
+        assert stop == ["notify.sh"]
+        assert "PreToolUse" not in settings["hooks"]
+    else:
+        assert stop == ["notify.sh", "pmemw hook stop --agent claude"]
+        assert settings["hooks"]["PreToolUse"][0]["matcher"].startswith("^(Write|Edit")
+        assert all("PowerShell" in settings["hooks"][e][0]["matcher"] for e in ("PreToolUse", "PostToolUse"))
+        assert all(h["onFailure"] == "continue" for e in ("PreToolUse", "UserPromptSubmit")
+                   for g in settings["hooks"][e] for h in g["hooks"])
     mcp = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["pmem"]
     assert mcp["command"] == "pmem" and mcp["args"] == ["serve"]
     assert (claude / "skills" / "pmem-normalize" / "SKILL.md").exists()

@@ -386,47 +386,50 @@ echo {{"continue":true}}
 exit /b 0
 """
 
-# 闸门与 MCP 检索登记：缺了闸门不生效
-_CURSOR_HOOK_CORE = {
+# 闸门与 MCP 检索登记：缺了这两项闸门/「已查过」不完整
+_CURSOR_HOOK_GATE = {
     # 不用 .cmd 包装：Windows 上 Cursor 一跑 .cmd 就弹控制台；没装 pmemw 时由 doctor/PATH 暴露
-    "sessionStart": {"command": f"{HOOK_BIN} hook session"},
-    "beforeSubmitPrompt": {"command": f"{HOOK_BIN} hook prompt"},
+    # 实测 Cursor 经 PowerShell 转发 Hook stdin：每个 Hook 都可能弹一次窗，与 pmemw GUI 无关
     "preToolUse": {
         "command": f"{HOOK_BIN} hook pre-tool",
         "matcher": "Write|StrReplace|Edit|MultiEdit|EditNotebook|Delete|Shell|MCP|record_memory|search_memory",
         "failClosed": False,
     },
     "afterMCPExecution": {"command": f"{HOOK_BIN} hook after-mcp"},
+}
+# 提醒类：session / prompt / stop —— 每轮提问、结束各弹一次
+_CURSOR_HOOK_REMINDERS = {
+    "sessionStart": {"command": f"{HOOK_BIN} hook session"},
+    "beforeSubmitPrompt": {"command": f"{HOOK_BIN} hook prompt"},
     "stop": {"command": f"{HOOK_BIN} hook stop", "loop_limit": 1},
 }
-# 读码摘要 / 编辑跟踪 / 压缩重置：每次 Read 都会起进程；Cursor Windows 不藏窗时会疯狂弹 shell
+# 读码摘要 / 编辑跟踪 / 压缩重置：每次 Read 都会起进程
 _CURSOR_HOOK_EXTRA = {
     "afterFileEdit": {"command": f"{HOOK_BIN} hook edited"},
     "postToolUse": {"command": f"{HOOK_BIN} hook post-tool", "matcher": "Read|Grep|Glob|SemanticSearch|codebase_search|Shell"},
     "preCompact": {"command": f"{HOOK_BIN} hook compact"},
 }
-# quiet 必须保留 Shell：终端 pmem search / 写文件事后核对靠 post-tool；去掉 Read|Grep 才是少弹的关键
-_CURSOR_HOOK_QUIET_SHELL = {
-    "postToolUse": {"command": f"{HOOK_BIN} hook post-tool", "matcher": "Shell"},
-}
-CURSOR_HOOKS_FULL = {**_CURSOR_HOOK_CORE, **_CURSOR_HOOK_EXTRA}
-CURSOR_HOOKS_QUIET = {**_CURSOR_HOOK_CORE, **_CURSOR_HOOK_QUIET_SHELL}
+CURSOR_HOOKS_FULL = {**_CURSOR_HOOK_GATE, **_CURSOR_HOOK_REMINDERS, **_CURSOR_HOOK_EXTRA}
+# quiet：只留闸门+MCP 登记。终端 search 兜底与 stop 提醒先让路；MCP 看门狗负责服务自愈
+CURSOR_HOOKS_QUIET = dict(_CURSOR_HOOK_GATE)
 # 兼容旧引用：默认指向完整集；实际写入由 cursor_hooks() 按平台选择
 CURSOR_HOOKS = CURSOR_HOOKS_FULL
 
 
 def cursor_hooks(mode: str = "auto") -> dict:
-    """auto：Windows 用 quiet（少弹 shell），其它平台 full；也可强制 full / quiet。"""
+    """auto：Windows 用 quiet（少弹 shell），其它平台 full；也可强制 full / quiet / off。"""
     import sys
 
     normalized = (mode or "auto").strip().lower()
     if normalized == "auto":
         normalized = "quiet" if sys.platform == "win32" else "full"
+    if normalized == "off":
+        return {}
     if normalized == "quiet":
         return dict(CURSOR_HOOKS_QUIET)
     if normalized == "full":
         return dict(CURSOR_HOOKS_FULL)
-    raise SystemExit(f"--hooks 只支持 auto / full / quiet，收到：{mode}")
+    raise SystemExit(f"--hooks 只支持 auto / full / quiet / off，收到：{mode}")
 
 MCP_SERVER = {"command": MCP_BIN, "args": ["serve", "--root", "${workspaceFolder}"]}
 # Claude Code / Codex 启动 MCP 时工作目录就是项目（Claude Code 另有 CLAUDE_PROJECT_DIR），无需 --root
@@ -456,6 +459,7 @@ _CLAUDE_PRE = "^(Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|mcp__pmem__.*
 _CLAUDE_POST_FULL = "^(Write|Edit|MultiEdit|NotebookEdit|Read|Grep|Glob|Bash|PowerShell|mcp__pmem__.*)$"
 _CLAUDE_POST_QUIET = "^(Bash|PowerShell|mcp__pmem__.*)$"
 CLAUDE_HOOKS_FULL = _agent_hooks("claude", _CLAUDE_PRE, _CLAUDE_POST_FULL, {"onFailure": "continue"})
+# 旧 quiet 仍去掉 Read；Windows 上 Cursor 会同时跑 Claude Hooks，再留一套等于弹窗翻倍 → quiet/off 直接清空
 CLAUDE_HOOKS_QUIET = _agent_hooks(
     "claude", _CLAUDE_PRE, _CLAUDE_POST_QUIET, {"onFailure": "continue"}, include_compact=False
 )
@@ -464,18 +468,23 @@ CODEX_HOOKS = _agent_hooks("codex", "^(Bash|apply_patch|mcp__pmem__.*)$", "^(Bas
 CODEX_MCP_TOML = f'[mcp_servers.pmem]\ncommand = "{MCP_BIN}"\nargs = ["serve"]\n'
 
 
-def claude_hooks(mode: str = "auto") -> dict:
-    """与 cursor_hooks 同口径：Windows auto → quiet（PostToolUse 不含 Read|Grep）。"""
+def claude_hooks(mode: str = "auto", *, paired_with_cursor: bool = False) -> dict:
+    """与 cursor_hooks 同口径。
+    Windows 上若同时接入 Cursor：quiet/off 清空 Claude Hooks（Cursor 会双开翻倍弹窗）。
+    只接 Claude Code 时 quiet 仍保留无 Read 的一套，避免闸门全丢。
+    """
     import sys
 
     normalized = (mode or "auto").strip().lower()
     if normalized == "auto":
         normalized = "quiet" if sys.platform == "win32" else "full"
+    if normalized == "off" or (normalized == "quiet" and paired_with_cursor and sys.platform == "win32"):
+        return {}
     if normalized == "quiet":
         return json.loads(json.dumps(CLAUDE_HOOKS_QUIET))
     if normalized == "full":
         return json.loads(json.dumps(CLAUDE_HOOKS_FULL))
-    raise SystemExit(f"--hooks 只支持 auto / full / quiet，收到：{mode}")
+    raise SystemExit(f"--hooks 只支持 auto / full / quiet / off，收到：{mode}")
 
 
 SPEC_SKILL = """\

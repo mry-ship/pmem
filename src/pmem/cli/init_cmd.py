@@ -84,10 +84,12 @@ def run_init(root: Path, project_type: str | None, gate: str | None = None, agen
         write_text(modules_path, text)
         done.append(f"创建 {modules_path.relative_to(root)}（大类：{' / '.join(CATEGORY_PRESETS[project_type])}）")
     (memory / "entries").mkdir(exist_ok=True)
+    paired_cursor = "cursor" in chosen
     for agent in chosen:
         setup = SETUP[agent]
-        # cursor / claude 的 Hooks 密度跟 --hooks；codex 本身无读码 PostToolUse
-        if agent in ("cursor", "claude", "codex"):
+        if agent == "claude":
+            done.append(setup(root, hooks_mode=hooks, paired_with_cursor=paired_cursor))
+        elif agent in ("cursor", "codex"):
             done.append(setup(root, hooks_mode=hooks))
         else:
             done.append(setup(root))

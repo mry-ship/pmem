@@ -1,11 +1,6 @@
 {
   "version": 1,
   "hooks": {
-    "beforeSubmitPrompt": [
-      {
-        "command": "pmemw hook prompt"
-      }
-    ],
     "preToolUse": [
       {
         "command": "pmemw hook pre-tool",
@@ -16,23 +11,6 @@
     "afterMCPExecution": [
       {
         "command": "pmemw hook after-mcp"
-      }
-    ],
-    "stop": [
-      {
-        "command": "pmemw hook stop",
-        "loop_limit": 1
-      }
-    ],
-    "sessionStart": [
-      {
-        "command": "pmemw hook session"
-      }
-    ],
-    "postToolUse": [
-      {
-        "command": "pmemw hook post-tool",
-        "matcher": "Shell"
       }
     ]
   }

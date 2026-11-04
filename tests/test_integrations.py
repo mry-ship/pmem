@@ -64,12 +64,12 @@ def test_merge_hooks_quiet_drops_post_tool_use(tmp_path):
 
     merge_hooks(path, CURSOR_HOOKS_QUIET)
     quiet = json.loads(path.read_text(encoding="utf-8"))["hooks"]
-    assert quiet["postToolUse"][0]["matcher"] == "Shell"
-    assert "Read" not in quiet["postToolUse"][0]["matcher"]
-    assert "afterFileEdit" not in quiet
-    assert "preCompact" not in quiet
+    assert "postToolUse" not in quiet and "sessionStart" not in quiet
+    assert "afterFileEdit" not in quiet and "preCompact" not in quiet
+    assert "afterMCPExecution" in quiet
     assert quiet["preToolUse"][0]["command"] == "security-scan"
     assert any(h.get("command") == "pmemw hook pre-tool" for h in quiet["preToolUse"])
+    assert quiet["stop"] == [{"command": "my-own-hook"}]
 
 
 def test_cursor_hooks_auto_quiet_on_windows(monkeypatch):
@@ -79,18 +79,16 @@ def test_cursor_hooks_auto_quiet_on_windows(monkeypatch):
 
     monkeypatch.setattr(sys, "platform", "win32")
     quiet = cursor_hooks("auto")
-    assert quiet["postToolUse"]["matcher"] == "Shell"
-    assert "afterFileEdit" not in quiet
-    cq = claude_hooks("auto")
-    assert "Read" not in cq["PostToolUse"][0]["matcher"]
-    assert "Bash" in cq["PostToolUse"][0]["matcher"]
-    assert "PreCompact" not in cq
+    assert set(quiet) == {"preToolUse", "afterMCPExecution"}
+    assert claude_hooks("auto", paired_with_cursor=True) == {}
+    assert "Bash" in claude_hooks("auto", paired_with_cursor=False)["PostToolUse"][0]["matcher"]
+    assert cursor_hooks("off") == {}
     monkeypatch.setattr(sys, "platform", "linux")
     full = cursor_hooks("auto")
     assert "Read" in full["postToolUse"]["matcher"]
     assert "afterFileEdit" in full
     assert cursor_hooks("full")["postToolUse"]["matcher"].startswith("Read")
-    assert cursor_hooks("quiet")["postToolUse"]["matcher"] == "Shell"
+    assert set(cursor_hooks("quiet")) == {"preToolUse", "afterMCPExecution"}
     assert "Read" in claude_hooks("full")["PostToolUse"][0]["matcher"]
 
 

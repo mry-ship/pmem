@@ -27,23 +27,11 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "^(Write|Edit|MultiEdit|NotebookEdit|Read|Grep|Glob|Bash|PowerShell|mcp__pmem__.*)$",
+        "matcher": "^(Bash|PowerShell|mcp__pmem__.*)$",
         "hooks": [
           {
             "type": "command",
             "command": "pmemw hook post-tool --agent claude",
-            "timeout": 30,
-            "onFailure": "continue"
-          }
-        ]
-      }
-    ],
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "pmemw hook compact --agent claude",
             "timeout": 30,
             "onFailure": "continue"
           }

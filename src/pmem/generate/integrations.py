@@ -28,6 +28,7 @@ from pmem.generate.templates import (
     RULE_BLOCK,
     SEED_SKILL,
     SPEC_SKILL,
+    claude_hooks,
     cursor_hooks,
 )
 
@@ -215,15 +216,19 @@ def setup_cursor(root: Path, hooks_mode: str = "auto") -> str:
                if mode == "quiet" else ""))
 
 
-def setup_claude(root: Path) -> str:
+def setup_claude(root: Path, hooks_mode: str = "auto") -> str:
     upsert_block(root / "CLAUDE.md", RULE_BLOCK)
     _write_skills(root / ".claude" / "skills")
-    merge_group_hooks(root / ".claude" / "settings.json", CLAUDE_HOOKS)
+    wanted = claude_hooks(hooks_mode)
+    merge_group_hooks(root / ".claude" / "settings.json", wanted)
     merge_mcp(root / ".mcp.json", PLAIN_MCP_SERVER)
-    return "Claude Code：CLAUDE.md 中的 pmem 段落、.claude/skills/pmem-*、合并 .claude/settings.json 与 .mcp.json"
+    quiet = "Read" not in str((wanted.get("PostToolUse") or [{}])[0].get("matcher", "Read"))
+    return ("Claude Code：CLAUDE.md 中的 pmem 段落、.claude/skills/pmem-*、合并 .claude/settings.json 与 .mcp.json"
+            + ("；Hooks=quiet（Cursor 也会加载这份配置，PostToolUse 已去掉 Read|Grep）" if quiet else ""))
 
 
-def setup_codex(root: Path) -> str:
+def setup_codex(root: Path, hooks_mode: str = "auto") -> str:
+    del hooks_mode  # Codex PostToolUse 本就没有 Read；保留参数与 cursor/claude 对齐
     upsert_block(root / "AGENTS.md", RULE_BLOCK)
     # Codex 只从 .agents/skills 读项目技能
     _write_skills(root / ".agents" / "skills")

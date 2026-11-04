@@ -433,29 +433,50 @@ MCP_SERVER = {"command": MCP_BIN, "args": ["serve", "--root", "${workspaceFolder
 PLAIN_MCP_SERVER = {"command": MCP_BIN, "args": ["serve"]}
 
 
-def _agent_hooks(agent: str, pre_matcher: str, post_matcher: str, extra: dict | None = None) -> dict:
+def _agent_hooks(agent: str, pre_matcher: str, post_matcher: str, extra: dict | None = None,
+                 *, include_compact: bool = True) -> dict:
     def handler(event: str) -> list[dict]:
         return [{"type": "command", "command": f"{HOOK_BIN} hook {event} --agent {agent}", "timeout": 30, **(extra or {})}]
 
-    return {
+    hooks = {
         "UserPromptSubmit": [{"hooks": handler("prompt")}],
         "PreToolUse": [{"matcher": pre_matcher, "hooks": handler("pre-tool")}],
         "PostToolUse": [{"matcher": post_matcher, "hooks": handler("post-tool")}],
-        "PreCompact": [{"hooks": handler("compact")}],
         "Stop": [{"hooks": handler("stop")}],
     }
+    if include_compact:
+        hooks["PreCompact"] = [{"hooks": handler("compact")}]
+    return hooks
 
 
 # Windows 上 Claude Code 另有 PowerShell 工具；没装 Git Bash 时 Hook 起不来默认会拦下工具，
 # onFailure: continue 让 pmem 没装好时照常放行（不认这个字段的旧版 Claude Code 直接忽略）
-CLAUDE_HOOKS = _agent_hooks(
-    "claude",
-    "^(Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|mcp__pmem__.*)$",
-    "^(Write|Edit|MultiEdit|NotebookEdit|Read|Grep|Glob|Bash|PowerShell|mcp__pmem__.*)$",
-    {"onFailure": "continue"},
+# Cursor 会同时加载项目里的 .claude/settings.json：PostToolUse 若含 Read|Grep，会在「只用 Cursor」时也狂弹 shell
+_CLAUDE_PRE = "^(Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|mcp__pmem__.*)$"
+_CLAUDE_POST_FULL = "^(Write|Edit|MultiEdit|NotebookEdit|Read|Grep|Glob|Bash|PowerShell|mcp__pmem__.*)$"
+_CLAUDE_POST_QUIET = "^(Bash|PowerShell|mcp__pmem__.*)$"
+CLAUDE_HOOKS_FULL = _agent_hooks("claude", _CLAUDE_PRE, _CLAUDE_POST_FULL, {"onFailure": "continue"})
+CLAUDE_HOOKS_QUIET = _agent_hooks(
+    "claude", _CLAUDE_PRE, _CLAUDE_POST_QUIET, {"onFailure": "continue"}, include_compact=False
 )
+CLAUDE_HOOKS = CLAUDE_HOOKS_FULL
 CODEX_HOOKS = _agent_hooks("codex", "^(Bash|apply_patch|mcp__pmem__.*)$", "^(Bash|apply_patch|mcp__pmem__.*)$")
 CODEX_MCP_TOML = f'[mcp_servers.pmem]\ncommand = "{MCP_BIN}"\nargs = ["serve"]\n'
+
+
+def claude_hooks(mode: str = "auto") -> dict:
+    """与 cursor_hooks 同口径：Windows auto → quiet（PostToolUse 不含 Read|Grep）。"""
+    import sys
+
+    normalized = (mode or "auto").strip().lower()
+    if normalized == "auto":
+        normalized = "quiet" if sys.platform == "win32" else "full"
+    if normalized == "quiet":
+        return json.loads(json.dumps(CLAUDE_HOOKS_QUIET))
+    if normalized == "full":
+        return json.loads(json.dumps(CLAUDE_HOOKS_FULL))
+    raise SystemExit(f"--hooks 只支持 auto / full / quiet，收到：{mode}")
+
 
 SPEC_SKILL = """\
 ---

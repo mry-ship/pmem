@@ -75,18 +75,23 @@ def test_merge_hooks_quiet_drops_post_tool_use(tmp_path):
 def test_cursor_hooks_auto_quiet_on_windows(monkeypatch):
     import sys
 
-    from pmem.generate.templates import cursor_hooks
+    from pmem.generate.templates import claude_hooks, cursor_hooks
 
     monkeypatch.setattr(sys, "platform", "win32")
     quiet = cursor_hooks("auto")
     assert quiet["postToolUse"]["matcher"] == "Shell"
     assert "afterFileEdit" not in quiet
+    cq = claude_hooks("auto")
+    assert "Read" not in cq["PostToolUse"][0]["matcher"]
+    assert "Bash" in cq["PostToolUse"][0]["matcher"]
+    assert "PreCompact" not in cq
     monkeypatch.setattr(sys, "platform", "linux")
     full = cursor_hooks("auto")
     assert "Read" in full["postToolUse"]["matcher"]
     assert "afterFileEdit" in full
     assert cursor_hooks("full")["postToolUse"]["matcher"].startswith("Read")
     assert cursor_hooks("quiet")["postToolUse"]["matcher"] == "Shell"
+    assert "Read" in claude_hooks("full")["PostToolUse"][0]["matcher"]
 
 
 def test_comment_only_modules_yaml_without_newline_keeps_body(tmp_path):

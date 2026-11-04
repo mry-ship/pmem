@@ -85,12 +85,12 @@ def run_init(root: Path, project_type: str | None, gate: str | None = None, agen
         done.append(f"创建 {modules_path.relative_to(root)}（大类：{' / '.join(CATEGORY_PRESETS[project_type])}）")
     (memory / "entries").mkdir(exist_ok=True)
     for agent in chosen:
-        if agent == "cursor":
-            from pmem.generate.integrations import setup_cursor
-
-            done.append(setup_cursor(root, hooks_mode=hooks))
+        setup = SETUP[agent]
+        # cursor / claude 的 Hooks 密度跟 --hooks；codex 本身无读码 PostToolUse
+        if agent in ("cursor", "claude", "codex"):
+            done.append(setup(root, hooks_mode=hooks))
         else:
-            done.append(SETUP[agent](root))
+            done.append(setup(root))
 
     print("pmem 接入完成：")
     for line in done:

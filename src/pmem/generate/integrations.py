@@ -11,8 +11,7 @@ from pmem.generate.templates import (
     BLOCK_BEGIN,
     BLOCK_END,
     BOOTSTRAP_SKILL,
-    CLAUDE_HOOKS,
-    CODEX_HOOKS,
+    codex_hooks,
     CODEX_MCP_TOML,
     COMPACT_SKILL,
     CONSOLIDATE_SKILL,
@@ -235,13 +234,20 @@ def setup_claude(root: Path, hooks_mode: str = "auto", *, paired_with_cursor: bo
             + extra)
 
 def setup_codex(root: Path, hooks_mode: str = "auto") -> str:
-    del hooks_mode  # Codex PostToolUse 本就没有 Read；保留参数与 cursor/claude 对齐
     upsert_block(root / "AGENTS.md", RULE_BLOCK)
     # Codex 只从 .agents/skills 读项目技能
     _write_skills(root / ".agents" / "skills")
-    merge_group_hooks(root / ".codex" / "hooks.json", CODEX_HOOKS)
+    wanted = codex_hooks(hooks_mode)
+    merge_group_hooks(root / ".codex" / "hooks.json", wanted)
     merge_codex_mcp(root / ".codex" / "config.toml")
-    return "Codex：AGENTS.md 中的 pmem 段落、.agents/skills/pmem-*、合并 .codex/hooks.json 与 .codex/config.toml"
+    if not wanted:
+        extra = "；Hooks 已清空"
+    elif "UserPromptSubmit" not in wanted:
+        extra = "；Hooks=quiet（仅 Pre/PostToolUse，无 prompt/stop/compact）"
+    else:
+        extra = ""
+    return ("Codex：AGENTS.md 中的 pmem 段落、.agents/skills/pmem-*、合并 .codex/hooks.json 与 .codex/config.toml"
+            + extra)
 
 
 SETUP = {"cursor": setup_cursor, "claude": setup_claude, "codex": setup_codex}

@@ -410,8 +410,19 @@ _CURSOR_HOOK_EXTRA = {
     "preCompact": {"command": f"{HOOK_BIN} hook compact"},
 }
 CURSOR_HOOKS_FULL = {**_CURSOR_HOOK_GATE, **_CURSOR_HOOK_REMINDERS, **_CURSOR_HOOK_EXTRA}
-# quiet：只留闸门+MCP 登记。终端 search 兜底与 stop 提醒先让路；MCP 看门狗负责服务自愈
-CURSOR_HOOKS_QUIET = dict(_CURSOR_HOOK_GATE)
+# quiet：闸门仍拦 Write/Edit/MCP，但 matcher 去掉 Shell——Agent 每条终端命令若再跑 Hook，
+# Windows 上 Cursor 经 PowerShell 转发必弹黑框（与 pmemw 是否 GUI 无关）。
+_CURSOR_QUIET_PRE_MATCHER = (
+    "Write|StrReplace|Edit|MultiEdit|EditNotebook|Delete|MCP|record_memory|search_memory"
+)
+CURSOR_HOOKS_QUIET = {
+    "preToolUse": {
+        "command": f"{HOOK_BIN} hook pre-tool",
+        "matcher": _CURSOR_QUIET_PRE_MATCHER,
+        "failClosed": False,
+    },
+    "afterMCPExecution": {"command": f"{HOOK_BIN} hook after-mcp"},
+}
 # 兼容旧引用：默认指向完整集；实际写入由 cursor_hooks() 按平台选择
 CURSOR_HOOKS = CURSOR_HOOKS_FULL
 
@@ -426,7 +437,7 @@ def cursor_hooks(mode: str = "auto") -> dict:
     if normalized == "off":
         return {}
     if normalized == "quiet":
-        return dict(CURSOR_HOOKS_QUIET)
+        return json.loads(json.dumps(CURSOR_HOOKS_QUIET))
     if normalized == "full":
         return dict(CURSOR_HOOKS_FULL)
     raise SystemExit(f"--hooks 只支持 auto / full / quiet / off，收到：{mode}")
@@ -464,7 +475,18 @@ CLAUDE_HOOKS_QUIET = _agent_hooks(
     "claude", _CLAUDE_PRE, _CLAUDE_POST_QUIET, {"onFailure": "continue"}, include_compact=False
 )
 CLAUDE_HOOKS = CLAUDE_HOOKS_FULL
-CODEX_HOOKS = _agent_hooks("codex", "^(Bash|apply_patch|mcp__pmem__.*)$", "^(Bash|apply_patch|mcp__pmem__.*)$")
+CODEX_HOOKS_FULL = _agent_hooks("codex", "^(Bash|apply_patch|mcp__pmem__.*)$", "^(Bash|apply_patch|mcp__pmem__.*)$")
+# quiet：去掉 Bash（Windows 上每条终端 Hook 弹窗），只留 apply_patch + MCP；无 prompt/stop/compact
+_CODEX_QUIET_MATCHER = "^(apply_patch|mcp__pmem__.*)$"
+CODEX_HOOKS_QUIET = _agent_hooks(
+    "codex", _CODEX_QUIET_MATCHER, _CODEX_QUIET_MATCHER, include_compact=False
+)
+# _agent_hooks 仍带 UserPromptSubmit/Stop；quiet 只要 Pre/Post
+CODEX_HOOKS_QUIET = {
+    "PreToolUse": CODEX_HOOKS_QUIET["PreToolUse"],
+    "PostToolUse": CODEX_HOOKS_QUIET["PostToolUse"],
+}
+CODEX_HOOKS = CODEX_HOOKS_FULL
 CODEX_MCP_TOML = f'[mcp_servers.pmem]\ncommand = "{MCP_BIN}"\nargs = ["serve"]\n'
 
 
@@ -484,6 +506,22 @@ def claude_hooks(mode: str = "auto", *, paired_with_cursor: bool = False) -> dic
         return json.loads(json.dumps(CLAUDE_HOOKS_QUIET))
     if normalized == "full":
         return json.loads(json.dumps(CLAUDE_HOOKS_FULL))
+    raise SystemExit(f"--hooks 只支持 auto / full / quiet / off，收到：{mode}")
+
+
+def codex_hooks(mode: str = "auto") -> dict:
+    """与 cursor_hooks 同口径：Windows auto→quiet（无 prompt/stop/compact）。"""
+    import sys
+
+    normalized = (mode or "auto").strip().lower()
+    if normalized == "auto":
+        normalized = "quiet" if sys.platform == "win32" else "full"
+    if normalized == "off":
+        return {}
+    if normalized == "quiet":
+        return json.loads(json.dumps(CODEX_HOOKS_QUIET))
+    if normalized == "full":
+        return json.loads(json.dumps(CODEX_HOOKS_FULL))
     raise SystemExit(f"--hooks 只支持 auto / full / quiet / off，收到：{mode}")
 
 

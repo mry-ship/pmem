@@ -29,6 +29,43 @@ OK, WARN, BAD = "✔", "!", "✘"
 def _is_hook_command(command, event: str) -> bool:
     text = str(command or "")
     return text.startswith(f"pmemw hook {event}") or text.startswith(f"pmem hook {event}")
+
+
+def _iter_hook_commands(hooks_data: dict) -> list[str]:
+    """Cursor 扁平 hooks 与 Claude/Codex 三层 hooks 里的 command 字符串。"""
+    out: list[str] = []
+    table = hooks_data.get("hooks") if isinstance(hooks_data, dict) else None
+    if not isinstance(table, dict):
+        return out
+    for entries in table.values():
+        if not isinstance(entries, list):
+            continue
+        for item in entries:
+            if not isinstance(item, dict):
+                continue
+            cmd = item.get("command")
+            if isinstance(cmd, str) and cmd.strip():
+                out.append(cmd)
+            nested = item.get("hooks")
+            if isinstance(nested, list):
+                for handler in nested:
+                    if isinstance(handler, dict) and isinstance(handler.get("command"), str):
+                        text = handler["command"].strip()
+                        if text:
+                            out.append(text)
+    return out
+
+
+def _is_console_python_hook(command: str) -> bool:
+    """Windows 上用控制台 Python 起 Hook 会弹黑框；pyw/pythonw 除外。macOS 的 python3 没问题。"""
+    cmd = str(command or "").strip()
+    if not cmd:
+        return False
+    if re.match(r"^(pyw|pythonw)(\.exe)?\b", cmd, re.I):
+        return False
+    return bool(re.match(r"^(python3?|py)(\.exe)?\b", cmd, re.I))
+
+
 MAX_LISTED_PAIRS = 10
 RECENT_ERROR_SECONDS = 24 * 3600
 _STAMP = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) ")
@@ -185,6 +222,9 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
         if any("||" in str(h.get("command") or "") for entries in hooks_data.get("hooks", {}).values()
                for h in entries if isinstance(h, dict)):
             line(WARN, "hooks.json 命令含 ||，Cursor 会经 cmd/PowerShell 启动，Windows 必弹控制台；请改成单个可执行文件")
+        if sys.platform == "win32" and any(_is_console_python_hook(c) for c in _iter_hook_commands(hooks_data)):
+            line(WARN, "hooks.json 在 Windows 上用控制台版 python3/python/py 起 Hook，会弹黑框；"
+                 "请改成 pyw -3 -u（macOS/Linux 仍用 python3）")
         mcp_cmd = str((mcp.get("pmem") or {}).get("command") or "")
         if mcp_cmd in ("pmemw", "pmemw.exe"):
             line(WARN, "MCP 用了 pmemw：Windows 上容易掐断 stdio（Connection closed）；请重新运行 pmem init 改回 pmem")
@@ -213,6 +253,9 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
                        f"出错会拦下工具；请重新运行 pmem init --agents {agent} 更新")
         elif sys.platform == "win32" and any(h["command"].startswith("pmem hook") for _, h in handlers):
             line(WARN, f"{label} 的 Hooks 仍用控制台版 pmem，Windows 会弹黑框；请升级 pmem 后重新运行 pmem init --agents {agent}")
+        elif sys.platform == "win32" and any(_is_console_python_hook(h["command"]) for _, h in handlers):
+            line(WARN, f"{label} 的 Hooks 在 Windows 上用控制台版 python3/python/py，会弹黑框；"
+                 f"请改成 pyw -3 -u（macOS/Linux 仍用 python3）")
         elif agent == "claude" and sys.platform == "win32" and wired_hooks and cursor_pmem:
             line(WARN, f"{label} 在 Windows 上仍装了 Hooks：Cursor 会与 .cursor/hooks 双开弹窗；建议 pmem init --hooks quiet")
         elif not (skills / "pmem-bootstrap" / "SKILL.md").exists():

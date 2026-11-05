@@ -75,7 +75,7 @@ def test_merge_hooks_quiet_drops_post_tool_use(tmp_path):
 def test_cursor_hooks_auto_quiet_on_windows(monkeypatch):
     import sys
 
-    from pmem.generate.templates import claude_hooks, cursor_hooks
+    from pmem.generate.templates import claude_hooks, codex_hooks, cursor_hooks
 
     monkeypatch.setattr(sys, "platform", "win32")
     quiet = cursor_hooks("auto")
@@ -83,6 +83,9 @@ def test_cursor_hooks_auto_quiet_on_windows(monkeypatch):
     assert claude_hooks("auto", paired_with_cursor=True) == {}
     assert "Bash" in claude_hooks("auto", paired_with_cursor=False)["PostToolUse"][0]["matcher"]
     assert cursor_hooks("off") == {}
+    codex_quiet = codex_hooks("auto")
+    assert set(codex_quiet) == {"PreToolUse", "PostToolUse"}
+    assert "UserPromptSubmit" not in codex_quiet and "Stop" not in codex_quiet
     monkeypatch.setattr(sys, "platform", "linux")
     full = cursor_hooks("auto")
     assert "Read" in full["postToolUse"]["matcher"]
@@ -90,6 +93,7 @@ def test_cursor_hooks_auto_quiet_on_windows(monkeypatch):
     assert cursor_hooks("full")["postToolUse"]["matcher"].startswith("Read")
     assert set(cursor_hooks("quiet")) == {"preToolUse", "afterMCPExecution"}
     assert "Read" in claude_hooks("full")["PostToolUse"][0]["matcher"]
+    assert "UserPromptSubmit" in codex_hooks("auto") and "Stop" in codex_hooks("full")
 
 
 def test_comment_only_modules_yaml_without_newline_keeps_body(tmp_path):

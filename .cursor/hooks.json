@@ -4,7 +4,7 @@
     "preToolUse": [
       {
         "command": "pmemw hook pre-tool",
-        "matcher": "Write|StrReplace|Edit|MultiEdit|EditNotebook|Delete|Shell|MCP|record_memory|search_memory",
+        "matcher": "MCP|record_memory|search_memory",
         "failClosed": false
       }
     ],

@@ -80,6 +80,9 @@ def test_cursor_hooks_auto_quiet_on_windows(monkeypatch):
     monkeypatch.setattr(sys, "platform", "win32")
     quiet = cursor_hooks("auto")
     assert set(quiet) == {"preToolUse", "afterMCPExecution"}
+    quiet_matcher = quiet["preToolUse"]["matcher"]
+    assert "Write" not in quiet_matcher and "Shell" not in quiet_matcher
+    assert "MCP" in quiet_matcher and "search_memory" in quiet_matcher
     assert claude_hooks("auto", paired_with_cursor=True) == {}
     assert "Bash" in claude_hooks("auto", paired_with_cursor=False)["PostToolUse"][0]["matcher"]
     assert cursor_hooks("off") == {}
@@ -90,8 +93,10 @@ def test_cursor_hooks_auto_quiet_on_windows(monkeypatch):
     full = cursor_hooks("auto")
     assert "Read" in full["postToolUse"]["matcher"]
     assert "afterFileEdit" in full
+    assert "Write" in cursor_hooks("full")["preToolUse"]["matcher"]
     assert cursor_hooks("full")["postToolUse"]["matcher"].startswith("Read")
     assert set(cursor_hooks("quiet")) == {"preToolUse", "afterMCPExecution"}
+    assert "Write" not in cursor_hooks("quiet")["preToolUse"]["matcher"]
     assert "Read" in claude_hooks("full")["PostToolUse"][0]["matcher"]
     assert "UserPromptSubmit" in codex_hooks("auto") and "Stop" in codex_hooks("full")
 

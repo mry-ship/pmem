@@ -410,11 +410,10 @@ _CURSOR_HOOK_EXTRA = {
     "preCompact": {"command": f"{HOOK_BIN} hook compact"},
 }
 CURSOR_HOOKS_FULL = {**_CURSOR_HOOK_GATE, **_CURSOR_HOOK_REMINDERS, **_CURSOR_HOOK_EXTRA}
-# quiet：闸门仍拦 Write/Edit/MCP，但 matcher 去掉 Shell——Agent 每条终端命令若再跑 Hook，
-# Windows 上 Cursor 经 PowerShell 转发必弹黑框（与 pmemw 是否 GUI 无关）。
-_CURSOR_QUIET_PRE_MATCHER = (
-    "Write|StrReplace|Edit|MultiEdit|EditNotebook|Delete|MCP|record_memory|search_memory"
-)
+# quiet：只拦 MCP 记忆读写。Write/Edit/Shell 一律不匹配——Windows 上 Cursor 经 PowerShell
+# 转发每个 Hook 必弹黑框（与 pmemw 是否 GUI 无关）；写 md 也走 Write，留文件编辑类 matcher
+# 仍会狂弹。改代码时靠规则先查记忆 + afterMCP；要硬闸门用 --hooks full。
+_CURSOR_QUIET_PRE_MATCHER = "MCP|record_memory|search_memory"
 CURSOR_HOOKS_QUIET = {
     "preToolUse": {
         "command": f"{HOOK_BIN} hook pre-tool",

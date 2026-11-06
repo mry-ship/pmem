@@ -284,3 +284,35 @@ def test_init_survives_an_unreadable_module_list(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "规格骨架未写" in out
     assert "下一步" in out
+
+
+def test_prefill_from_feature_memory_seeds_program_and_status(root):
+    from pmem.core.entry import Entry
+
+    entry = Entry(
+        id="01M0000000000000000000FEAT",
+        module="gameplay.Jigsaw",
+        entity="Board",
+        kind="feature",
+        content="需求：拼图棋盘要支持撤销。必须保持：撤销栈最多 50 步。" + "x" * 20,
+        note_date="2026-10-20",
+        author="a",
+        summary="撤销栈最多 50 步，超出丢弃最早一步",
+        anchors=["src/Jigsaw/Board.cs#Undo"],
+    )
+    folder = root / ".memory" / "entries" / "gameplay.Jigsaw"
+    folder.mkdir(parents=True)
+    (folder / f"{entry.id}.md").write_text(entry.to_markdown(), encoding="utf-8")
+
+    assert main(["spec", "init", "--root", str(root)]) == 0
+    program = (_folder(root, "gameplay.Jigsaw") / "程序设计.md").read_text(encoding="utf-8")
+    status = (_folder(root, "gameplay.Jigsaw") / "模块现状.md").read_text(encoding="utf-8")
+    # 入口预填进程序设计，必须保持预填进模块现状
+    assert "src/Jigsaw/Board.cs#Undo" in program
+    assert "撤销栈最多 50 步" in status
+    assert "待对照代码核对" in program and "待对照代码核对" in status
+    # EMPTY 标记仍在：预填不等于已完成，--check 仍判未完成
+    assert "<!-- spec:empty -->" in program
+    assert main(["spec", "--root", str(root), "--check"]) == 1
+    # 按模块精确匹配：无该模块 feature 记忆的其他模块不受影响，照旧空骨架
+    assert "待对照代码核对" not in (_folder(root, "gameplay.Jigsaw.Board") / "程序设计.md").read_text(encoding="utf-8")

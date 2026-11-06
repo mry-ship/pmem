@@ -89,7 +89,21 @@ def _facts(module_id: str, registry) -> str:
     return "\n".join(lines)
 
 
-def _bodies() -> dict[str, str]:
+# 从 feature 记忆预填的内容标成“待核对”，提示 Agent 这是起点、须对照代码确认后才算数；
+# EMPTY 标记仍保留，--check 和九成八口径不变（预填不等于已完成）。
+PREFILL_NOTE = "（以下由 feature 记忆预填，待对照代码核对，核对后删除本行）"
+
+
+def _prefill_lines(items: list[str]) -> str:
+    return "".join(f"  - {s}\n" for s in items)
+
+
+def _bodies(entry_prefill: dict[str, list[str]] | None = None) -> dict[str, str]:
+    prefill = entry_prefill or {}
+    entry = prefill.get("入口") or []
+    keep = prefill.get("必须保持") or []
+    program_hint = f"{PREFILL_NOTE}\n{_prefill_lines(entry)}" if entry else ""
+    status_hint = f"{PREFILL_NOTE}\n{_prefill_lines(keep)}" if keep else ""
     return {
         "策划设计": f"{DESIGN_GAP}\n首扫未从代码中看到的完整策划，此处留空。\n",
         "美术设计": (
@@ -100,7 +114,7 @@ def _bodies() -> dict[str, str]:
         ),
         "程序设计": (
             f"{EMPTY}\n"
-            "入口：\n"
+            f"入口：\n{program_hint}"
             "入参字段闭集：\n"
             "出参字段闭集：\n"
             "数据形状与闭集词表：\n"
@@ -114,7 +128,7 @@ def _bodies() -> dict[str, str]:
         ),
         "模块现状": (
             f"{EMPTY}\n"
-            "必须保持：\n"
+            f"必须保持：\n{status_hint}"
             "一轮例子：\n"
             "单独拿走时还要带走的依赖规格：\n"
         ),
@@ -214,7 +228,31 @@ def _split_legacy(out_dir: Path, module_id: str, registry) -> bool:
     return True
 
 
-def _ensure(registry, out_dir: Path, module_id: str, day: str, fill_missing: bool) -> tuple[int, bool]:
+def spec_prefill(entries) -> dict[str, dict[str, list[str]]]:
+    """从各模块现行的 feature 记忆里取可预填规格的事实：
+    anchors（入口）→ 程序设计/入口；summary 或标题（必须保持的行为）→ 模块现状/必须保持。
+    只看 feature（功能记录写的就是对外契约与必须保持的行为），排除项/根因等教训不进规格。
+    entries 传入 Entry 列表（现行、未被替代的），避免 spec 依赖检索/索引。"""
+    from pmem.core.entry import RECORD_KINDS
+
+    out: dict[str, dict[str, list[str]]] = {}
+    for entry in entries:
+        if entry.kind != "feature" and entry.kind not in RECORD_KINDS:
+            continue
+        if entry.kind != "feature":
+            continue
+        slot = out.setdefault(entry.module, {"入口": [], "必须保持": []})
+        for anchor in entry.anchors:
+            if anchor and anchor not in slot["入口"]:
+                slot["入口"].append(anchor)
+        title = (entry.summary or entry.title or "").strip()
+        if title and title not in slot["必须保持"]:
+            slot["必须保持"].append(title)
+    return out
+
+
+def _ensure(registry, out_dir: Path, module_id: str, day: str, fill_missing: bool,
+            prefill: dict[str, dict[str, list[str]]] | None = None) -> tuple[int, bool]:
     """返回 (新写的正文份数, 是否被拒绝)。fill_missing 为假时只拆旧文件、刷新索引。"""
     if _split_legacy(out_dir, module_id, registry):
         return 4, False
@@ -231,7 +269,7 @@ def _ensure(registry, out_dir: Path, module_id: str, day: str, fill_missing: boo
                 _write_new(folder / "index.md", text)
         return 0, False
     written = 0
-    bodies = _bodies()
+    bodies = _bodies((prefill or {}).get(module_id))
     for title in SECTIONS:
         path = _part_path(folder, title)
         if path is None:
@@ -262,12 +300,13 @@ def _rows(registry, out_dir: Path) -> list[tuple[str, str, str, str]]:
     return rows
 
 
-def init_specs(registry, out_dir: Path, day: str | None = None) -> SpecResult:
+def init_specs(registry, out_dir: Path, day: str | None = None,
+               prefill: dict[str, dict[str, list[str]]] | None = None) -> SpecResult:
     day = day or date.today().isoformat()
     result = SpecResult()
     out_dir.mkdir(parents=True, exist_ok=True)
     for module_id in _live(registry):
-        written, blocked = _ensure(registry, out_dir, module_id, day, fill_missing=True)
+        written, blocked = _ensure(registry, out_dir, module_id, day, fill_missing=True, prefill=prefill)
         if blocked:
             result.blocked.append(module_id)
             continue

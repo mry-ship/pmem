@@ -6,9 +6,26 @@ from pathlib import Path
 
 from pmem.core.config import Config
 from pmem.core.registry import ModuleRegistry, RegistryError
-from pmem.generate.spec import format_list, incomplete, index_specs, init_specs, project_spec_dir
+from pmem.generate.spec import format_list, incomplete, index_specs, init_specs, project_spec_dir, spec_prefill
 
 __all__ = ["ensure_spec_skeletons", "run_spec"]
+
+
+def _memory_prefill(root: Path, config: Config) -> dict:
+    """直接读记忆文件（不走索引/嵌入），取现行、未被替代的记忆，构造规格预填。读不出时返回空、照旧铺空骨架。"""
+    try:
+        from pmem.core.entry import VISIBLE_STATUSES
+        from pmem.storage.files import FilesStorage
+        from pmem.vcs.detect import detect_vcs
+
+        storage = FilesStorage(root, detect_vcs(root, config.get("vcs")))
+        entries = [entry for _, entry in storage.iter_all()]
+        superseded = {s for e in entries for s in e.replaces()}
+        current = [e for e in entries
+                   if e.status in VISIBLE_STATUSES and e.id not in superseded]
+        return spec_prefill(current)
+    except Exception:  # noqa: BLE001  预填只是便利，任何读失败都不该挡住骨架生成
+        return {}
 
 
 def ensure_spec_skeletons(root: Path) -> tuple[int, str]:
@@ -25,7 +42,7 @@ def ensure_spec_skeletons(root: Path) -> tuple[int, str]:
         return 2, f"模块名单读不了，规格骨架未写：{exc}"
     if not any(not module.merged_into for module in registry.modules.values()):
         return 0, "还没有已登记模块，规格目录等划分模块后再补"
-    result = init_specs(registry, target)
+    result = init_specs(registry, target, prefill=_memory_prefill(root, config))
     if result.blocked:
         return 2, f"有 {len(result.blocked)} 个模块不能写成规格文件：{'、'.join(result.blocked[:10])}"
     return 0, f"规格骨架：新写 {result.written}，已有 {result.skipped}，目录 {target}"

@@ -1,198 +1,63 @@
-"""终端命令解析：会写到哪些文件、是否在跑脚本，以及命令里的 pmem search/record 调用。"""
+"""从每条命令里认出会写到的文件，以及对外接口：scan、shell_write_targets、may_change_unseen、
+searched_before_writes、cli_args。认得出的命令事前拦截；认不出的交给执行前后快照比对。"""
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 
-_NULL_TARGETS = {"$null", "/dev/null", "nul", "&1", "&2"}
-# 1> 2> *> &> >| 都算；->、=> 是代码里的箭头。目标可带引号
-_REDIRECT = re.compile(r"(?<![-=>])([0-9*&]?)>>?\|?\s*(&\d|'[^']*'|\"[^\"]*\"|[^\s|;&<>]+)")
-_STDOUT_FDS = {"", "1", "*", "&"}
-_PS_WRITERS = {"set-content", "add-content", "out-file", "new-item", "ni", "clear-content", "remove-item", "ri", "sc",
-               "ac"}
-_TEE = {"tee", "tee-object"}
-# 命令里再套一层终端：powershell -Command "..."、cmd /c "..."、bash -c "..."，以及直接运行的脚本文件
-_POWERSHELLS = {"powershell", "pwsh"}
-_POSIX_SHELLS = {"bash", "sh", "zsh"}
-_SHELL_SCRIPT_SUFFIXES = (".ps1", ".bat", ".cmd", ".sh")
-_PS_VALUE_FLAGS = {"-executionpolicy", "-ep", "-windowstyle", "-outputformat", "-inputformat", "-workingdirectory",
-                   "-configurationname"}
-_MAX_NESTING = 3
-# 跟在 pmem search 后面会吞掉输出的管道；输出被丢弃的检索不算查过
-_DISCARD_STAGES = {"out-null", "out-file", "set-content", "add-content"}
-VARIABLE_PATH = re.compile(r"[$%]|\{")
-WILDCARD_PATH = re.compile(r"[*?\[]")
-# bash -c、bash -lc、sh -ec：合在一起的短参数里带 c 就是内联命令
-_POSIX_INLINE_FLAG = re.compile(r"-[a-zA-Z]*c[a-zA-Z]*")
-_RM = {"rm", "del", "erase", "rmdir", "rd"}
-_COPY = {"cp", "copy", "copy-item", "cpi"}
-_MOVE = {"mv", "move", "move-item", "mi", "rename-item", "rni", "ren"}
-_PATH_PARAMS = ("-path", "-literalpath", "-filepath", "-destination")
-_SCRIPT_SUFFIXES = (".py", ".js", ".mjs", ".cjs")
-_INTERPRETERS = {"python", "python3", "py", "node", "deno"}
-_SCRIPT_MAX_BYTES = 200_000
-# Node 的 rm( / rename( 只认 fs.xxx( 或 xxxSync(：裸写会误中 norm(、confirm(、pandas 的 df.rename(
-_CODE_WRITES = re.compile(
-    r"\bopen\([^)\n]{0,200}['\"](?:[wax][bt+]*|r[bt]*\+[bt]*)['\"]|write_text|write_bytes|\.unlink\("
-    r"|\b(?:writeFile|appendFile|unlink|rm|rename|copyFile|truncate)Sync\("
-    r"|\b(?:fs|fsp|fsPromises|promises)\.(?:writeFile|appendFile|unlink|rm|rename|copyFile|truncate)\("
-    r"|\bcreateWriteStream\("
-    r"|os\.(?:remove|rename|replace)\(|shutil\.(?:copy\w*|move|rmtree)\(|WriteAll\w+|AppendAll\w+"
+from pmem.hooks.shell.constants import (
+    _CD,
+    _CODE_WRITES,
+    _COPY,
+    _DISCARD_STAGES,
+    _DOTNET_WRITE,
+    _FIND_WRITES,
+    _GIT_READ_ONLY,
+    _INTERPRETERS,
+    _LAUNCHERS,
+    _MAX_NESTING,
+    _MAX_ORDERED_STATEMENTS,
+    _MOVE,
+    _NULL_TARGETS,
+    _PATCH_FILE,
+    _PATH_LITERAL,
+    _PATH_PARAMS,
+    _PIPED_ITEMS,
+    _PMEM_CLI,
+    _PMEM_READ_ONLY,
+    _POPD,
+    _POSIX_INLINE_FLAG,
+    _POSIX_SHELLS,
+    _POWERSHELLS,
+    _PS_CONTENT_WRITERS,
+    _PS_VALUE_FLAGS,
+    _PS_VALUE_PARAMS,
+    _PS_WRITERS,
+    _READ_ONLY,
+    _RENAME,
+    _RM,
+    _SCRIPT_SUFFIXES,
+    _SEQUENTIAL_OPS,
+    _SHELL_SCRIPT_SUFFIXES,
+    _STDOUT_FDS,
+    _SVN_READ_ONLY,
+    _TEE,
+    MAX_PARSED_COMMAND,
+    VARIABLE_PATH,
+    WILDCARD_PATH,
 )
-_PATH_LITERAL = re.compile(r"['\"]([^'\"\s]*[/\\][^'\"\s]*|[^'\"\s/\\]+\.\w{1,8})['\"]")
-_DOTNET_WRITE = re.compile(r"\[(?:System\.)?IO\.File\]::(?:WriteAll\w+|AppendAll\w+|Delete|Copy|Move)\(\s*['\"]([^'\"]+)",
-                           re.IGNORECASE)
-_PATCH_FILE = re.compile(r"^(?:\+\+\+ b|--- a)/(\S+)", re.MULTILINE)
-# here-string（@' ... '@）与 heredoc（<<EOF ... EOF）的正文是数据，不是要执行的命令。
-# 用正则找开头、用字符串查找结束符：整段正则在结束符缺失时是平方级，几十 KB 的命令要几十秒
-_HERE_STRING_OPEN = re.compile(r"@(['\"])[ \t]*\r?\n")
-_HEREDOC_OPEN = re.compile(r"<<-?[ \t]*(['\"]?)(\w+)\1([^\n]*)\n")
-_MAX_HEREDOCS = 20
-# 超过这个长度的命令不逐段解析，直接走执行前后的快照比对
-MAX_PARSED_COMMAND = 64_000
-_CD = {"cd", "chdir", "set-location", "sl", "pushd", "push-location"}
-_POPD = {"popd", "pop-location"}
-# 只读命令：命令行里只有这些时不需要执行前后比对文件
-_READ_ONLY = {
-    "ls", "dir", "gci", "get-childitem", "cat", "type", "gc", "get-content", "head", "tail", "less", "more",
-    "rg", "grep", "findstr", "select-string", "sls", "find", "where", "where.exe", "which", "get-command",
-    "echo", "write-output", "write-host", "pwd", "get-location", "test-path", "get-item", "gi", "resolve-path",
-    "select-object", "select", "sort-object", "sort", "measure-object", "measure", "format-table", "ft",
-    "format-list", "fl", "out-string", "where-object", "?", "group-object", "wc",
-    "get-date", "get-process", "env", "printenv", "date", "whoami", "hostname", "tree", "stat", "file",
-    *_CD, *_POPD, "exit", "true", "false", "sleep", "start-sleep", "clear", "cls",
-}
-_GIT_READ_ONLY = {"status", "log", "diff", "show", "blame", "branch", "rev-parse", "ls-files", "ls-tree", "grep",
-                  "remote", "describe", "shortlog", "cat-file", "reflog", "help", "version", "fetch"}
-_SVN_READ_ONLY = {"status", "st", "stat", "log", "diff", "di", "info", "cat", "list", "ls", "blame", "praise",
-                  "annotate", "ann", "propget", "pg", "proplist", "pl", "help", "?", "h", "--version"}
-_PMEM_READ_ONLY = {"search", "graph", "list", "terms", "doctor", "report", "compact", "scan", "--help", "-h"}
-# pmemw 是 Hook 用的无控制台入口；MCP 仍用 pmem。终端里两者等价
-_PMEM_CLI = {"pmem", "pmemw"}
-# 只改变后面命令运行方式的前缀（sudo rm x 真正执行的是 rm），值为会吞掉下一个参数的选项
-_PREFIXES = {
-    "sudo": {"-u", "-g", "-p", "-C", "-D", "-U", "-h", "-r", "-t"}, "doas": {"-u", "-C"},
-    "env": {"-u", "-C", "--unset", "--chdir"}, "command": set(), "builtin": set(),
-    "nohup": set(), "exec": {"-a"}, "time": {"-f", "-o", "--format", "--output"}, "nice": {"-n"},
-    "stdbuf": {"-i", "-o", "-e"},
-}
-
-
-def _strip_heredocs(command: str) -> str:
-    command = _cut_bodies(command or "", _HERE_STRING_OPEN, lambda m: re.compile(r"\r?\n" + m[1] + "@"),
-                          lambda m: "''")
-    return _cut_bodies(command, _HEREDOC_OPEN,
-                       lambda m: re.compile(r"(?m)^[ \t]*" + re.escape(m[2]) + r"[ \t]*\r?$"),
-                       lambda m: f"<<{m[2]}{m[3]}")
-
-
-def _cut_bodies(command: str, opener: re.Pattern, closer, replacement) -> str:
-    """把开头（opener）到结束符（closer）之间的正文换成 replacement；结束符必须在正文之后另起一行（正文可为空）。
-    找不到结束符的保持原样；最多处理 _MAX_HEREDOCS 处，代码里的 1<<20 这类移位不会拖慢解析。"""
-    out: list[str] = []
-    pos = 0
-    for count, match in enumerate(opener.finditer(command)):
-        if count >= _MAX_HEREDOCS:
-            break
-        if match.start() < pos:
-            continue
-        body_start = match.end()
-        end = closer(match).search(command, body_start - 1 if command[body_start - 1:body_start] == "\n" else body_start)
-        if end is None:
-            continue
-        out.append(command[pos:match.start()])
-        out.append(replacement(match))
-        pos = end.end()
-    out.append(command[pos:])
-    return "".join(out)
-
-
-def _statements(command: str) -> list[str]:
-    """按换行和 ; && || 拆成语句（管道还连在一起）；行尾的 ` 或 \\ 是续行，先接回去。"""
-    return [statement for statement, _ in _statements_with_ops(command)]
-
-
-def _statements_with_ops(command: str) -> list[tuple[str, str]]:
-    """语句及其前面的连接符（第一条为空串）；`a || b` 里的 b 只在 a 失败时才执行。
-    单个 & 也拆（cmd 的顺序执行、bash 的后台执行，两侧不必有空格）；2>&1、&>、|& 里的不算。
-    PowerShell 的 `& 程序` 拆出一个空语句，不影响识别。"""
-    joined = re.sub(r"[`\\][ \t]*\r?\n", " ", _strip_heredocs(command))
-    parts = re.split(r"\s*(\|\||&&|[;\r\n]|(?<![&>|<])&(?![&>]))\s*", joined)
-    return [(parts[i], parts[i - 1] if i else "") for i in range(0, len(parts), 2)]
-
-
-def _stages(statement: str) -> list[str]:
-    # >| 是强制覆盖的重定向，不是管道
-    return re.split(r"\s*(?<!>)\|\s*", statement)
-
-
-def _segments(command: str) -> list[str]:
-    """按换行和 ; && || | 拆成单条命令。"""
-    return [stage for statement in _statements(command) for stage in _stages(statement)]
-
-
-def _tokens(segment: str) -> list[str]:
-    # 尾随的逗号、分号不属于路径（如 "a/b.py", 这样出现在列表里的写法）；
-    # PowerShell 的数组参数 `a, b` 并成 `a,b` 一个参数，各命令再按逗号拆
-    tokens: list[str] = []
-    joining = False
-    for raw in re.findall(r"'[^']*'|\"[^\"]*\"|\S+", segment):
-        token = raw.strip("'\"").rstrip(",;").strip("'\"")
-        if joining and tokens and token and not token.startswith("-"):
-            tokens[-1] += "," + token
-        elif token or not raw.startswith(","):
-            tokens.append(token)
-        joining = raw.endswith(",")
-    return tokens
-
-
-def _program(token: str) -> str:
-    return re.split(r"[\\/]", token)[-1].lower().removesuffix(".exe")
-
-
-def _unwrap(tokens: list[str]) -> list[str]:
-    """去掉 sudo、env A=1、command 这类前缀，留下真正执行的命令；前缀后面没有命令时原样返回（单独的 env 是只读）。"""
-    while tokens and (prefix := _program(tokens[0])) in _PREFIXES:
-        valued = _PREFIXES[prefix]
-        i = 1
-        while i < len(tokens) and (tokens[i].startswith("-") or (prefix == "env" and "=" in tokens[i])):
-            if prefix == "command" and tokens[i] in ("-v", "-V"):
-                return tokens
-            i += 2 if tokens[i] in valued else 1
-        if i >= len(tokens):
-            return tokens
-        tokens = tokens[i:]
-    return tokens
-
-
-def _command(segment: str) -> tuple[list[str], str]:
-    """（参数, 归一化的命令名）：去掉 PowerShell 的 & / . 调用前缀和 sudo / env 等前缀，
-    命令名去路径和 .exe（/bin/rm、rm.exe 都是 rm）。"""
-    tokens = _tokens(segment)
-    if tokens and tokens[0] in ("&", "."):
-        tokens = tokens[1:]
-    tokens = _unwrap(tokens)
-    return tokens, (_program(tokens[0]) if tokens else "")
-
-
-def _redirects(segment: str) -> list[tuple[str, str]]:
-    """（文件描述符, 目标）；目标去掉引号。"""
-    return [(fd, target.strip("'\"")) for fd, target in _REDIRECT.findall(segment)]
-
-
-def _expand(token: str) -> str:
-    return os.path.expandvars(re.sub(r"\$env:(\w+)", lambda m: os.environ.get(m[1], m[0]), token))
-
-
-def _read_small(path: str, base: str | None) -> str:
-    full = Path(_expand(path))
-    if not full.is_absolute():
-        full = Path(base or ".") / full
-    try:
-        return full.read_text(encoding="utf-8", errors="replace") if full.stat().st_size <= _SCRIPT_MAX_BYTES else ""
-    except OSError:
-        return ""
+from pmem.hooks.shell.lexer import (
+    _command,
+    _expand,
+    _program,
+    _read_small,
+    _redirects,
+    _segments,
+    _stages,
+    _statements,
+    _statements_with_ops,
+    _unbalanced_quotes,
+)
 
 
 def _code_targets(code: str, base: str | None) -> list[str]:
@@ -263,9 +128,6 @@ def _git_targets(rest: list[str], base: str | None) -> list[str]:
     else:
         found = []
     return _under(directory, found)
-
-
-_RENAME = {"rename-item", "rni", "ren", "rename"}
 
 
 def _copy_targets(head: str, rest: list[str], base: str | None = None) -> list[str]:
@@ -392,14 +254,7 @@ def _in_place_targets(head: str, rest: list[str]) -> list[str]:
 
 
 # PowerShell 写文件命令里带值的参数；其余以 - 开头的是开关（-Recurse、-Force），不会吞掉后面的路径
-_PS_VALUE_PARAMS = {"-value", "-encoding", "-itemtype", "-type", "-name", "-filter", "-include", "-exclude",
-                    "-inputobject", "-stream", "-width", "-target", "-credential", "-newname", "-variable",
-                    # 通用参数：值是动作名或变量名，不是路径
-                    "-erroraction", "-ea", "-warningaction", "-wa", "-informationaction", "-infa",
-                    "-errorvariable", "-ev", "-warningvariable", "-wv", "-informationvariable", "-iv",
-                    "-outvariable", "-ov", "-outbuffer", "-ob", "-pipelinevariable", "-pv"}
 # 第二个位置参数是写入内容而不是路径（Tee-Object 的第一个位置参数是文件，-Variable 时不写文件）
-_PS_CONTENT_WRITERS = {"set-content", "sc", "add-content", "ac", "out-file", "tee-object"}
 
 
 def _ps_targets(head: str, rest: list[str]) -> list[str]:
@@ -511,10 +366,6 @@ def _scan(command: str, base: str | None, depth: int) -> tuple[list[str], bool, 
     return targets, runs_code, cwd
 
 
-def _unbalanced_quotes(segment: str) -> bool:
-    return segment.count('"') % 2 == 1 or segment.count("'") % 2 == 1
-
-
 def _segment_writes(segment: str, base: str | None, cwd: str) -> list[str]:
     found = [target for _, target in _redirects(segment)]
     tokens, head = _command(segment)
@@ -524,9 +375,7 @@ def _segment_writes(segment: str, base: str | None, cwd: str) -> list[str]:
     return found
 
 
-_MAX_ORDERED_STATEMENTS = 40
 # 检索之后靠这些连接符接着执行的语句才算“查过再写”；|| 只在检索失败时执行，& 是并行
-_SEQUENTIAL_OPS = {"&&", ";", "\n", "\r"}
 
 
 def searched_before_writes(command: str, base: str | None = None) -> dict[str, list[dict]]:
@@ -592,7 +441,6 @@ def may_change_unseen(command: str) -> bool:
 
 
 # 只读命令里能写文件或执行任意程序的选项
-_FIND_WRITES = ("-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls")
 
 
 def _changes_unseen(segment: str, piped: bool) -> bool:
@@ -629,9 +477,6 @@ def _changes_unseen(segment: str, piped: bool) -> bool:
     return not recognized or (piped and head in _PIPED_ITEMS)
 
 
-_PIPED_ITEMS = _RM | _COPY | _MOVE | {"remove-item", "ri", "clear-content"}
-
-
 def shell_write_targets(command: str, base: str | None = None) -> list[str]:
     """终端命令会写到的文件。base 是命令的工作目录，用来读命令里引用的脚本和补丁。"""
     return scan(command, base)[0]
@@ -646,7 +491,6 @@ def _output_discarded(segment: str, later_stages: list[str]) -> bool:
 
 
 # 以这些程序开头时，pmem 可以出现在它们的参数之后（如 uv run --extra embed pmem record）
-_LAUNCHERS = {"uv", "uvx", "pipx", "python", "python3", "py"}
 
 
 def cli_args(command: str, subcommand: str) -> list[dict]:

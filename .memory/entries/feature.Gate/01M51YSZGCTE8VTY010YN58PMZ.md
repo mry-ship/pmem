@@ -8,8 +8,8 @@ supersedes:
 - 01M51VMZYT0266DSKQ153E41QQ
 - 01M51WPJDDJDA2KXGTHK7YVFV0
 anchors:
-- src/pmem/hooks/shell.py#scan
-- src/pmem/hooks/shell.py#may_change_unseen
+- src/pmem/hooks/shell/targets.py#scan
+- src/pmem/hooks/shell/targets.py#may_change_unseen
 - src/pmem/hooks/snapshot.py#_shell_after
 - src/pmem/hooks/snapshot.py#_snapshot_before_shell
 - src/pmem/hooks/snapshot.py#_dirty_snapshot

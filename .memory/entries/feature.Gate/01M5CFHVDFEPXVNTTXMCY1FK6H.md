@@ -7,9 +7,9 @@ status: active
 supersedes:
 - 01M59J89XFMTC0CG2XRAQVGR7P
 anchors:
-- src/pmem/hooks/shell.py#_unwrap
-- src/pmem/hooks/shell.py#_stages
-- src/pmem/hooks/shell.py#scan
+- src/pmem/hooks/shell/lexer.py#_unwrap
+- src/pmem/hooks/shell/lexer.py#_stages
+- src/pmem/hooks/shell/targets.py#scan
 - src/pmem/hooks/memories.py#_target_modules
 - src/pmem/hooks/snapshot.py#needs_snapshot
 - src/pmem/hooks/state.py#_load

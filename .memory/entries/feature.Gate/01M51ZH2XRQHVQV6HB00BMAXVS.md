@@ -9,8 +9,8 @@ supersedes:
 - 01M4Z5DGNT04KV06074JS5CYY6
 - 01M51R8M3WJ0Z9RW2QVFHTM21Z
 anchors:
-- src/pmem/hooks/shell.py#cli_args
-- src/pmem/hooks/shell.py#_statements
+- src/pmem/hooks/shell/targets.py#cli_args
+- src/pmem/hooks/shell/lexer.py#_statements
 - src/pmem/hooks/mcp.py#_note_cli_calls
 revision: git:4479338
 author: 1002378395@qq.com

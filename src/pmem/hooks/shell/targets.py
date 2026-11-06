@@ -13,8 +13,6 @@ from pmem.hooks.shell.constants import (
     _DOTNET_WRITE,
     _FIND_WRITES,
     _GIT_READ_ONLY,
-    _INTERPRETERS,
-    _LAUNCHERS,
     _MAX_NESTING,
     _MAX_ORDERED_STATEMENTS,
     _MOVE,
@@ -45,6 +43,8 @@ from pmem.hooks.shell.constants import (
     MAX_PARSED_COMMAND,
     VARIABLE_PATH,
     WILDCARD_PATH,
+    is_interpreter,
+    is_launcher,
 )
 from pmem.hooks.shell.lexer import (
     _command,
@@ -81,7 +81,7 @@ def _is_ancestor(path: str, here: Path) -> bool:
 def _script_of(tokens: list[str]) -> str | None:
     """解释器（python、node 等）后的第一个参数：脚本路径或内联代码；`uv run x.py` 也算。不是在跑代码时为 None。"""
     names = [_program(t) for t in tokens]
-    start = next((i + 1 for i, n in enumerate(names) if n in _INTERPRETERS), None)
+    start = next((i + 1 for i, n in enumerate(names) if is_interpreter(n)), None)
     if start is not None:
         return next((t for t in tokens[start:] if not t.startswith("-")), "")
     if names[:2] == ["uv", "run"]:
@@ -448,7 +448,7 @@ def _changes_unseen(segment: str, piped: bool) -> bool:
     if not tokens or not tokens[0]:
         return False
     names = [_program(t) for t in tokens]
-    if names[0] in _LAUNCHERS and any(n in _PMEM_CLI for n in names):
+    if is_launcher(names[0]) and any(n in _PMEM_CLI for n in names):
         tokens = tokens[next(i for i, n in enumerate(names) if n in _PMEM_CLI):]
     head, rest = _program(tokens[0]), tokens[1:]
     if head == "git":
@@ -506,7 +506,7 @@ def cli_args(command: str, subcommand: str) -> list[dict]:
             names = [_program(t) for t in tokens]
             start = next(
                 (i + 2 for i in range(len(tokens) - 1)
-                 if names[i] in _PMEM_CLI and tokens[i + 1] == subcommand and (i == 0 or names[0] in _LAUNCHERS)),
+                 if names[i] in _PMEM_CLI and tokens[i + 1] == subcommand and (i == 0 or is_launcher(names[0]))),
                 None,
             )
             if start is None:

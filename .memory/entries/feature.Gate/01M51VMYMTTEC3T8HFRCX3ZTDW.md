@@ -10,7 +10,7 @@ anchors:
 - src/pmem/hooks/reminders.py#on_stop
 - src/pmem/hooks/mcp.py#on_after_mcp
 - src/pmem/hooks/memories.py#memory_count
-- src/pmem/hooks/shell.py#cli_args
+- src/pmem/hooks/shell/targets.py#cli_args
 revision: git:4479338
 author: 1002378395@qq.com
 note_date: '2026-10-16'

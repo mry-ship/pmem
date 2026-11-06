@@ -29,6 +29,9 @@ _MOVE = {"mv", "move", "move-item", "mi", "rename-item", "rni", "ren"}
 _PATH_PARAMS = ("-path", "-literalpath", "-filepath", "-destination")
 _SCRIPT_SUFFIXES = (".py", ".js", ".mjs", ".cjs")
 _INTERPRETERS = {"python", "python3", "py", "node", "deno"}
+# python3.12、python312、python3.11.1：带版本号的解释器不在上面的精确集合里。
+# pythonw / python3w 不含在这条里（不是用来跑脚本的控制台入口，也不要当成解释器去读脚本）。
+_VERSIONED_PYTHON = re.compile(r"python\d+(\.\d+)*")
 _SCRIPT_MAX_BYTES = 200_000
 # Node 的 rm( / rename( 只认 fs.xxx( 或 xxxSync(：裸写会误中 norm(、confirm(、pandas 的 df.rename(
 _CODE_WRITES = re.compile(
@@ -93,3 +96,13 @@ _FIND_WRITES = ("-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fp
 _PIPED_ITEMS = _RM | _COPY | _MOVE | {"remove-item", "ri", "clear-content"}
 # 以这些程序开头时，pmem 可以出现在它们的参数之后（如 uv run --extra embed pmem record）
 _LAUNCHERS = {"uv", "uvx", "pipx", "python", "python3", "py"}
+
+
+def is_interpreter(name: str) -> bool:
+    """python、python3、py、node、deno，以及 python3.12 这种带版本号的名字。调用方已去掉目录和 .exe。"""
+    return name in _INTERPRETERS or _VERSIONED_PYTHON.fullmatch(name) is not None
+
+
+def is_launcher(name: str) -> bool:
+    """uv / py / python3.12 只是后面那条命令的启动方式（python3.12 -m pmem search 仍是 pmem）。"""
+    return name in _LAUNCHERS or _VERSIONED_PYTHON.fullmatch(name) is not None

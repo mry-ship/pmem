@@ -6,11 +6,11 @@ kind: conclusion
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/shell.py#_cut_bodies
-- src/pmem/hooks/shell.py#_changes_unseen
-- src/pmem/hooks/shell.py#_copy_targets
-- src/pmem/hooks/shell.py#_scan
-- src/pmem/hooks/shell.py#_tokens
+- src/pmem/hooks/shell/lexer.py#_cut_bodies
+- src/pmem/hooks/shell/targets.py#_changes_unseen
+- src/pmem/hooks/shell/targets.py#_copy_targets
+- src/pmem/hooks/shell/targets.py#_scan
+- src/pmem/hooks/shell/lexer.py#_tokens
 revision: git:64dc634
 author: 1002378395@qq.com
 note_date: '2026-10-20'

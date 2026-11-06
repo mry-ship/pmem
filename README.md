@@ -10,7 +10,7 @@
 让 AI 编程助手记住项目里踩过的坑、排除过的方向和做过的决定，<br>
 并在下次改代码前自动想起来。
 
-![Version](https://img.shields.io/badge/version-0.6.4-blue)
+![Version](https://img.shields.io/badge/version-0.6.5-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Cursor](https://img.shields.io/badge/Cursor-支持-000000)
@@ -333,7 +333,8 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 | v0.6.1 | 检索采用与防错记忆：无关键词速览防错优先、同一对话再查先给未见全文、写过的模块不再催、compact 保留 exclusion/risk/correction。到期后台巡检记忆医生，有问题才提一行 | 已完成 |
 | v0.6.2 | 默认 Hooks=full（不靠 quiet 削闸门）；Hook/VCS 用 CREATE_NO_WINDOW 防弹窗；Windows+Cursor 清空 Claude Hooks；init 可自动启用 MCP；模块路径挂靠与双周 health 文档 | 已完成 |
 | v0.6.3 | 过期核对读锚点前校验路径仍在项目内，`../` 越界按“已不存在”处理；修 Cursor 运行时 `init` 自动批准 MCP 被其内存副本覆盖（改为提示退出后重跑或手动开 + Reload） | 已完成 |
-| v0.6.4 | `hooks/shell.py` 拆成 `shell/` 包（constants/lexer/targets）；`pmem spec` 从现行 `feature` 记忆预填程序节入口、现状节必须保持（标“待核对”，九成八口径不变） | 已完成（当前版本 0.6.4） |
+| v0.6.4 | `hooks/shell.py` 拆成 `shell/` 包（constants/lexer/targets）；`pmem spec` 从现行 `feature` 记忆预填程序节入口、现状节必须保持（标“待核对”，九成八口径不变） | 已完成 |
+| v0.6.5 | 带版本号的 python 事前读脚本；doctor 认完整路径、单引号和 `cmd /c`；Claude 按真实路径启用 MCP，Codex 路径里的单引号不再写坏配置；Cursor 同名目录不删其他批准哈希；锚点与摘要里的换行收成一行 | 已完成（当前版本 0.6.5） |
 | [v0.7](https://github.com/mry-ship/pmem/issues/15)（[设计稿](docs/superpowers/specs/2026-10-21-pmem-typesafe-design.md)） | 类型安全与规则化 | 进行中（2026-10-27 开工；先落地 core/schema 基础校验） |
 
 ## 许可证

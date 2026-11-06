@@ -91,14 +91,43 @@ def _iter_hook_commands(hooks_data: dict) -> list[str]:
     return out
 
 
+_HOOK_TOKEN = re.compile(r'"[^"]*"|\'[^\']*\'|\S+')
+
+
+def _hook_basename(token: str) -> str:
+    return re.split(r"[\\/]", token.strip("'\""))[-1].lower().removesuffix(".exe")
+
+
+def _hook_program(tokens: list[str], index: int = 0) -> str:
+    """Hook 命令真正启动的程序名。认单引号路径、PowerShell 的 &，以及 cmd /c 后面那个程序。"""
+    if index < len(tokens) and tokens[index].strip("'\"") in {"&", "."}:
+        index += 1
+    if index >= len(tokens):
+        return ""
+    raw = tokens[index]
+    inner = raw[1:-1] if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "'\"" else raw
+    prog = _hook_basename(inner)
+    flag = tokens[index + 1].strip("'\"").lower() if index + 1 < len(tokens) else ""
+    if prog == "cmd" and flag in {"/c", "/k"}:
+        return _hook_program(tokens, index + 2)
+    # cmd /c "python a.py" 把程序和参数包在同一个引号里；带空格的路径（Program Files）不能再拆开
+    first = inner.split(None, 1)[0] if inner else ""
+    if " " in inner and not re.search(r"[\\/]", first):
+        return _hook_program(_HOOK_TOKEN.findall(inner))
+    return prog
+
+
 def _is_console_python_hook(command: str) -> bool:
-    """Windows 上用控制台 Python 起 Hook 会弹黑框；pyw/pythonw 除外。macOS 的 python3 没问题。"""
-    cmd = str(command or "").strip()
-    if not cmd:
+    """Windows 上用控制台 Python 起 Hook 会弹黑框；pyw/pythonw 除外。macOS 的 python3 没问题。
+    命令可能写成完整路径（C:\\Python312\\python.exe …、单引号或双引号），先取程序名的 basename 再判，
+    否则 ^python 锚在串首会漏掉完整路径的控制台 python。"""
+    prog = _hook_program(_HOOK_TOKEN.findall(str(command or "").strip()))
+    if not prog:
         return False
-    if re.match(r"^(pyw|pythonw)(\.exe)?\b", cmd, re.IGNORECASE):
+    if re.fullmatch(r"pythonw(\d(\.\d+)?)?|pyw", prog):
         return False
-    return bool(re.match(r"^(python3?|py)(\.exe)?\b", cmd, re.IGNORECASE))
+    # 认 python、python3、python3.12 这类带小版本号的控制台解释器；pyw/pythonw 已在上面排除
+    return bool(re.fullmatch(r"py|python(\d(\.\d+)?)?", prog))
 
 
 MAX_LISTED_PAIRS = 10

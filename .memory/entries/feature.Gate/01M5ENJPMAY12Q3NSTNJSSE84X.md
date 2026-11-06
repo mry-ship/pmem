@@ -6,7 +6,7 @@ kind: risk
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/shell.py
+- src/pmem/hooks/shell/__init__.py
 revision: git:44147b4
 author: 1002378395@qq.com
 note_date: '2026-10-21'

@@ -6,8 +6,8 @@ kind: conclusion
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/shell.py#scan
-- src/pmem/hooks/shell.py#_redirects
+- src/pmem/hooks/shell/targets.py#scan
+- src/pmem/hooks/shell/lexer.py#_redirects
 - src/pmem/hooks/memories.py#_target_modules
 - src/pmem/hooks/snapshot.py#needs_snapshot
 - src/pmem/hooks/mcp.py#_draft_open

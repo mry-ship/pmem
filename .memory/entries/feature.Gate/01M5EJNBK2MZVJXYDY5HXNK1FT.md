@@ -8,8 +8,8 @@ supersedes:
 - 01M51ZH2XRQHVQV6HB00BMAXVS
 - 01M5CCE7712MY9KZV2KCCQK2S6
 anchors:
-- src/pmem/hooks/shell.py#cli_args
-- src/pmem/hooks/shell.py#_statements
+- src/pmem/hooks/shell/targets.py#cli_args
+- src/pmem/hooks/shell/lexer.py#_statements
 - src/pmem/hooks/mcp.py#_note_cli_calls
 - src/pmem/hooks/mcp.py#_pop_cli_pending
 - src/pmem/hooks/mcp.py#_confirm_cli_calls

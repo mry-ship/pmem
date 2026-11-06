@@ -7,7 +7,7 @@ status: active
 supersedes: []
 anchors:
 - src/pmem/hooks/gate.py#Gate.on_pre_tool
-- src/pmem/hooks/shell.py#writes_before_search
+- src/pmem/hooks/shell/targets.py#searched_before_writes
 - src/pmem/hooks/payload.py
 revision: git:64dc634
 author: 1002378395@qq.com

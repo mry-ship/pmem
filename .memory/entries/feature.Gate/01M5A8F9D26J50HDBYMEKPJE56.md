@@ -9,8 +9,8 @@ anchors:
 - src/pmem/hooks/guard.py#_guard
 - src/pmem/hooks/memories.py#_target_modules
 - src/pmem/hooks/mcp.py#_confirm_cli_calls
-- src/pmem/hooks/shell.py#cli_args
-- src/pmem/hooks/shell.py#_nested
+- src/pmem/hooks/shell/targets.py#cli_args
+- src/pmem/hooks/shell/targets.py#_nested
 revision: git:43a477e
 author: 1002378395@qq.com
 note_date: '2026-10-19'

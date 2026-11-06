@@ -150,7 +150,7 @@ queries:
   - 01M5CFJW7X2AGE7BKARZRVZ6RW
   - 01M5CK9HEY1NDZJHJFYC036Y6X
 - module: feature.Gate
-  path: src/pmem/hooks/shell.py
+  path: src/pmem/hooks/shell/targets.py
   expect:
   - 01M51R5ZQZM7W3FXGR7PTT3616
   - 01M51VVSNX6BM6YXMKMMW2V3B6

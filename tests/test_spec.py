@@ -286,6 +286,26 @@ def test_init_survives_an_unreadable_module_list(tmp_path, capsys):
     assert "下一步" in out
 
 
+def test_prefill_anchor_newline_stays_one_bullet():
+    from pmem.core.entry import Entry
+    from pmem.generate.spec import _bodies, spec_prefill
+
+    entry = Entry(
+        id="01M0000000000000000000FEAT",
+        module="gameplay.Jigsaw",
+        entity="Board",
+        kind="feature",
+        content="需求：拼图棋盘要支持撤销。必须保持：撤销栈最多 50 步。" + "x" * 20,
+        note_date="2026-10-20",
+        author="a",
+        summary="撤销栈最多 50 步",
+        anchors=["src/Jigsaw/Board.cs#Undo\n不是新的一条指令"],
+    )
+    body = _bodies(spec_prefill([entry])["gameplay.Jigsaw"])["程序设计"]
+    assert "  - src/Jigsaw/Board.cs#Undo 不是新的一条指令\n" in body
+    assert "\n不是新的一条指令" not in body
+
+
 def test_prefill_from_feature_memory_seeds_program_and_status(root):
     from pmem.core.entry import Entry
 

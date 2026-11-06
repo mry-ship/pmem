@@ -13,6 +13,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
+from pmem.core.fileio import write_atomic
 from pmem.generate.templates import MCP_SERVER
 
 _CURSOR_APPROVED_KEY = "cursor/approvedProjectMcpServers"
@@ -156,11 +157,12 @@ def enable_cursor_project_mcp(root: Path, cfg: dict | None = None) -> str:
             identifier = f"project-{index}-{root.name}-pmem"
             key = cursor_approval_key(identifier, cfg)
             keys.append(key)
-            approved = [
-                x for x in approved
-                if not (x == identifier or x.startswith(f"{identifier}:"))
-            ]
-            approved.append(key)
+            # Cursor 的键只有序号和文件夹名，没有完整路径。两个都叫 MyApp 的目录共用
+            # project-0-MyApp-pmem。配置哈希不同时，删掉旧哈希会把另一个项目的批准冲掉；
+            # 只去掉没有哈希的旧记录，其它哈希留下。配置完全相同时哈希相同，Cursor 仍会当成同一条批准。
+            approved = [x for x in approved if x != identifier]
+            if key not in approved:
+                approved.append(key)
             if identifier in disabled:
                 disabled = [x for x in disabled if x != identifier]
             if identifier not in known:
@@ -189,25 +191,48 @@ def enable_cursor_project_mcp(root: Path, cfg: dict | None = None) -> str:
     return f"Cursor：已项目级批准 pmem（{shown}；若本窗口仍断开请 Reload Window）"
 
 
+def _defer_path_resolve(candidate: Path, resolved: Path) -> bool:
+    """断网的 UNC，或和本项目不在同一盘符上的路径，Path.resolve() 可能一直不返回。"""
+    text = str(candidate)
+    if text.startswith("\\\\") or text.startswith("//"):
+        return True
+    if candidate.drive and resolved.drive and candidate.drive.lower() != resolved.drive.lower():
+        return True
+    return False
+
+
 def _claude_project_keys(root: Path, projects: dict) -> list[str]:
+    """~/.claude.json 里本项目对应的 key。Claude 可能用正斜杠/反斜杠、resolve 前后等不同写法存同一路径，
+    所以按“解析后的真实路径相等”认，而不是按目录名——同名不同路径（~/a/pmem 与 ~/b/pmem）绝不能一起批准。"""
     resolved = root.resolve()
-    candidates = [
+    forms = [
         str(resolved).replace("\\", "/"),
         str(resolved),
         resolved.as_posix(),
         str(root).replace("\\", "/"),
         str(root),
     ]
-    target = root.name
+    # 已有的项目 key 里，解析后与本项目同一真实路径的才算命中（含大小写/斜杠差异）。
+    # 只认绝对路径 key：相对/短路径的 resolve() 会按当前 cwd 解析，可能误命中别的项目（Claude 实际写绝对路径）
+    matched = []
     for key in projects:
-        norm = key.replace("\\", "/").rstrip("/")
-        # 只认路径最后一段恰好是项目目录名，避免 Art 误匹配 Cursor-Pmem-Art
-        if Path(norm).name == target:
-            candidates.append(key)
-    # 去重且保持顺序
+        try:
+            candidate = Path(key)
+            if not candidate.is_absolute():
+                continue
+            if _defer_path_resolve(candidate, resolved):
+                # 不 resolve：断网 UNC / 别的盘符可能卡死。字符串相同才算同一个项目。
+                if os.path.normcase(os.path.normpath(key)) == os.path.normcase(os.path.normpath(str(resolved))):
+                    matched.append(key)
+                continue
+            if candidate.resolve() == resolved:
+                matched.append(key)
+        except (OSError, ValueError):
+            continue
+    # 去重保序：真实路径命中的已有 key 优先，否则用规范写法新建一条
     seen: set[str] = set()
     ordered: list[str] = []
-    for c in candidates:
+    for c in [*matched, *forms]:
         if c not in seen:
             seen.add(c)
             ordered.append(c)
@@ -247,13 +272,77 @@ def enable_claude_project_mcp(root: Path) -> str:
         projects[key] = proj
         touched.append(key)
     data["projects"] = projects
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    # 原子写：写一半崩溃不会毁掉用户全局的 ~/.claude.json（先写 .tmp 再 os.replace）
+    write_atomic(path, json.dumps(data, ensure_ascii=False, indent=2) + "\n")
     return f"Claude Code：已项目级启用 .mcp.json 的 pmem（{touched[0]}）"
 
 
-_CODEX_PROJECT_HEADER = re.compile(
-    r"(?m)^\[projects\.(?P<q>'|\")(?P<path>.*?)(?P=q)\]\s*$"
-)
+def _codex_quote(path: str) -> str:
+    """TOML 键。没有单引号时用字面量（反斜杠保持原样，和 Codex 现有配置一致）；
+    路径里有单引号或控制字符时字面量不合法，改用基本字符串并转义。"""
+    if "'" in path or any(ord(ch) < 32 for ch in path):
+        escaped = (
+            path.replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+        )
+        return f'"{escaped}"'
+    return f"'{path}'"
+
+
+def _codex_path_key(path: str) -> str:
+    return path.lower().replace("\\", "/")
+
+
+def _parse_toml_string(text: str, start: int) -> tuple[int, str] | None:
+    """从 start 处的引号解析一个 TOML 字符串，返回（结束后的下标, 解开转义的值）。"""
+    if start >= len(text) or text[start] not in "'\"":
+        return None
+    if text[start] == "'":
+        end = text.find("'", start + 1)
+        if end < 0:
+            return None
+        return end + 1, text[start + 1:end]
+    chars: list[str] = []
+    index = start + 1
+    while index < len(text):
+        char = text[index]
+        if char == "\\":
+            if index + 1 >= len(text):
+                return None
+            nxt = text[index + 1]
+            chars.append({"n": "\n", "r": "\r", "t": "\t", "\\": "\\", '"': '"'}.get(nxt, nxt))
+            index += 2
+            continue
+        if char == '"':
+            return index + 1, "".join(chars)
+        if char == "\n":
+            return None
+        chars.append(char)
+        index += 1
+    return None
+
+
+def _iter_codex_projects(text: str):
+    """已有的 [projects.<路径>]：返回（段头起点, 段头结束后的下标, 解开后的路径）。"""
+    for match in re.finditer(r"(?m)^\[projects\.", text):
+        parsed = _parse_toml_string(text, match.end())
+        if parsed is None:
+            continue
+        end, path = parsed
+        if end < len(text) and text[end] == "]":
+            yield match.start(), end + 1, path
+
+
+def _codex_body_start(text: str, header_end: int) -> int:
+    index = header_end
+    if index < len(text) and text[index] == "\r":
+        index += 1
+    if index < len(text) and text[index] == "\n":
+        index += 1
+    return index
 
 
 def _codex_path_variants(root: Path) -> list[str]:
@@ -282,16 +371,13 @@ def enable_codex_project_mcp(root: Path) -> str:
     cfg = Path.home() / ".codex" / "config.toml"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     text = cfg.read_text(encoding="utf-8-sig") if cfg.exists() else ""
-    variants = _codex_path_variants(root)
-    # 已有任一路径的 trust_level=trusted 则只补漏
-    for match in _CODEX_PROJECT_HEADER.finditer(text):
-        path = match.group("path")
-        if path.lower().replace("\\", "/") not in {
-            v.lower().replace("\\", "/") for v in variants
-        }:
+    wanted = {_codex_path_key(item) for item in _codex_path_variants(root)}
+    # 已有任一路径的 trust_level=trusted 则只补漏。路径按解开转义后的值比对，
+    # 这样带单引号的基本字符串不会被当成另一条再追加。
+    for _header_at, header_end, path in _iter_codex_projects(text):
+        if _codex_path_key(path) not in wanted:
             continue
-        # 取该段到下一 [ 之前
-        start = match.end()
+        start = _codex_body_start(text, header_end)
         nxt = re.search(r"(?m)^\[", text[start:])
         block = text[start : start + nxt.start()] if nxt else text[start:]
         if re.search(r'(?m)^\s*trust_level\s*=\s*"trusted"\s*$', block):
@@ -306,16 +392,16 @@ def enable_codex_project_mcp(root: Path) -> str:
         if n == 0:
             new_block = '\ntrust_level = "trusted"\n' + block.lstrip("\n")
         end = start + len(block)
-        cfg.write_text(text[:start] + new_block + text[end:], encoding="utf-8", newline="\n")
+        write_atomic(cfg, text[:start] + new_block + text[end:])
         return f"Codex：已将项目标为 trusted（{path}）"
 
-    # 新建段：Codex 常见小写 Windows 路径
+    # 新建段：Codex 常见小写 Windows 路径。单引号放进字面量会把整份 config.toml 写坏。
     preferred = str(root.resolve())
     if sys.platform == "win32":
         preferred = preferred.lower()
-    block = f"\n[projects.'{preferred}']\ntrust_level = \"trusted\"\n"
+    block = f"\n[projects.{_codex_quote(preferred)}]\ntrust_level = \"trusted\"\n"
     separator = "" if not text or text.endswith("\n") else "\n"
-    cfg.write_text(text + separator + block, encoding="utf-8", newline="\n")
+    write_atomic(cfg, text + separator + block)
     return f"Codex：已项目级信任并启用 pmem（{preferred}）"
 
 

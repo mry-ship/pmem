@@ -275,7 +275,7 @@ class RecordOps(ServiceBase):
 
     def _normalize_anchor(self, raw: str, warnings: list[str]) -> str:
         """过期核对按相对路径、区分大小写去比对版本库记录：绝对路径或大小写不对的锚点永远不会标“需核实”。"""
-        path, sep, symbol = raw.strip().replace("\\", "/").partition("#")
+        path, sep, symbol = " ".join(raw.split()).replace("\\", "/").partition("#")
         rel = self._relative(path)
         while rel.startswith("./"):
             rel = rel[2:]

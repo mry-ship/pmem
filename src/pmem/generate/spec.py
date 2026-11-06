@@ -94,8 +94,13 @@ def _facts(module_id: str, registry) -> str:
 PREFILL_NOTE = "（以下由 feature 记忆预填，待对照代码核对，核对后删除本行）"
 
 
+def _one_bullet(text: str) -> str:
+    """锚点和标题都收成一行。手改 YAML 里的换行不能把「程序设计」的列表拆开。"""
+    return " ".join(str(text).split())
+
+
 def _prefill_lines(items: list[str]) -> str:
-    return "".join(f"  - {s}\n" for s in items)
+    return "".join(f"  - {line}\n" for item in items if (line := _one_bullet(item)))
 
 
 def _bodies(entry_prefill: dict[str, list[str]] | None = None) -> dict[str, str]:
@@ -243,9 +248,10 @@ def spec_prefill(entries) -> dict[str, dict[str, list[str]]]:
             continue
         slot = out.setdefault(entry.module, {"入口": [], "必须保持": []})
         for anchor in entry.anchors:
-            if anchor and anchor not in slot["入口"]:
-                slot["入口"].append(anchor)
-        title = (entry.summary or entry.title or "").strip()
+            line = _one_bullet(anchor)
+            if line and line not in slot["入口"]:
+                slot["入口"].append(line)
+        title = _one_bullet(entry.summary or entry.title or "")
         if title and title not in slot["必须保持"]:
             slot["必须保持"].append(title)
     return out

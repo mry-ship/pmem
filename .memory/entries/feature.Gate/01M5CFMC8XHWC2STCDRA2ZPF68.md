@@ -8,8 +8,8 @@ supersedes: []
 anchors:
 - src/pmem/hooks/agents.py#normalize
 - src/pmem/hooks/agents.py#render
-- src/pmem/hooks/shell.py#_unwrap
-- src/pmem/hooks/shell.py#_stages
+- src/pmem/hooks/shell/lexer.py#_unwrap
+- src/pmem/hooks/shell/lexer.py#_stages
 revision: git:7c086e5
 author: 1002378395@qq.com
 note_date: '2026-10-20'

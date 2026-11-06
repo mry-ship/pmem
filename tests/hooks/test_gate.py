@@ -333,6 +333,8 @@ def test_shell_write_targets_reads_scripts_and_patches(tmp_path):
     assert shell_write_targets("python read.py", str(tmp_path)) == []
     assert shell_write_targets("git apply c.patch", str(tmp_path)) == ["src/P.cs"]
     (tmp_path / "fix.ps1").write_text("Set-Content src/X.cs 1\n", encoding="utf-8")
+    assert shell_write_targets("python3.12 fix.py", str(tmp_path)) == ["src/N.cs"]
+    assert shell_write_targets("python3.11.exe fix.py", str(tmp_path)) == ["src/N.cs"]
     assert shell_write_targets("& ./fix.ps1", str(tmp_path)) == ["src/X.cs"]
     assert shell_write_targets("powershell -ExecutionPolicy Bypass -File fix.ps1", str(tmp_path)) == ["src/X.cs"]
 

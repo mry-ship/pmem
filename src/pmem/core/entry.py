@@ -47,15 +47,21 @@ def _text(value) -> str | None:
     return text or None
 
 
+def _line(value) -> str:
+    """手改的 YAML 可能把议题、路径写成多行。读进来先收成一行，避免摘要被拆成额外指令。"""
+    return " ".join(str(value).split())
+
+
 def _str_list(meta: dict, key: str) -> list[str]:
     """手改的 YAML 头里列表字段常写成单个值（supersedes: 01JA…）：按一项处理；写成字典等其他类型报 ValueError。"""
     value = meta.get(key)
     if value is None or value == "":
         return []
     if isinstance(value, (str, int, float)):
-        return [str(value)]
+        line = _line(value)
+        return [line] if line else []
     if isinstance(value, list):
-        return [str(x) for x in value if x is not None and not isinstance(x, (dict, list))]
+        return [line for x in value if x is not None and not isinstance(x, (dict, list)) and (line := _line(x))]
     raise ValueError(f"YAML 头的 {key} 应是列表")
 
 
@@ -187,11 +193,11 @@ class Entry:
         reverted = meta.get("reverted") if isinstance(meta.get("reverted"), dict) else {}
         return cls(
             id=str(meta["id"]),
-            module=str(meta["module"]),
-            entity=str(meta["entity"]),
-            kind=str(meta["kind"]),
+            module=_line(meta["module"]),
+            entity=_line(meta["entity"]),
+            kind=_line(meta["kind"]),
             content=match.group(2).replace("\r\n", "\n").strip(),
-            note_date=str(meta["note_date"]),
+            note_date=_line(meta["note_date"]),
             author=str(meta.get("author") or ""),
             revision=str(meta.get("revision") or "none"),
             status=str(meta.get("status") or "active"),

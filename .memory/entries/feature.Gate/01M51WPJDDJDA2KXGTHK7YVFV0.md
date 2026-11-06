@@ -6,8 +6,8 @@ kind: decision
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/shell.py#scan
-- src/pmem/hooks/shell.py#cli_args
+- src/pmem/hooks/shell/targets.py#scan
+- src/pmem/hooks/shell/targets.py#cli_args
 - src/pmem/hooks/gate.py#Gate.vcs
 revision: git:4479338
 author: 1002378395@qq.com

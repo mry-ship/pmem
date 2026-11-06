@@ -6,7 +6,7 @@ kind: conclusion
 status: active
 supersedes: []
 anchors:
-- src/pmem/hooks/shell.py#may_change_unseen
+- src/pmem/hooks/shell/targets.py#may_change_unseen
 - src/pmem/hooks/snapshot.py#_dirty_snapshot
 revision: git:f778c1a
 author: 1002378395@qq.com

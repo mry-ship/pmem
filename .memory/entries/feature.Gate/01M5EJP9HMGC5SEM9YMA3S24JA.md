@@ -12,11 +12,11 @@ anchors:
 - src/pmem/hooks/guard.py#_guard
 - src/pmem/hooks/memories.py#_target_modules
 - src/pmem/hooks/mcp.py#_confirm_cli_calls
-- src/pmem/hooks/shell.py#cli_args
-- src/pmem/hooks/shell.py#_nested
-- src/pmem/hooks/shell.py#_unwrap
-- src/pmem/hooks/shell.py#_stages
-- src/pmem/hooks/shell.py#scan
+- src/pmem/hooks/shell/targets.py#cli_args
+- src/pmem/hooks/shell/targets.py#_nested
+- src/pmem/hooks/shell/lexer.py#_unwrap
+- src/pmem/hooks/shell/lexer.py#_stages
+- src/pmem/hooks/shell/targets.py#scan
 - src/pmem/hooks/snapshot.py#needs_snapshot
 - src/pmem/hooks/state.py#_load
 revision: git:44147b4

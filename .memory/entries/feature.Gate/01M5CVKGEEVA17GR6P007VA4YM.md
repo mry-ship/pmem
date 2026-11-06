@@ -7,7 +7,7 @@ status: active
 supersedes:
 - 01M5CRA44XX2CHNWTS2QJYX5J7
 anchors:
-- src/pmem/hooks/shell.py#searched_before_writes
+- src/pmem/hooks/shell/targets.py#searched_before_writes
 - src/pmem/hooks/mcp.py#McpCalls._confirm_cli_calls
 - src/pmem/hooks/gate.py#Gate.on_pre_tool
 - src/pmem/hooks/review.py#Review._search_digest

@@ -7,7 +7,7 @@ status: active
 supersedes: []
 anchors:
 - src/pmem/hooks/memories.py#memory_lines
-- src/pmem/hooks/shell.py
+- src/pmem/hooks/shell/__init__.py
 - README.md
 revision: git:fffa1ba
 author: 1002378395@qq.com

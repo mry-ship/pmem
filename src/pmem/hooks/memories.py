@@ -239,10 +239,13 @@ class MemoryView:
         lines = []
         for e in entries:
             seed = "（种子，待确认）" if e.status == "seed" else ""
-            upper = own is not None and e.module.lower() != own.lower() and not e.project_wide
-            where = f"{e.module}/" if e.project_wide else (f"上级 {e.module}/" if upper else "")
-            lines.append(f"- {KIND_LABELS.get(e.kind, e.kind)}{seed}｜{where}{e.entity}｜{e.note_date}"
-                         f"{marks.get(e.id, '')}：{e.title}")
+            module = " ".join(str(e.module).split())
+            entity = " ".join(str(e.entity).split())
+            upper = own is not None and module.lower() != own.lower() and not e.project_wide
+            where = f"{module}/" if e.project_wide else (f"上级 {module}/" if upper else "")
+            kind = KIND_LABELS.get(e.kind, " ".join(str(e.kind).split()))
+            lines.append(f"- {kind}{seed}｜{where}{entity}｜{' '.join(str(e.note_date).split())}"
+                         f"{marks.get(e.id, '')}：{' '.join(str(e.title).split())}")
         if footer:
             lines.append(footer)
         return lines

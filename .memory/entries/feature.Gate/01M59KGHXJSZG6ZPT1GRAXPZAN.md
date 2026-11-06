@@ -10,7 +10,7 @@ anchors:
 - src/pmem/hooks/mcp.py#_note_cli_calls
 - src/pmem/hooks/mcp.py#_confirm_cli_calls
 - src/pmem/hooks/gate.py#error_notice
-- src/pmem/hooks/shell.py#cli_args
+- src/pmem/hooks/shell/targets.py#cli_args
 revision: git:407c1fd
 author: 1002378395@qq.com
 note_date: '2026-10-19'

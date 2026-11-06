@@ -269,7 +269,8 @@ def setup_codex(root: Path, hooks_mode: str = "auto") -> str:
 
 SETUP = {"cursor": setup_cursor, "claude": setup_claude, "codex": setup_codex}
 NEXT_STEPS = {
-    "cursor": "Cursor：init 已尝试项目级批准 pmem；若 MCP 仍显示 Disconnected，执行 Reload Window。不要改用户级 ~/.cursor/mcp.json。",
+    "cursor": "Cursor：init 已尝试项目级批准 pmem；若 MCP 仍显示 Disconnected，先完全退出 Cursor 再重跑 pmem init"
+              "（运行中写的批准会被 Cursor 覆盖），或设置 → MCP 手动启用后 Reload Window。不要改用户级 ~/.cursor/mcp.json。",
     "claude": "Claude Code：init 已尝试把项目 .mcp.json 的 pmem 写入 enabledMcpjsonServers；/hooks 可查看 Hook。",
     "codex": "Codex：init 已尝试把本项目标为 trusted 以加载 .codex/ 的 pmem；Hook 若仍提示未信任，在 /hooks 里点一次信任。",
 }

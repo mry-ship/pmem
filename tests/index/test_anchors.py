@@ -319,6 +319,20 @@ def test_without_history_symbol_anchors_fall_back_to_file_level(tmp_path):
     assert "A" in checker.check([_entry("A", "calc.py#first")], {})
 
 
+def test_anchor_outside_project_is_treated_as_missing_not_read(tmp_path):
+    # 项目目录以外放一个文件，锚点用 ../ 指向它：核对不能去读它，按“已不存在”处理。
+    # root 用未 resolve 的 tmp_path（短名/符号链接场景）：校验要两边都 resolve，项目内文件不能被误判为越界
+    project = tmp_path / "repo"
+    project.mkdir()
+    (project / "a.py").write_text(PY, encoding="utf-8")
+    (tmp_path / "outside.txt").write_text("secret", encoding="utf-8")
+    checker = AnchorChecker(project, detect_vcs(project, "none"))
+    problems = checker.check([_entry("A", "../outside.txt"), _entry("B", "a.py")], {})
+    assert problems["A"] == ["../outside.txt 已不存在"]
+    # 项目内文件照常被读到，不受越界校验影响：不会被误判成“已不存在”（具体是否标改过取决于 mtime，不在本例关注）
+    assert "a.py 已不存在" not in problems.get("B", [])
+
+
 def test_anchor_affinity_matches_file_then_folder():
     assert anchor_affinity(["src/Jigsaw/Board.cs#Snap"], "src/jigsaw/board.cs") == 2
     assert anchor_affinity(["./src/Jigsaw/Board.cs"], "src\\Jigsaw\\Board.cs") == 2

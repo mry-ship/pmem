@@ -50,6 +50,7 @@ def test_enable_cursor_writes_project_approval(tmp_path, monkeypatch):
     con.commit()
     con.close()
     monkeypatch.setattr("pmem.generate.mcp_enable.cursor_state_db", lambda: db)
+    monkeypatch.setattr("pmem.generate.mcp_enable.cursor_running", lambda: False)
     monkeypatch.setenv("PMEM_SKIP_MCP_ENABLE", "0")
 
     msg = enable_cursor_project_mcp(root, MCP_SERVER)
@@ -64,6 +65,31 @@ def test_enable_cursor_writes_project_approval(tmp_path, monkeypatch):
     con.close()
     assert "project-0-Other-x:1" in approved
     assert f"project-0-{root.name}-pmem:66633844" in approved
+
+
+def test_enable_cursor_skips_write_while_cursor_running(tmp_path, monkeypatch):
+    # Cursor 运行时写的批准会被它覆盖：不写库，返回“退出后重跑 / 手动开”的提示
+    root = tmp_path / "DemoProj"
+    root.mkdir()
+    db = tmp_path / "state.vscdb"
+    con = sqlite3.connect(db)
+    con.execute("CREATE TABLE ItemTable (key TEXT PRIMARY KEY, value TEXT)")
+    con.commit()
+    con.close()
+    monkeypatch.setattr("pmem.generate.mcp_enable.cursor_state_db", lambda: db)
+    monkeypatch.setattr("pmem.generate.mcp_enable.cursor_running", lambda: True)
+    monkeypatch.setenv("PMEM_SKIP_MCP_ENABLE", "0")
+
+    msg = enable_cursor_project_mcp(root, MCP_SERVER)
+    assert "正在运行" in msg and "退出" in msg
+    assert "已项目级批准" not in msg
+    # 没有写入任何批准
+    con = sqlite3.connect(db)
+    row = con.execute(
+        "SELECT value FROM ItemTable WHERE key=?", ("cursor/approvedProjectMcpServers",)
+    ).fetchone()
+    con.close()
+    assert row is None
 
 
 def test_enable_claude_project_mcp_lists_pmem(tmp_path, monkeypatch):

@@ -281,9 +281,15 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
                     approved_ok = any(str(x).endswith(suffix) for x in approved)
                 except Exception:
                     approved_ok = False
-            line(OK if approved_ok else WARN,
-                 "Cursor 已项目级批准 pmem MCP" if approved_ok
-                 else "Cursor 尚未项目级批准 pmem MCP（设置 → MCP 启用，或再跑 pmem init）")
+            if approved_ok:
+                line(OK, "Cursor 已项目级批准 pmem MCP")
+            else:
+                from pmem.generate.mcp_enable import cursor_running
+
+                tip = ("（Cursor 正在运行，自动批准会被它覆盖；请完全退出 Cursor 后重跑 pmem init，"
+                       "或 设置 → MCP 手动启用后 Reload Window）" if cursor_running()
+                       else "（设置 → MCP 启用，或再跑 pmem init）")
+                line(WARN, "Cursor 尚未项目级批准 pmem MCP" + tip)
         line(OK if (cursor / "rules" / "pmem.mdc").exists() else WARN, "规则文件 .cursor/rules/pmem.mdc")
     for agent, label, wired_mcp, skills in (
         ("claude", "Claude Code", "pmem" in _load(root / ".mcp.json").get("mcpServers", {}), root / ".claude" / "skills"),

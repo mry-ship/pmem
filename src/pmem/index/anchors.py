@@ -334,6 +334,17 @@ class AnchorChecker:
             self._save_cache(state, cached)
         return {e.id: cached[keys[e.id]] for e in entries if cached[keys[e.id]]}
 
+    def _read_anchor(self, rel: str) -> str | None:
+        """锚点文件的当前内容；路径解析后必须仍在项目目录内（挡住 ../ 越界），越界或不存在都返回 None。
+        两边都 resolve 再比，免得 root 未规整（短名、符号链接）时把项目内文件也误判为越界。"""
+        try:
+            root = self.root.resolve()
+            path = (root / rel).resolve()
+            path.relative_to(root)
+        except (OSError, ValueError):
+            return None
+        return path.read_text(encoding="utf-8", errors="ignore") if path.is_file() else None
+
     def _check(self, entries: list[Entry], files: dict[str, Path]) -> dict[str, list[str]]:
         texts: dict[str, str | None] = {}
         problems: dict[str, list[str]] = {}
@@ -343,8 +354,7 @@ class AnchorChecker:
                 rel, _, symbol = anchor.partition("#")
                 rel = rel.replace("\\", "/")
                 if rel not in texts:
-                    path = self.root / rel
-                    texts[rel] = path.read_text(encoding="utf-8", errors="ignore") if path.is_file() else None
+                    texts[rel] = self._read_anchor(rel)
                 if texts[rel] is None:
                     _add(problems, entry.id, f"{rel} 已不存在")
                 elif symbol and _member(symbol) not in texts[rel]:

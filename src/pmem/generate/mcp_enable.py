@@ -47,7 +47,9 @@ def _hash_string(text: str, seed: int = 0) -> int:
 
 
 def cursor_server_config_hash(cfg: dict) -> str:
-    """与 Cursor MCPService.computeServerConfigHash 一致（未解析变量的原始配置）。"""
+    """与 Cursor MCPService.computeServerConfigHash 一致（未解析变量的原始配置）。
+    Cursor（JS）用有符号 (hash).toString(16)，负数带前导负号（实测其自写的 project-0-TileMatch-playwright:-433220a0），
+    所以这里保留有符号十六进制，不要改成无符号。"""
     keys = ("command", "args", "env", "envFile", "url", "headers", "auth")
     obj = {k: cfg[k] for k in keys if k in cfg}
     payload = json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
@@ -68,6 +70,28 @@ def cursor_state_db() -> Path | None:
         base = home / ".config" / "Cursor"
     path = base / "User" / "globalStorage" / "state.vscdb"
     return path if path.is_file() else None
+
+
+def cursor_running() -> bool:
+    """Cursor 是否正在运行。运行时它把批准名单读进内存，退出或改设置时整体写回 state.vscdb，
+    会覆盖外部进程（pmem）刚写的批准，所以运行中不能假装已自动批准。查不出来时返回 False（宁可写，别误报拦住）。"""
+    import subprocess
+
+    from pmem.core.winproc import no_window_kwargs
+
+    try:
+        if sys.platform == "win32":
+            out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq Cursor.exe", "/NH"],
+                                 check=False, capture_output=True, timeout=5, **no_window_kwargs())
+            return b"Cursor.exe" in out.stdout
+        # macOS / Linux：pgrep 命中即在跑（-x 整词，macOS 进程名为 Cursor）
+        names = ("Cursor", "cursor") if sys.platform == "darwin" else ("cursor", "Cursor")
+        for name in names:
+            if subprocess.run(["pgrep", "-x", name], check=False, capture_output=True, timeout=5).returncode == 0:
+                return True
+        return False
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def _folder_indexes(root: Path, known: list[str]) -> list[int]:
@@ -105,6 +129,10 @@ def enable_cursor_project_mcp(root: Path, cfg: dict | None = None) -> str:
     db = cursor_state_db()
     if db is None:
         return "Cursor：未找到本机状态库，无法自动批准；打开设置 → MCP 手动启用 pmem"
+    if cursor_running():
+        # Cursor 运行时写进去的批准会被它退出/改设置时的内存副本覆盖，等于没写
+        return ("Cursor：检测到正在运行，此时写入的批准会被 Cursor 覆盖；请完全退出 Cursor 后重跑 pmem init，"
+                "或在 设置 → MCP 手动启用 pmem 后 Reload Window")
     try:
         con = sqlite3.connect(db, timeout=5)
         cur = con.cursor()

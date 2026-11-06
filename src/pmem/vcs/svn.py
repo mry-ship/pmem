@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import subprocess
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -164,7 +163,7 @@ class SvnVCS(VCS):
             if proc.returncode != 0:
                 return []
             log = ET.fromstring(proc.stdout)
-        except (subprocess.TimeoutExpired, ET.ParseError):
+        except ET.ParseError:
             return []
         commits = []
         for entry in log.iter("logentry"):

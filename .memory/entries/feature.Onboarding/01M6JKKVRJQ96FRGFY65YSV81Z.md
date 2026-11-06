@@ -21,6 +21,8 @@ applies: pmem init 生成的接入配置
 aliases:
 - Connection closed
 - user-pmem
+verified: '2026-11-06'
+verified_at: '2026-11-06T15:32:48.705+08:00'
 ---
 更正：先前决定 Hook 与 MCP 都用 pmemw。
 实测 Windows 上 pmemw/uv trampoline 会掐断 MCP stdio，Cursor 报 Connection closed / live tool discovery failed；

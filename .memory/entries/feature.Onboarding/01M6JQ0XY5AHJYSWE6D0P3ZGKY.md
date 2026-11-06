@@ -20,6 +20,8 @@ aliases:
 - quiet hooks
 - 少弹 shell
 - 疯狂弹窗
+verified: '2026-11-06'
+verified_at: '2026-11-06T14:52:03.318+08:00'
 ---
 功能：Windows 上 pmem init 默认 Hooks=quiet。
 

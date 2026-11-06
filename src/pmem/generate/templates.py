@@ -410,29 +410,24 @@ _CURSOR_HOOK_EXTRA = {
     "preCompact": {"command": f"{HOOK_BIN} hook compact"},
 }
 CURSOR_HOOKS_FULL = {**_CURSOR_HOOK_GATE, **_CURSOR_HOOK_REMINDERS, **_CURSOR_HOOK_EXTRA}
-# quiet：只拦 MCP 记忆读写。Write/Edit/Shell 一律不匹配——Windows 上 Cursor 经 PowerShell
-# 转发每个 Hook 必弹黑框（与 pmemw 是否 GUI 无关）；写 md 也走 Write，留文件编辑类 matcher
-# 仍会狂弹。改代码时靠规则先查记忆 + afterMCP；要硬闸门用 --hooks full。
-_CURSOR_QUIET_PRE_MATCHER = "MCP|record_memory|search_memory"
-CURSOR_HOOKS_QUIET = {
-    "preToolUse": {
-        "command": f"{HOOK_BIN} hook pre-tool",
-        "matcher": _CURSOR_QUIET_PRE_MATCHER,
-        "failClosed": False,
-    },
-    "afterMCPExecution": {"command": f"{HOOK_BIN} hook after-mcp"},
+# quiet：闸门与提醒必须保留（Write/Edit/Shell/MCP + session/prompt/stop + afterMCP）。
+# 只去掉「每次读代码就起进程」的摘要类 Hook（afterFileEdit、preCompact、
+# postToolUse 的 Read|Grep|Glob|语义搜索）。postToolUse 仅 Shell：登记终端
+# pmem search「已查过」并做写文件事后核对。禁止再收成「只拦 MCP」。
+_CURSOR_HOOK_POST_QUIET = {
+    "postToolUse": {"command": f"{HOOK_BIN} hook post-tool", "matcher": "Shell"},
 }
+CURSOR_HOOKS_QUIET = {**_CURSOR_HOOK_GATE, **_CURSOR_HOOK_REMINDERS, **_CURSOR_HOOK_POST_QUIET}
 # 兼容旧引用：默认指向完整集；实际写入由 cursor_hooks() 按平台选择
 CURSOR_HOOKS = CURSOR_HOOKS_FULL
 
 
 def cursor_hooks(mode: str = "auto") -> dict:
-    """auto：Windows 用 quiet（少弹 shell），其它平台 full；也可强制 full / quiet / off。"""
-    import sys
-
+    """auto/full：完整闸门+读码摘要+提醒。quiet：去掉读码摘要类 Hook，闸门仍全留。off：全关。
+    禁止再把 quiet 收成「只拦 MCP」。"""
     normalized = (mode or "auto").strip().lower()
     if normalized == "auto":
-        normalized = "quiet" if sys.platform == "win32" else "full"
+        normalized = "full"
     if normalized == "off":
         return {}
     if normalized == "quiet":
@@ -475,31 +470,27 @@ CLAUDE_HOOKS_QUIET = _agent_hooks(
 )
 CLAUDE_HOOKS = CLAUDE_HOOKS_FULL
 CODEX_HOOKS_FULL = _agent_hooks("codex", "^(Bash|apply_patch|mcp__pmem__.*)$", "^(Bash|apply_patch|mcp__pmem__.*)$")
-# quiet：去掉 Bash（Windows 上每条终端 Hook 弹窗），只留 apply_patch + MCP；无 prompt/stop/compact
-_CODEX_QUIET_MATCHER = "^(apply_patch|mcp__pmem__.*)$"
+# quiet：闸门与 prompt/stop 全留（含 Bash|apply_patch|MCP）；只去掉 PreCompact
 CODEX_HOOKS_QUIET = _agent_hooks(
-    "codex", _CODEX_QUIET_MATCHER, _CODEX_QUIET_MATCHER, include_compact=False
+    "codex", "^(Bash|apply_patch|mcp__pmem__.*)$", "^(Bash|apply_patch|mcp__pmem__.*)$",
+    include_compact=False,
 )
-# _agent_hooks 仍带 UserPromptSubmit/Stop；quiet 只要 Pre/Post
-CODEX_HOOKS_QUIET = {
-    "PreToolUse": CODEX_HOOKS_QUIET["PreToolUse"],
-    "PostToolUse": CODEX_HOOKS_QUIET["PostToolUse"],
-}
 CODEX_HOOKS = CODEX_HOOKS_FULL
 CODEX_MCP_TOML = f'[mcp_servers.pmem]\ncommand = "{MCP_BIN}"\nargs = ["serve"]\n'
 
 
 def claude_hooks(mode: str = "auto", *, paired_with_cursor: bool = False) -> dict:
     """与 cursor_hooks 同口径。
-    Windows 上若同时接入 Cursor：quiet/off 清空 Claude Hooks（Cursor 会双开翻倍弹窗）。
-    只接 Claude Code 时 quiet 仍保留无 Read 的一套，避免闸门全丢。
+    Windows 上若同时接入 Cursor：一律清空 Claude Hooks（Cursor 会双开，弹窗翻倍且闸门重复）。
+    只接 Claude Code 时 auto/full 用完整集；quiet 去掉 Read 摘要。
     """
     import sys
 
     normalized = (mode or "auto").strip().lower()
     if normalized == "auto":
-        normalized = "quiet" if sys.platform == "win32" else "full"
-    if normalized == "off" or (normalized == "quiet" and paired_with_cursor and sys.platform == "win32"):
+        normalized = "full"
+    # 防弹窗：与 Cursor 同开时只跑一套 Hooks（Cursor 侧）
+    if normalized == "off" or (paired_with_cursor and sys.platform == "win32"):
         return {}
     if normalized == "quiet":
         return json.loads(json.dumps(CLAUDE_HOOKS_QUIET))
@@ -509,12 +500,10 @@ def claude_hooks(mode: str = "auto", *, paired_with_cursor: bool = False) -> dic
 
 
 def codex_hooks(mode: str = "auto") -> dict:
-    """与 cursor_hooks 同口径：Windows auto→quiet（无 prompt/stop/compact）。"""
-    import sys
-
+    """与 cursor_hooks 同口径：auto/full 完整；quiet 去掉 PreCompact。"""
     normalized = (mode or "auto").strip().lower()
     if normalized == "auto":
-        normalized = "quiet" if sys.platform == "win32" else "full"
+        normalized = "full"
     if normalized == "off":
         return {}
     if normalized == "quiet":

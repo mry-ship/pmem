@@ -7,11 +7,12 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from pmem.core.winproc import no_window_kwargs
+from pmem.generate.mcp_enable import enable_project_mcp
 from pmem.generate.templates import (
     BLOCK_BEGIN,
     BLOCK_END,
     BOOTSTRAP_SKILL,
-    codex_hooks,
     CODEX_MCP_TOML,
     COMPACT_SKILL,
     CONSOLIDATE_SKILL,
@@ -28,6 +29,7 @@ from pmem.generate.templates import (
     SEED_SKILL,
     SPEC_SKILL,
     claude_hooks,
+    codex_hooks,
     cursor_hooks,
 )
 
@@ -101,7 +103,14 @@ def write_hook_wrappers(root: Path) -> None:
     script.chmod(script.stat().st_mode | 0o755)
     # Windows 上建的文件没有可执行位，提交后 macOS/Linux 的队友无法运行；Git 下直接在暂存区里标上（不是 Git 仓库时无效果）
     if shutil.which("git"):
-        subprocess.run(["git", "add", "--chmod=+x", "--", str(script)], cwd=root, capture_output=True, check=False)
+        # Windows 下 git 是 CUI；走 core.winproc，不能 import vcs（层级）。
+        subprocess.run(
+            ["git", "add", "--chmod=+x", "--", str(script)],
+            cwd=root,
+            capture_output=True,
+            check=False,
+            **no_window_kwargs(),
+        )
 
 
 def merge_hooks(path: Path, wanted: dict | None = None) -> None:
@@ -206,16 +215,22 @@ def setup_cursor(root: Path, hooks_mode: str = "auto") -> str:
     merge_hooks(cursor / "hooks.json", wanted)
     merge_mcp(cursor / "mcp.json")
     write_hook_wrappers(root)
+    enabled = enable_project_mcp("cursor", root)
+    post_matcher = str((wanted.get("postToolUse") or {}).get("matcher") or "")
     if not wanted:
         mode = "off"
-    elif "postToolUse" in wanted or "sessionStart" in wanted:
+    elif "afterFileEdit" in wanted or "preCompact" in wanted or re.search(
+        r"Read|Grep|Glob|SemanticSearch|codebase_search", post_matcher
+    ):
         mode = "full"
     else:
         mode = "quiet"
     return ("Cursor：.cursor/rules/pmem.mdc、.cursor/skills/pmem-*、合并 .cursor/hooks.json 与 .cursor/mcp.json、"
             f".memory/bin/pmem-hook*（没装 pmem 时提醒）；Hooks={mode}"
-            + ("（仅闸门+MCP 登记；Cursor 经 PowerShell 起 Hook 会弹窗，要摘要用 --hooks full）"
-               if mode == "quiet" else ("（已去掉全部 pmem Hook）" if mode == "off" else "")))
+            + ("（闸门保留；postToolUse 仅 Shell，无读码摘要）"
+               if mode == "quiet" else ("（已去掉全部 pmem Hook）" if mode == "off"
+                                        else "（完整闸门+读码摘要+提醒；Hook=pmemw）"))
+            + f"；{enabled}")
 
 
 def setup_claude(root: Path, hooks_mode: str = "auto", *, paired_with_cursor: bool = False) -> str:
@@ -224,6 +239,7 @@ def setup_claude(root: Path, hooks_mode: str = "auto", *, paired_with_cursor: bo
     wanted = claude_hooks(hooks_mode, paired_with_cursor=paired_with_cursor)
     merge_group_hooks(root / ".claude" / "settings.json", wanted)
     merge_mcp(root / ".mcp.json", PLAIN_MCP_SERVER)
+    enabled = enable_project_mcp("claude", root)
     if not wanted:
         extra = "；Hooks 已清空（与 Cursor 同开时避免双开翻倍弹窗）"
     elif "Read" not in str((wanted.get("PostToolUse") or [{}])[0].get("matcher", "")):
@@ -231,7 +247,7 @@ def setup_claude(root: Path, hooks_mode: str = "auto", *, paired_with_cursor: bo
     else:
         extra = ""
     return ("Claude Code：CLAUDE.md 中的 pmem 段落、.claude/skills/pmem-*、合并 .claude/settings.json 与 .mcp.json"
-            + extra)
+            + extra + f"；{enabled}")
 
 def setup_codex(root: Path, hooks_mode: str = "auto") -> str:
     upsert_block(root / "AGENTS.md", RULE_BLOCK)
@@ -240,19 +256,20 @@ def setup_codex(root: Path, hooks_mode: str = "auto") -> str:
     wanted = codex_hooks(hooks_mode)
     merge_group_hooks(root / ".codex" / "hooks.json", wanted)
     merge_codex_mcp(root / ".codex" / "config.toml")
+    enabled = enable_project_mcp("codex", root)
     if not wanted:
         extra = "；Hooks 已清空"
-    elif "UserPromptSubmit" not in wanted:
-        extra = "；Hooks=quiet（仅 Pre/PostToolUse，无 prompt/stop/compact）"
+    elif "PreCompact" not in wanted and "UserPromptSubmit" in wanted:
+        extra = "；Hooks=quiet（闸门+prompt/stop 保留，无 PreCompact）"
     else:
         extra = ""
     return ("Codex：AGENTS.md 中的 pmem 段落、.agents/skills/pmem-*、合并 .codex/hooks.json 与 .codex/config.toml"
-            + extra)
+            + extra + f"；{enabled}")
 
 
 SETUP = {"cursor": setup_cursor, "claude": setup_claude, "codex": setup_codex}
 NEXT_STEPS = {
-    "cursor": "Cursor：在设置 → MCP 中启用 pmem（首次需要点一次）。",
-    "claude": "Claude Code：首次打开项目时批准 .mcp.json 里的 pmem 服务；/hooks 可查看已接入的 Hook。",
-    "codex": "Codex：信任本项目后，在 /hooks 里审阅并信任 pmem 的 Hook（项目 .codex/ 未被信任时不加载）。",
+    "cursor": "Cursor：init 已尝试项目级批准 pmem；若 MCP 仍显示 Disconnected，执行 Reload Window。不要改用户级 ~/.cursor/mcp.json。",
+    "claude": "Claude Code：init 已尝试把项目 .mcp.json 的 pmem 写入 enabledMcpjsonServers；/hooks 可查看 Hook。",
+    "codex": "Codex：init 已尝试把本项目标为 trusted 以加载 .codex/ 的 pmem；Hook 若仍提示未信任，在 /hooks 里点一次信任。",
 }

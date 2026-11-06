@@ -13,6 +13,8 @@ note_date: '2026-11-05'
 summary: Windows doctor 告警 hooks 用控制台 python3/py
 verify: pytest tests/test_doctor_console_python.py -q
 applies: Windows；项目 hooks 含非 pmem 的 python 启动器
+verified: '2026-11-06'
+verified_at: '2026-11-06T15:32:48.705+08:00'
 ---
 功能：pmem doctor 在 Windows 上扫描 .cursor/hooks.json 与 Claude/Codex hooks：若 command 以控制台版 python3/python/py 开头（排除 pyw/pythonw），告警改成 pyw -3 -u；
 macOS/Linux 的 python3 不告警。

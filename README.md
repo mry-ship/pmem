@@ -79,7 +79,7 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 5. **提交**：运行 `pmem doctor` 自检，然后把 `.memory/` 和 `.cursor/` 提交到版本库。
 6. **（建议）种子记忆**：对 AI 说“按 pmem-seed 技能提炼种子记忆”，从提交说明和文档里为常改的模块先补一批结论，确认后转正，记忆库就不是从空开始。
 
-队友拉代码后，只需要做第 1 步和第 3 步。升级：`uv tool upgrade pmem`，再在**每个已接入项目**里运行一次 `pmem init`（会按当前模板合并 Hooks / MCP，不覆盖已有 `config.yaml`；这时给的 `--gate`、`--type` 不生效，要改直接编辑配置）。Windows 上默认 `Hooks=quiet`（只留闸门与 MCP 登记，并清空与 Cursor 同开的 Claude Hooks），减轻弹控制台；改完后**重开该项目的 Cursor 窗口**。要读码摘要再用 `pmem init --hooks full`；应急可 `pmem init --hooks off`。
+队友拉代码后，只需要做第 1 步和第 3 步。升级：`uv tool upgrade pmem`，再在**每个已接入项目**里运行一次 `pmem init`（会按当前模板合并 Hooks / MCP，不覆盖已有 `config.yaml`；这时给的 `--gate`、`--type` 不生效，要改直接编辑配置）。默认 `Hooks=full`（完整闸门 + 读码摘要 + 提醒；Hook 用无控制台入口 `pmemw`，MCP 用 `pmem`）。Windows 上若同时接入 Cursor，init 会把 `.claude/settings.json` 的 `hooks` 写成 `{}`（只跑 Cursor 那一套，避免双开弹窗）；单独用 Claude Code、或非 Windows 时 Claude 才是完整 Hooks。改完后**重开该项目的 Cursor 窗口**。可选 `pmem init --hooks quiet`（仍保留闸门，去掉读码摘要）；应急可 `pmem init --hooks off`。
 
 ## 日常使用
 
@@ -128,6 +128,7 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 | `pmem doctor` | 没提交的记忆、可以合并的议题、团队版本提示。接入后约每 24 小时后台巡检一次，有问题才提一行 |
 | `pmem health` | 负责人收口用的健康报告：疑似矛盾、可能过时、零碎记忆、反复查不到的问题、待确认的种子、未登记或重复的模块、召回偏低的模块、漏写功能记录的模块、清理候选（只建议归档，由你确认）。对 AI 说“按 pmem-consolidate 技能整理记忆库”逐节处理 |
 | `pmem report` | 本机收益：命中率、避坑次数、跨人复用、功能记录覆盖率、防错类记忆占比、对话内重复返回率 |
+| `scripts/pmem-biweekly-health.ps1` | Windows 可选：跑 `pmem health`，有问题写 `.memory/cache/health-action-needed.txt` 并气球提示，再在 Cursor 说「按 pmem-consolidate 收口」。脚本**不会**注册计划任务，双周调度需自己用「任务计划程序」挂上；失败时也会气球提示 |
 
 <details>
 <summary><b>一条记忆长什么样</b></summary>
@@ -300,7 +301,7 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 - 新模块自动登记只追加：手工从 `modules.yaml` 删掉的模块下次会被加回来，不想登记的目录要写进 `ignored`；`modules.yaml` 正文里有注释时退回只提醒。
 - 按函数判断过期只支持 Git；SVN 和找不到函数时按文件判断。
 - Windows PowerShell 5 里把 pmem 输出再接给 `Select-String` 等命令会乱码（它按 GBK 解码），直接看输出或用 `--brief`。
-- Windows 上 Cursor 经 PowerShell 转发每个 Hook，都可能闪一下控制台（与 `pmemw` 是否 GUI 无关）。升级后务必再跑 `pmem init` 并用 quiet；若仍烦，用 `--hooks off` 暂时关掉全部 pmem Hook（闸门也停）。
+- Windows 防弹窗：Hook 命令必须是 `pmemw`（不要 `pmem`、`.cmd`、`||`）；与 Cursor 同开时不要再装一套 Claude Hooks（init 会把 Claude 侧 `hooks` 清空成 `{}`，这是预期，不是漏配）；不要用控制台版 `python`/`py` 起 Hook。Cursor 默认完整 `full`（含读码摘要），**不要**擅自拆掉 Write/Edit 或读码摘要。
 - 功能记录（`feature` / `plan`）和 `applies` 字段需要较新的 pmem：团队里还在用旧版的人读到这类记忆文件会跳过它，请一起升级。
 - 子模块（三段、四段的模块名）需要 v0.5：旧版能读写已登记的子模块，但不会带上父模块的教训，`pmem doctor` 检测到子模块时会提示团队升级。
 - 撤销合并（`compact --undo`）写的 `reverted` 字段旧版不认：旧版仍把撤销的合并当作替代，原记忆在旧版里还是隐藏的。

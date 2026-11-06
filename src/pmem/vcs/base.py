@@ -5,11 +5,15 @@ import os
 import subprocess
 from pathlib import Path
 
+from pmem.core.winproc import no_window_kwargs
+
 
 def run_tool(args: list[str], cwd: Path, timeout: float = 30) -> subprocess.CompletedProcess[bytes]:
     """git/svn 不在 PATH、工作目录不存在或超时，都当作命令失败（返回码 127），由调用方按“查不出”处理，不抛异常。"""
     try:
-        return subprocess.run(args, cwd=cwd, capture_output=True, timeout=timeout, check=False)
+        return subprocess.run(
+            args, cwd=cwd, capture_output=True, timeout=timeout, check=False, **no_window_kwargs()
+        )
     except (OSError, subprocess.TimeoutExpired) as exc:
         return subprocess.CompletedProcess(args, 127, b"", str(exc).encode("utf-8", errors="replace"))
 

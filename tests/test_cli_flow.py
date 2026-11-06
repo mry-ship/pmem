@@ -36,24 +36,19 @@ def test_init_creates_project_files_and_merges_existing_cursor_config(tmp_path, 
     assert (cursor / "rules" / "pmem.mdc").exists()
     assert (cursor / "skills" / "pmem-bootstrap" / "SKILL.md").exists()
     assert "pmem compact" in (cursor / "skills" / "pmem-compact" / "SKILL.md").read_text(encoding="utf-8")
-    # Windows 默认 quiet：只留闸门 + afterMCP（Cursor 经 PowerShell 起 Hook 会弹窗）
-    if sys.platform == "win32":
-        assert "sessionStart" not in hooks and "postToolUse" not in hooks
-        assert "preToolUse" in hooks and "afterMCPExecution" in hooks
-        assert hooks["stop"] == [{"command": "my-own-hook"}]  # 外键保留，pmem stop 已撤
-    else:
-        assert [h["command"] for h in hooks["stop"]] == ["my-own-hook", "pmemw hook stop"]
-        assert [h["command"] for h in hooks["sessionStart"]] == ["pmemw hook session"]
-        assert "postToolUse" in hooks and "afterFileEdit" in hooks
-        assert "Read" in hooks["postToolUse"][0]["matcher"]
+    # 默认 full：完整闸门+读码摘要+提醒；Hook 命令为 pmemw
+    assert [h["command"] for h in hooks["stop"]] == ["my-own-hook", "pmemw hook stop"]
+    assert [h["command"] for h in hooks["sessionStart"]] == ["pmemw hook session"]
+    assert "postToolUse" in hooks and "afterFileEdit" in hooks and "preCompact" in hooks
+    assert "Read" in hooks["postToolUse"][-1]["matcher"] and "Shell" in hooks["postToolUse"][-1]["matcher"]
+    assert "Write" in hooks["preToolUse"][-1]["matcher"]
     assert (tmp_path / ".memory" / "bin" / "pmem-hook").exists()
     assert b"\r\n" in (tmp_path / ".memory" / "bin" / "pmem-hook.cmd").read_bytes()
     main(["init", "--root", str(tmp_path)])
     again = json.loads((cursor / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-    if sys.platform == "win32":
-        assert "sessionStart" not in again and "preToolUse" in again
-    else:
-        assert len(again["sessionStart"]) == 1
+    assert len(again["sessionStart"]) == 1 and "afterFileEdit" in again
+    assert "Read" in again["postToolUse"][-1]["matcher"]
+
 
 
 def test_rerun_init_says_which_options_were_not_applied(tmp_path, capsys):
@@ -117,7 +112,7 @@ def test_init_wires_claude_and_codex_without_touching_their_other_settings(tmp_p
     assert settings["permissions"] == {"allow": ["Bash(ls)"]}
     stop = [h["command"] for g in settings["hooks"].get("Stop", []) for h in g["hooks"]]
     if sys.platform == "win32":
-        # auto 含 Cursor：quiet 清空 Claude 侧 pmem Hook，只留别人的 notify.sh
+        # 与 Cursor 同开：清空 Claude 侧 pmem Hook，只留别人的 notify.sh（防弹窗）
         assert stop == ["notify.sh"]
         assert "PreToolUse" not in settings["hooks"]
     else:
@@ -138,10 +133,12 @@ def test_init_wires_claude_and_codex_without_touching_their_other_settings(tmp_p
     codex_hooks = json.loads((codex / "hooks.json").read_text(encoding="utf-8"))["hooks"]
     assert [h["command"] for g in codex_hooks["PreToolUse"] for h in g["hooks"]] == ["pmemw hook pre-tool --agent codex"]
     assert "onFailure" not in codex_hooks["PreToolUse"][0]["hooks"][0]
+    assert "PreCompact" in codex_hooks and "Stop" in codex_hooks
     assert (tmp_path / ".agents" / "skills" / "pmem-consolidate" / "SKILL.md").exists()
     assert (tmp_path / "AGENTS.md").read_text(encoding="utf-8").count("<!-- pmem:end -->") == 1
     out = capsys.readouterr().out
     assert "Claude Code" in out and "/hooks" in out
+    assert "Hooks=full" in out
 
 
 def test_init_only_wires_cursor_when_no_other_agent_is_present(tmp_path):
@@ -240,8 +237,7 @@ def test_doctor_reports_coverage(tmp_path, capsys, monkeypatch):
     assert "模块覆盖率 100.0%" in out
     assert "feature.Ghost" in out
     assert "Hooks 是旧版" not in out
-    if sys.platform == "win32":
-        assert "Hooks=quiet" in out
+    assert "Hooks=full" in out
     hooks = tmp_path / ".cursor" / "hooks.json"
     data = json.loads(hooks.read_text(encoding="utf-8"))
     # 故意写成只有 Read、缺 Grep 的旧版 matcher
@@ -251,10 +247,7 @@ def test_doctor_reports_coverage(tmp_path, capsys, monkeypatch):
     }]
     hooks.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     doctor_out = (main(["doctor", "--root", str(tmp_path)]), capsys.readouterr().out)[1]
-    if sys.platform == "win32":
-        assert "疯狂弹 shell" in doctor_out or "Hooks 是旧版" in doctor_out
-    else:
-        assert "Hooks 是旧版" in doctor_out
+    assert "Hooks 是旧版" in doctor_out
 
 
 def test_doctor_checks_claude_and_codex_without_requiring_cursor(tmp_path, capsys, monkeypatch):

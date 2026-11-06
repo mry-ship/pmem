@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -112,10 +111,8 @@ class GitVCS(VCS):
         # 只给日期时 git 用当前时刻补齐，会漏掉起始日较早的提交
         args = ["git", "-c", "core.quotepath=off", "log", f"--since={since} 00:00", "--name-only", "--relative",
                 "--pretty=format:@@%ci"]
-        try:
-            proc = run_tool(args, self.root, timeout=HISTORY_TIMEOUT)
-        except subprocess.TimeoutExpired:
-            return []
+        # run_tool 已吞掉超时并返回码 127，这里不必再 catch TimeoutExpired
+        proc = run_tool(args, self.root, timeout=HISTORY_TIMEOUT)
         if proc.returncode != 0:
             return []
         commits = []

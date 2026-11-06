@@ -24,9 +24,9 @@ synonyms:
 modules:
   feature.Gate:
     description: Hooks 闸门：改代码前按模块拦截、读代码附摘要、问答审查、结束提醒、终端写命令识别
-    paths: [src/pmem/hooks/**, src/pmem/cli/hook_cmd.py, tests/hooks/**, tests/fixtures/hook_payloads/**, tests/test_hook_cmd.py, spike/cursor_hooks/**]
+    paths: [src/pmem/hooks/**, src/pmem/cli/hook_cmd.py, src/pmem/core/seen.py, tests/hooks/**, tests/fixtures/hook_payloads/**, tests/test_hook_cmd.py, spike/cursor_hooks/**]
     aliases: [Hooks, Hook]
-    entities: [Encoding, Payload, State, ShellParse, AutoAnchors, PromptReview, HookLatency]
+    entities: [Encoding, Payload, State, ShellParse, AutoAnchors, PromptReview, HookLatency, SeenHandoff]
   feature.Retrieval:
     description: 检索：索引与缓存、分词、同义词、嵌入、排序、过期核对（stale）与知识图谱
     paths: [src/pmem/index/**, src/pmem/cli/reindex_cmd.py, tests/index/**, scripts/eval_retrieval.py, scripts/eval_real_queries.py, tests/fixtures/eval/**]
@@ -40,12 +40,12 @@ modules:
   infra.Watchdog:
     description: MCP 服务看门狗：pmem serve 守护 serve --worker 子进程，崩溃、超时、代码更新时自动重启并重新握手
     paths: [src/pmem/server/watchdog.py, tests/test_watchdog.py]
-    aliases: [Server, 看门狗]
+    aliases: [Watchdog, 看门狗]
   feature.ModuleCatalog:
     description: 模块目录：modules.yaml 的解析与路径映射（core/registry.py），以及迁移、同步、覆盖率（catalog 包）和对应命令
-    paths: [src/pmem/core/registry.py, src/pmem/catalog/**, src/pmem/cli/migrate_cmd.py, src/pmem/cli/sync_cmd.py, tests/core/test_registry_*.py, tests/core/conftest.py, tests/test_migrate.py, tests/test_migrate_split.py, tests/test_sync.py]
+    paths: [src/pmem/core/registry.py, src/pmem/core/autosync.py, src/pmem/core/codefiles.py, src/pmem/catalog/**, src/pmem/cli/migrate_cmd.py, src/pmem/cli/sync_cmd.py, tests/core/test_registry_*.py, tests/core/conftest.py, tests/test_migrate.py, tests/test_migrate_split.py, tests/test_sync.py, tests/test_autosync.py, tests/test_module_hierarchy.py]
     aliases: [Registry, Catalog]
-    entities: [Migrate, Split, Deprecate, Loading, NameMatch]
+    entities: [Migrate, Split, Deprecate, Loading, NameMatch, AutoSync]
   feature.Storage:
     description: 记忆文件存储与 Git/SVN 适配
     paths: [src/pmem/storage/**, src/pmem/vcs/**, src/pmem/core/fileio.py, tests/storage/**, tests/vcs/**, tests/conftest.py]
@@ -53,9 +53,9 @@ modules:
     components: [Files, Git, Svn]
   feature.Onboarding:
     description: 接入：init 生成的规则、技能、Hooks、MCP 配置模板，scan 目录与热度扫描，doctor 自检
-    paths: [src/pmem/cli/init_cmd.py, src/pmem/cli/doctor_cmd.py, src/pmem/generate/templates.py, src/pmem/generate/integrations.py, src/pmem/scan/**, tests/test_cli_flow.py, tests/test_lazy_doctor.py]
-    aliases: [Init, Doctor, Scan]
-    entities: [Skills, Hooks, Rule, Doctor, Scan]
+    paths: [src/pmem/cli/init_cmd.py, src/pmem/cli/doctor_cmd.py, src/pmem/generate/templates.py, src/pmem/generate/integrations.py, src/pmem/generate/mcp_enable.py, src/pmem/scan/**, tests/test_cli_flow.py, tests/test_lazy_doctor.py, tests/test_mcp_enable.py, tests/test_integrations.py, tests/test_doctor_console_python.py]
+    aliases: [Init, Doctor, Scan, McpEnable]
+    entities: [Skills, Hooks, Rule, Doctor, Scan, McpEnable]
   feature.Wiki:
     description: 从记忆生成可浏览的 Markdown Wiki（每模块一页、过期标记、写入后自动更新）
     paths: [src/pmem/generate/wiki.py, src/pmem/cli/wiki_cmd.py, tests/test_wiki.py]
@@ -65,7 +65,7 @@ modules:
     aliases: [模块规格, RebuildSpec]
   feature.Metrics:
     description: 度量与报告：本机事件日志、收益报告 pmem report、引用识别、健康报告 pmem health（含清理候选）、记忆图 pmem map 与自检、对照实验 pmem bench
-    paths: [src/pmem/metrics/**, src/pmem/bench/**, src/pmem/generate/memmap.py, src/pmem/cli/map_cmd.py, tests/metrics/**, tests/bench/**, tests/test_memmap.py, scripts/calibrate_cite.py, bench/**]
+    paths: [src/pmem/metrics/**, src/pmem/bench/**, src/pmem/generate/memmap.py, src/pmem/cli/map_cmd.py, tests/metrics/**, tests/bench/**, tests/test_memmap.py, scripts/calibrate_cite.py, scripts/pmem-biweekly-health.ps1, bench/**]
     aliases: [Report, Bench, Health, Map]
     entities: [Events, Citation, Compare, Bench, Health, Contradiction, MemoryMap, Cleanup]
   feature.Import:
@@ -78,12 +78,12 @@ modules:
     aliases: [Compact, Quality, Anchors]
     entities: [WriteHints, Merge, Anchors, Seed, Format]
   infra.Model:
-    description: 数据模型：记忆条目（类型、状态及其中文名）、ULID、正文断行、配置与默认值
-    paths: [src/pmem/core/entry.py, src/pmem/core/ids.py, src/pmem/core/config.py, src/pmem/core/textfmt.py, tests/core/test_entry.py, tests/core/test_ids.py, tests/core/test_config.py, tests/core/test_textfmt.py]
-    aliases: [Entry, Config]
+    description: 数据模型：记忆条目（类型、状态及其中文名）、ULID、正文断行、配置与默认值、边界校验
+    paths: [src/pmem/core/entry.py, src/pmem/core/ids.py, src/pmem/core/config.py, src/pmem/core/textfmt.py, src/pmem/core/schema.py, tests/core/test_entry.py, tests/core/test_ids.py, tests/core/test_config.py, tests/core/test_textfmt.py, tests/core/test_schema.py]
+    aliases: [Entry, Config, Schema]
   infra.Common:
     description: 命令行入口（main.py 参数解析、--brief 精简输出）与尚未归类的文件；新文件先落在这里，成形后归到对应模块
-    paths: [src/pmem/**, tests/**]
+    paths: [src/pmem/cli/main.py, src/pmem/cli/brief.py, src/pmem/core/winproc.py, src/pmem/**, tests/test_cli.py, tests/test_layering.py, tests/test_robustness.py, tests/test_quality_efficiency.py, tests/test_feature_records.py, tests/core/test_winproc_coverage.py, tests/**]
     aliases: [Cli]
 candidates: {}
 third_party: []

@@ -2,7 +2,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "^(apply_patch|mcp__pmem__.*)$",
+        "matcher": "^(Bash|apply_patch|mcp__pmem__.*)$",
         "hooks": [
           {
             "type": "command",
@@ -14,11 +14,44 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "^(apply_patch|mcp__pmem__.*)$",
+        "matcher": "^(Bash|apply_patch|mcp__pmem__.*)$",
         "hooks": [
           {
             "type": "command",
             "command": "pmemw hook post-tool --agent codex",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pmemw hook prompt --agent codex",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pmemw hook stop --agent codex",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pmemw hook compact --agent codex",
             "timeout": 30
           }
         ]

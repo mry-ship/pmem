@@ -45,7 +45,7 @@ def test_non_dict_hook_entries_are_kept(tmp_path):
     assert "legacy" in json.loads(path.read_text(encoding="utf-8"))["hooks"]["stop"]
 
 
-def test_merge_hooks_quiet_drops_post_tool_use(tmp_path):
+def test_merge_hooks_quiet_keeps_gate_drops_read_digest(tmp_path):
     from pmem.generate.templates import CURSOR_HOOKS_FULL, CURSOR_HOOKS_QUIET
 
     path = tmp_path / "hooks.json"
@@ -64,39 +64,93 @@ def test_merge_hooks_quiet_drops_post_tool_use(tmp_path):
 
     merge_hooks(path, CURSOR_HOOKS_QUIET)
     quiet = json.loads(path.read_text(encoding="utf-8"))["hooks"]
-    assert "postToolUse" not in quiet and "sessionStart" not in quiet
+    assert "sessionStart" in quiet and "beforeSubmitPrompt" in quiet and "stop" in quiet
     assert "afterFileEdit" not in quiet and "preCompact" not in quiet
     assert "afterMCPExecution" in quiet
+    assert quiet["postToolUse"][-1]["matcher"] == "Shell"
+    assert "Write" in quiet["preToolUse"][-1]["matcher"] and "Shell" in quiet["preToolUse"][-1]["matcher"]
     assert quiet["preToolUse"][0]["command"] == "security-scan"
     assert any(h.get("command") == "pmemw hook pre-tool" for h in quiet["preToolUse"])
-    assert quiet["stop"] == [{"command": "my-own-hook"}]
+    assert quiet["stop"][0] == {"command": "my-own-hook"}
+    assert quiet["stop"][1]["command"] == "pmemw hook stop"
 
 
-def test_cursor_hooks_auto_quiet_on_windows(monkeypatch):
+def _hook_commands(tree) -> list[str]:
+    """Flatten Cursor / Claude / Codex hook trees into command strings."""
+    if not isinstance(tree, dict):
+        return []
+    out = []
+    for entries in tree.values():
+        if isinstance(entries, dict) and "command" in entries:
+            out.append(str(entries["command"]))
+            continue
+        if not isinstance(entries, list):
+            continue
+        for item in entries:
+            if not isinstance(item, dict):
+                continue
+            if isinstance(item.get("command"), str):
+                out.append(item["command"])
+            for handler in item.get("hooks") or []:
+                if isinstance(handler, dict) and isinstance(handler.get("command"), str):
+                    out.append(handler["command"])
+    return out
+
+
+def test_template_hooks_never_use_console_launchers():
+    """Windows 上 Hook 必须是 GUI 入口 pmemw，禁止 pmem/.cmd/||/控制台 python。"""
+    from pmem.generate.templates import (
+        CLAUDE_HOOKS_FULL,
+        CLAUDE_HOOKS_QUIET,
+        CODEX_HOOKS_FULL,
+        CODEX_HOOKS_QUIET,
+        CURSOR_HOOKS_FULL,
+        CURSOR_HOOKS_QUIET,
+        HOOK_BIN,
+        MCP_BIN,
+    )
+
+    assert HOOK_BIN == "pmemw" and MCP_BIN == "pmem"
+    for name, tree in (
+        ("cursor_full", CURSOR_HOOKS_FULL),
+        ("cursor_quiet", CURSOR_HOOKS_QUIET),
+        ("claude_full", CLAUDE_HOOKS_FULL),
+        ("claude_quiet", CLAUDE_HOOKS_QUIET),
+        ("codex_full", CODEX_HOOKS_FULL),
+        ("codex_quiet", CODEX_HOOKS_QUIET),
+    ):
+        cmds = _hook_commands(tree)
+        assert cmds, name
+        for cmd in cmds:
+            assert cmd.startswith("pmemw hook"), f"{name}: {cmd}"
+            assert "||" not in cmd and ".cmd" not in cmd and "pmem-hook" not in cmd
+            assert not cmd.startswith(("pmem ", "python", "py ", "cmd"))
+
+
+def test_cursor_hooks_auto_is_full_everywhere(monkeypatch):
     import sys
 
     from pmem.generate.templates import claude_hooks, codex_hooks, cursor_hooks
 
     monkeypatch.setattr(sys, "platform", "win32")
-    quiet = cursor_hooks("auto")
-    assert set(quiet) == {"preToolUse", "afterMCPExecution"}
-    quiet_matcher = quiet["preToolUse"]["matcher"]
-    assert "Write" not in quiet_matcher and "Shell" not in quiet_matcher
-    assert "MCP" in quiet_matcher and "search_memory" in quiet_matcher
+    auto = cursor_hooks("auto")
+    assert "afterFileEdit" in auto and "preCompact" in auto
+    assert "Read" in auto["postToolUse"]["matcher"] and "Shell" in auto["postToolUse"]["matcher"]
+    assert "Write" in auto["preToolUse"]["matcher"] and "sessionStart" in auto and "stop" in auto
     assert claude_hooks("auto", paired_with_cursor=True) == {}
-    assert "Bash" in claude_hooks("auto", paired_with_cursor=False)["PostToolUse"][0]["matcher"]
+    assert claude_hooks("full", paired_with_cursor=True) == {}
+    assert "Read" in claude_hooks("auto", paired_with_cursor=False)["PostToolUse"][0]["matcher"]
     assert cursor_hooks("off") == {}
-    codex_quiet = codex_hooks("auto")
-    assert set(codex_quiet) == {"PreToolUse", "PostToolUse"}
-    assert "UserPromptSubmit" not in codex_quiet and "Stop" not in codex_quiet
+    codex_auto = codex_hooks("auto")
+    assert "PreCompact" in codex_auto and "UserPromptSubmit" in codex_auto and "Stop" in codex_auto
+    assert "Bash" in codex_auto["PreToolUse"][0]["matcher"]
+    quiet = cursor_hooks("quiet")
+    assert "afterFileEdit" not in quiet and quiet["postToolUse"]["matcher"] == "Shell"
+    assert "Write" in quiet["preToolUse"]["matcher"]
     monkeypatch.setattr(sys, "platform", "linux")
     full = cursor_hooks("auto")
-    assert "Read" in full["postToolUse"]["matcher"]
-    assert "afterFileEdit" in full
+    assert "Read" in full["postToolUse"]["matcher"] and "afterFileEdit" in full
     assert "Write" in cursor_hooks("full")["preToolUse"]["matcher"]
-    assert cursor_hooks("full")["postToolUse"]["matcher"].startswith("Read")
-    assert set(cursor_hooks("quiet")) == {"preToolUse", "afterMCPExecution"}
-    assert "Write" not in cursor_hooks("quiet")["preToolUse"]["matcher"]
     assert "Read" in claude_hooks("full")["PostToolUse"][0]["matcher"]
     assert "UserPromptSubmit" in codex_hooks("auto") and "Stop" in codex_hooks("full")
 

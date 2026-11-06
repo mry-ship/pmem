@@ -16,6 +16,8 @@ summary: init 生成 MCP 用 pmem；doctor 检出用户级冲突与 pmemw MCP
 verify: uv run pytest tests/test_cli_flow.py tests/test_server.py -q；pmem doctor 对用户级
   pmem 告警
 applies: Cursor 接入 pmem 的项目
+verified: '2026-11-06'
+verified_at: '2026-11-06T15:06:02.900+08:00'
 ---
 需求：用户级与项目级同名 pmem、以及 MCP 误用 pmemw，导致 discovery 失败。
 必须保持：项目 .cursor/mcp.json 为 pmem serve --root \（禁止提交本机绝对路径）；

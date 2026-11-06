@@ -85,7 +85,7 @@ def test_spawn_events_claim(tmp_path, monkeypatch):
     for event in ("session", "pre-tool", "post-tool", "stop", "prompt", "edited"):
         save_doctor_state(cache, {})
         (cache / "last_doctor.claim").unlink(missing_ok=True)
-        with mock.patch("pmem.cli.doctor_cmd.spawn_lazy_doctor", return_value=True) as sp:
+        with mock.patch("pmem.hooks.lazy_doctor.spawn_lazy_doctor", return_value=True) as sp:
             maybe_lazy_doctor_on_hook(root, event, cache)
         sp.assert_called_once()
 
@@ -94,7 +94,7 @@ def test_unknown_event_does_not_spawn(tmp_path, monkeypatch):
     monkeypatch.delenv("PMEM_NO_LAZY_DOCTOR", raising=False)
     root = _project(tmp_path)
     cache = Config.load(root).cache_dir
-    with mock.patch("pmem.cli.doctor_cmd.spawn_lazy_doctor") as sp:
+    with mock.patch("pmem.hooks.lazy_doctor.spawn_lazy_doctor") as sp:
         maybe_lazy_doctor_on_hook(root, "compact", cache)
     sp.assert_not_called()
 
@@ -109,7 +109,7 @@ def test_pre_tool_and_stop_do_not_eat_pending_tip(tmp_path, monkeypatch):
         "needs_attention": True,
         "tip_line": "🩺 记忆医生：覆盖率 10%（可 pmem doctor）",
     })
-    with mock.patch("pmem.cli.doctor_cmd.spawn_lazy_doctor"):
+    with mock.patch("pmem.hooks.lazy_doctor.spawn_lazy_doctor"):
         assert maybe_lazy_doctor_on_hook(root, "pre-tool", cache) is None
         assert maybe_lazy_doctor_on_hook(root, "stop", cache) is None
         assert maybe_lazy_doctor_on_hook(root, "prompt", cache) is None
@@ -121,7 +121,7 @@ def test_env_skips_spawn(tmp_path, monkeypatch):
     monkeypatch.setenv("PMEM_NO_LAZY_DOCTOR", "1")
     root = _project(tmp_path)
     cache = Config.load(root).cache_dir
-    with mock.patch("pmem.cli.doctor_cmd.spawn_lazy_doctor") as sp:
+    with mock.patch("pmem.hooks.lazy_doctor.spawn_lazy_doctor") as sp:
         assert maybe_lazy_doctor_on_hook(root, "session", cache) is None
     sp.assert_not_called()
 

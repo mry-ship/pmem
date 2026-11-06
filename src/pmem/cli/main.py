@@ -29,9 +29,11 @@ def build_parser():
                    help="要接入的 Agent，逗号分隔：cursor,claude,codex 或 all；"
                         "auto = Cursor 加上项目里已有配置的（.claude/、CLAUDE.md、.codex/、AGENTS.md）")
     p.add_argument("--hooks", choices=("auto", "full", "quiet", "off"), default="auto",
-                   help="Hooks 密度：auto=Windows quiet、其它平台 full；"
-                        "quiet=仅闸门+MCP 登记（Windows 并清空 Claude 侧避免双开弹窗）；"
-                        "full=含读码摘要；off=去掉全部 pmem Hook")
+                   help="Hooks 密度：auto/full=完整闸门+读码摘要+提醒；"
+                        "quiet=去掉读码摘要，闸门仍全留；"
+                        "Windows 与 Cursor 同开时清空 Claude Hooks 防双开弹窗；"
+                        "off=去掉全部 pmem Hook")
+
 
     p = sub.add_parser("scan", help="输出目录概览，供 Agent 划分模块")
     p.add_argument("--root", default=".")

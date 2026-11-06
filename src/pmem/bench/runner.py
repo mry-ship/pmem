@@ -20,6 +20,7 @@ from pathlib import Path
 import yaml
 
 from pmem.core.config import Config
+from pmem.core.winproc import no_window_kwargs
 from pmem.generate.templates import RULE
 
 ARMS = ("on", "off")
@@ -85,7 +86,10 @@ def load_cases(path: Path) -> tuple[dict, list[Case]]:
 
 
 def _git(repo: Path, *args: str) -> str:
-    proc = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, encoding="utf-8", check=False)
+    proc = subprocess.run(
+        ["git", *args], cwd=repo, capture_output=True, text=True, encoding="utf-8", check=False,
+        **no_window_kwargs(),
+    )
     if proc.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} 失败：{proc.stderr.strip()}")
     return proc.stdout
@@ -107,7 +111,10 @@ def prepare_workspace(repo: Path, case: Case, arm: str, target: Path) -> Path:
 def remove_workspace(repo: Path, target: Path) -> None:
     if (target / ".memory" / "config.yaml").exists():
         shutil.rmtree(Config.load(target).cache_dir, ignore_errors=True)
-    subprocess.run(["git", "worktree", "remove", "--force", str(target)], cwd=repo, capture_output=True, check=False)
+    subprocess.run(
+        ["git", "worktree", "remove", "--force", str(target)],
+        cwd=repo, capture_output=True, check=False, **no_window_kwargs(),
+    )
     shutil.rmtree(target, ignore_errors=True)
 
 
@@ -139,8 +146,11 @@ def run_check(case: Case, repo: Path, workspace: Path) -> tuple[bool, str]:
     if not case.check:
         return True, ""
     try:
-        proc = subprocess.run(case.check, cwd=workspace, shell=True, capture_output=True, text=True,
-                              env=_utf8_env(), encoding="utf-8", errors="replace", check=False, timeout=CHECK_TIMEOUT)
+        proc = subprocess.run(
+            case.check, cwd=workspace, shell=True, capture_output=True, text=True,
+            env=_utf8_env(), encoding="utf-8", errors="replace", check=False, timeout=CHECK_TIMEOUT,
+            **no_window_kwargs(),
+        )
     except subprocess.TimeoutExpired:
         return False, f"验收命令超过 {CHECK_TIMEOUT} 秒未结束"
     return proc.returncode == 0, (proc.stdout + proc.stderr)[-2000:]
@@ -237,8 +247,10 @@ def run_bench(
                     try:
                         prepare_workspace(repo, case, arm, workspace)
                         if case.setup:
-                            subprocess.run(case.setup, cwd=workspace, shell=True, capture_output=True, check=False,
-                                           env=_utf8_env())
+                            subprocess.run(
+                                case.setup, cwd=workspace, shell=True, capture_output=True, check=False,
+                                env=_utf8_env(), **no_window_kwargs(),
+                            )
                         prefix, servers = arm_options(arm, workspace)
                         metrics = executor(prefix + case.prompt, workspace, servers, model, case.timeout_minutes)
                         passed, output = run_check(case, repo, workspace) if metrics.status != "startup_error" else (False, "")

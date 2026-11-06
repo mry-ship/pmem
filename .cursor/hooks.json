@@ -4,13 +4,45 @@
     "preToolUse": [
       {
         "command": "pmemw hook pre-tool",
-        "matcher": "MCP|record_memory|search_memory",
+        "matcher": "Write|StrReplace|Edit|MultiEdit|EditNotebook|Delete|Shell|MCP|record_memory|search_memory",
         "failClosed": false
       }
     ],
     "afterMCPExecution": [
       {
         "command": "pmemw hook after-mcp"
+      }
+    ],
+    "sessionStart": [
+      {
+        "command": "pmemw hook session"
+      }
+    ],
+    "beforeSubmitPrompt": [
+      {
+        "command": "pmemw hook prompt"
+      }
+    ],
+    "stop": [
+      {
+        "command": "pmemw hook stop",
+        "loop_limit": 1
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "pmemw hook post-tool",
+        "matcher": "Read|Grep|Glob|SemanticSearch|codebase_search|Shell"
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "pmemw hook edited"
+      }
+    ],
+    "preCompact": [
+      {
+        "command": "pmemw hook compact"
       }
     ]
   }

@@ -6,7 +6,6 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 import time
 from collections import Counter
@@ -19,16 +18,52 @@ from pmem.core.entry import VISIBLE_STATUSES
 from pmem.core.quality import similar_entity_pairs
 from pmem.core.registry import MAX_MODULE_DEPTH, ModuleRegistry, RegistryError
 from pmem.generate.templates import HOOK_WRAPPER
+from pmem.hooks.lazy_doctor import (
+    DOCTOR_CLAIM_TTL_SECONDS,
+    DOCTOR_INTERVAL_HOURS,
+    DOCTOR_SPAWN_EVENTS,
+    DOCTOR_STATE_FILE,
+    DOCTOR_TIP_EVENTS,
+    clear_doctor_claim,
+    consume_doctor_tip,
+    doctor_claim_path,
+    doctor_state_path,
+    is_doctor_due,
+    load_doctor_state,
+    maybe_lazy_doctor_on_hook,
+    save_doctor_state,
+    spawn_lazy_doctor,
+    try_claim_lazy_doctor,
+)
 from pmem.service import COMPACT_MIN_GROUP
 from pmem.storage.files import FilesStorage
 from pmem.vcs.detect import detect_vcs
 
 OK, WARN, BAD = "✔", "!", "✘"
 
+# 兼容旧 import：tests / 外部仍可从 doctor_cmd 取懒医生 API
+__all__ = [
+    "DOCTOR_CLAIM_TTL_SECONDS",
+    "DOCTOR_INTERVAL_HOURS",
+    "DOCTOR_SPAWN_EVENTS",
+    "DOCTOR_STATE_FILE",
+    "DOCTOR_TIP_EVENTS",
+    "consume_doctor_tip",
+    "doctor_claim_path",
+    "doctor_state_path",
+    "is_doctor_due",
+    "load_doctor_state",
+    "maybe_lazy_doctor_on_hook",
+    "run_doctor",
+    "save_doctor_state",
+    "spawn_lazy_doctor",
+    "try_claim_lazy_doctor",
+]
+
 
 def _is_hook_command(command, event: str) -> bool:
     text = str(command or "")
-    return text.startswith(f"pmemw hook {event}") or text.startswith(f"pmem hook {event}")
+    return text.startswith((f"pmemw hook {event}", f"pmem hook {event}"))
 
 
 def _iter_hook_commands(hooks_data: dict) -> list[str]:
@@ -61,23 +96,15 @@ def _is_console_python_hook(command: str) -> bool:
     cmd = str(command or "").strip()
     if not cmd:
         return False
-    if re.match(r"^(pyw|pythonw)(\.exe)?\b", cmd, re.I):
+    if re.match(r"^(pyw|pythonw)(\.exe)?\b", cmd, re.IGNORECASE):
         return False
-    return bool(re.match(r"^(python3?|py)(\.exe)?\b", cmd, re.I))
+    return bool(re.match(r"^(python3?|py)(\.exe)?\b", cmd, re.IGNORECASE))
 
 
 MAX_LISTED_PAIRS = 10
 RECENT_ERROR_SECONDS = 24 * 3600
 _STAMP = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) ")
 _CODEX_MCP = re.compile(r'^\s*\[\s*mcp_servers\s*\.\s*"?pmem"?\s*\]', re.MULTILINE)
-
-DOCTOR_STATE_FILE = "last_doctor.json"
-DOCTOR_CLAIM_LOCK = "last_doctor.claim"
-DOCTOR_INTERVAL_HOURS = 24.0
-DOCTOR_CLAIM_TTL_SECONDS = 30 * 60
-DOCTOR_SPAWN_EVENTS = frozenset({"session", "prompt", "pre-tool", "post-tool", "edited", "stop"})
-# 只有会把返回值交给 Agent 的事件才消费提示；pre-tool / stop 等会把提示吃掉却不展示。
-DOCTOR_TIP_EVENTS = frozenset({"session", "post-tool"})
 
 
 def _recent_errors(path: Path, now: float | None = None) -> list[str]:
@@ -110,7 +137,7 @@ def run_doctor(root: Path, *, quiet: bool = False, source: str = "cli") -> int:
             _mark_quiet_failed(root)
             raise
         finally:
-            _clear_doctor_claim(root)
+            clear_doctor_claim(root)
     return _run_doctor_body(root, warmup_embed=True)
 
 
@@ -201,20 +228,23 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
         after_mcp = [h for h in hooks_data.get("hooks", {}).get("afterMCPExecution", [])
                      if isinstance(h, dict) and _is_hook_command(h.get("command"), "after-mcp")]
         post_matcher = str(post[0].get("matcher", "")) if post else ""
+        pre_matcher = " ".join(str(h.get("matcher", "")) for h in pre)
         read_heavy = bool(re.search(r"Read|Grep|Glob|SemanticSearch|codebase_search", post_matcher))
-        # Windows quiet：只留闸门+afterMCP；Cursor 经 PowerShell 起 Hook，多一项就多弹一次
-        if wired_hooks and not post and pre and after_mcp and sys.platform == "win32":
-            line(OK, "Hooks=quiet（仅闸门+MCP 登记；要读码摘要/终端 search 登记用 pmem init --hooks full）")
+        gate_tools = bool(re.search(r"Write|Edit|StrReplace|Shell", pre_matcher))
+        shell_only_post = bool(post) and "Shell" in post_matcher and not read_heavy
+        # 默认 full：闸门+读码摘要；quiet 仅 Shell post。禁止把 Write/Edit 拆掉。
+        if wired_hooks and pre and not gate_tools:
+            line(WARN, "preToolUse 未匹配 Write/Edit/Shell：改代码闸门失效；请 pmem init --hooks full")
         elif wired_hooks and not post:
-            line(WARN, "postToolUse 未接入：终端 pmem search 无法登记「已查过」；需要时 pmem init --hooks full")
-        elif post and sys.platform == "win32" and read_heavy:
-            line(WARN, "Windows 上 postToolUse 匹配读代码会疯狂弹 shell；建议 pmem init --hooks quiet")
-        elif post and sys.platform == "win32":
-            line(WARN, "Windows 上每个 Hook 经 PowerShell 都可能弹窗；建议 pmem init --hooks quiet（仅闸门+MCP）")
-        elif post and "Grep" not in post_matcher:
+            line(WARN, "postToolUse 未接入：终端 pmem search 无法登记「已查过」；请 pmem init --hooks full")
+        elif post and "Grep" not in post_matcher and not shell_only_post:
             line(WARN, "Hooks 是旧版：搜索代码（Grep / Glob）时不附记忆摘要，请重新运行 pmem init 更新")
         elif post and "Shell" not in post_matcher:
             line(WARN, "Hooks 是旧版：终端命令改了文件时不做事后核对，请重新运行 pmem init 更新")
+        elif wired_hooks and pre and after_mcp and read_heavy and "Write" in pre_matcher:
+            line(OK, "Hooks=full（闸门+读码摘要+提醒）")
+        elif wired_hooks and pre and after_mcp and shell_only_post:
+            line(OK, "Hooks=quiet（闸门+提醒；postToolUse 仅 Shell；要完整摘要用 pmem init --hooks full）")
         elif "pmem-hook session" in hooks:
             line(WARN, "Hooks 是旧版：sessionStart 仍走 .cmd/.sh 包装，Windows 上易弹黑框；请重新运行 pmem init 更新")
         elif sys.platform == "win32" and "pmem hook" in hooks and "pmemw hook" not in hooks:
@@ -231,6 +261,29 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
         user_mcp = Path.home() / ".cursor" / "mcp.json"
         if user_mcp.is_file() and "pmem" in json.dumps(_load(user_mcp).get("mcpServers", {})):
             line(WARN, "用户级 ~/.cursor/mcp.json 也注册了 pmem，可能盖住项目配置；多项目时请清空用户级 pmem，只用各项目 .cursor/mcp.json")
+        if "pmem" in mcp:
+            from pmem.generate.mcp_enable import cursor_server_config_hash, cursor_state_db
+
+            db = cursor_state_db()
+            approved_ok = False
+            if db is not None:
+                try:
+                    import sqlite3
+
+                    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2)
+                    row = con.execute(
+                        "SELECT value FROM ItemTable WHERE key=?",
+                        ("cursor/approvedProjectMcpServers",),
+                    ).fetchone()
+                    con.close()
+                    approved = json.loads(row[0]) if row and row[0] else []
+                    suffix = f"-{root.name}-pmem:{cursor_server_config_hash(mcp.get('pmem') or {})}"
+                    approved_ok = any(str(x).endswith(suffix) for x in approved)
+                except Exception:
+                    approved_ok = False
+            line(OK if approved_ok else WARN,
+                 "Cursor 已项目级批准 pmem MCP" if approved_ok
+                 else "Cursor 尚未项目级批准 pmem MCP（设置 → MCP 启用，或再跑 pmem init）")
         line(OK if (cursor / "rules" / "pmem.mdc").exists() else WARN, "规则文件 .cursor/rules/pmem.mdc")
     for agent, label, wired_mcp, skills in (
         ("claude", "Claude Code", "pmem" in _load(root / ".mcp.json").get("mcpServers", {}), root / ".claude" / "skills"),
@@ -243,7 +296,7 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
         cursor_pmem = "pmem" in json.dumps(_load(cursor / "hooks.json")) if (cursor / "hooks.json").exists() else False
         if (agent == "claude" and sys.platform == "win32" and wired_mcp and not wired_hooks
                 and cursor_pmem):
-            line(OK, f"{label} MCP 已接入；Windows quiet 故意不装 Claude Hooks（Cursor 会双开翻倍弹窗）")
+            line(OK, f"{label} MCP 已接入；Windows 与 Cursor 同开时故意不装 Claude Hooks（防双开弹窗）")
         elif not (wired_hooks and wired_mcp):
             missing = "、".join(x for x, ok in (("Hooks", wired_hooks), ("MCP", wired_mcp)) if not ok)
             line(WARN, f"{label} 缺少 {missing}，请运行 pmem init --agents {agent}")
@@ -257,11 +310,12 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
             line(WARN, f"{label} 的 Hooks 在 Windows 上用控制台版 python3/python/py，会弹黑框；"
                  f"请改成 pyw -3 -u（macOS/Linux 仍用 python3）")
         elif agent == "claude" and sys.platform == "win32" and wired_hooks and cursor_pmem:
-            line(WARN, f"{label} 在 Windows 上仍装了 Hooks：Cursor 会与 .cursor/hooks 双开弹窗；建议 pmem init --hooks quiet")
+            line(WARN, f"{label} 在 Windows 上仍装了 Hooks：Cursor 会双开翻倍弹窗；请 pmem init（会清空 Claude 侧 pmem Hook）")
         elif not (skills / "pmem-bootstrap" / "SKILL.md").exists():
             line(WARN, f"{label} 缺少 pmem 技能（{skills.relative_to(root).as_posix()}），请重新运行 pmem init --agents {agent}")
         else:
             line(OK, f"{label} 已接入（Hooks、MCP 与技能）")
+
     has_pmem = shutil.which("pmem") is not None
     has_pmemw = shutil.which("pmemw") is not None
     line(OK if has_pmem else BAD, "PATH 中可以找到 pmem 命令" if has_pmem else "PATH 中找不到 pmem，Agent 无法启动服务和 Hook")
@@ -306,9 +360,12 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
                 print("  i Windows 非 UTF-8 代码页：Cursor 传给 Hook 的中文会被转码，pmem 已自动兼容")
         except Exception:  # noqa: BLE001, S110
             pass
-        print("  i 若对话时仍反复弹控制台：先确认已是 Hooks=quiet + pmemw（pmem init --hooks quiet）；"
-              "命令里不要写 || 或 .cmd/.sh。仍弹时可试 settings.json 的 "
-              "terminal.integrated.windowsUseConptyDll=true 后重启 Cursor；最终需 Cursor 对 Hook 隐藏窗口。")
+        print("  i 防弹窗：Hook 用 pmemw（勿用 pmem/.cmd/||）；与 Cursor 同开时不要装 Claude Hooks；"
+              "勿用控制台版 python/py 起 Hook。Hook 内 git/svn 已 CREATE_NO_WINDOW；"
+              "若仍弹，多半是 Cursor 外层用未藏窗的 pwsh/cmd 拉 Hook，"
+              "可试 terminal.integrated.windowsUseConptyDll=true 后重启。"
+              "不要靠拆掉闸门或读码摘要来消黑框。")
+
 
     print("自检完成" + ("，有需要处理的问题" if problems else f"，有 {warnings} 项提醒" if warnings else "，一切正常"))
     return 1 if problems else 0
@@ -344,90 +401,11 @@ def _doctor_cache_dir(root: Path) -> Path | None:
         return None
 
 
-def doctor_state_path(cache_dir: Path) -> Path:
-    return cache_dir / DOCTOR_STATE_FILE
-
-
-def doctor_claim_path(cache_dir: Path) -> Path:
-    return cache_dir / DOCTOR_CLAIM_LOCK
-
-
-def load_doctor_state(cache_dir: Path) -> dict:
-    path = doctor_state_path(cache_dir)
-    if not path.is_file():
-        return {}
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        return raw if isinstance(raw, dict) else {}
-    except (OSError, ValueError):
-        return {}
-
-
-def save_doctor_state(cache_dir: Path, state: dict) -> None:
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    tmp = cache_dir / f"{DOCTOR_STATE_FILE}.{os.getpid()}.tmp"
-    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp, cache_dir / DOCTOR_STATE_FILE)
-
-
-def _clear_doctor_claim(root: Path, cache_dir: Path | None = None) -> None:
-    cache_dir = cache_dir or _doctor_cache_dir(root)
-    if cache_dir is None:
-        return
-    try:
-        doctor_claim_path(cache_dir).unlink(missing_ok=True)
-    except OSError:
-        pass
-
-
-def is_doctor_due(cache_dir: Path, *, interval_hours: float = DOCTOR_INTERVAL_HOURS, now: float | None = None) -> bool:
-    last = load_doctor_state(cache_dir).get("last_run")
-    if last is None:
-        return True
-    try:
-        return (now or time.time()) - float(last) >= interval_hours * 3600
-    except (TypeError, ValueError):
-        return True
-
-
-def try_claim_lazy_doctor(
-    cache_dir: Path,
-    *,
-    interval_hours: float = DOCTOR_INTERVAL_HOURS,
-    claim_ttl: float = DOCTOR_CLAIM_TTL_SECONDS,
-    now: float | None = None,
-) -> bool:
-    """抢后台巡检槽。成功跑完才写 last_run，崩溃不烧掉整个 24 小时窗口。"""
-    now = now or time.time()
-    if not is_doctor_due(cache_dir, interval_hours=interval_hours, now=now):
-        return False
-    lock = doctor_claim_path(cache_dir)
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    if lock.is_file():
-        age = max(0.0, now - lock.stat().st_mtime)
-        if age < claim_ttl:
-            return False
-        lock.unlink(missing_ok=True)
-    try:
-        fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        try:
-            os.write(fd, str(int(now)).encode("ascii"))
-        finally:
-            os.close(fd)
-    except OSError:
-        return False
-    state = load_doctor_state(cache_dir)
-    state["claimed_at"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now))
-    state["status"] = "running"
-    save_doctor_state(cache_dir, state)
-    return True
-
-
 def _signals_from_output(text: str) -> list[str]:
     signals = []
     for raw in text.splitlines():
         line = raw.strip()
-        if line.startswith(BAD) or line.startswith(WARN):
+        if line.startswith((BAD, WARN)):
             signals.append(line[1:].strip())
     return signals
 
@@ -466,68 +444,3 @@ def _mark_quiet_failed(root: Path) -> None:
     state["claimed_at"] = ""
     state["status"] = "quiet_failed"
     save_doctor_state(cache_dir, state)
-
-
-def spawn_lazy_doctor(root: Path, cache_dir: Path, *, source: str = "hook") -> bool:
-    """后台 `pmem doctor --quiet`。调用方须先 try_claim_lazy_doctor。"""
-    code = "import sys; from pmem.cli.main import main; sys.exit(main(sys.argv[1:]))"
-    cmd = [sys.executable, "-c", code, "doctor", "--quiet", "--source", source, "--root", str(root)]
-    kwargs: dict = {
-        "stdin": subprocess.DEVNULL,
-        "stdout": subprocess.DEVNULL,
-        "stderr": subprocess.DEVNULL,
-        "cwd": str(root),
-        "close_fds": True,
-    }
-    try:
-        if sys.platform == "win32":
-            flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
-            try:
-                subprocess.Popen(cmd, creationflags=flags | subprocess.CREATE_BREAKAWAY_FROM_JOB, **kwargs)
-            except OSError:
-                subprocess.Popen(cmd, creationflags=flags, **kwargs)
-        else:
-            subprocess.Popen(cmd, start_new_session=True, **kwargs)
-        return True
-    except OSError:
-        state = load_doctor_state(cache_dir)
-        state["claimed_at"] = ""
-        state["status"] = "spawn_failed"
-        save_doctor_state(cache_dir, state)
-        _clear_doctor_claim(root, cache_dir)
-        return False
-
-
-def consume_doctor_tip(cache_dir: Path, *, now: float | None = None) -> str | None:
-    """高信号提示每天最多一句，不把完整体检塞进 Hook。"""
-    state = load_doctor_state(cache_dir)
-    if not state.get("tip_pending") or not state.get("needs_attention"):
-        return None
-    tip = str(state.get("tip_line") or "").strip()
-    if not tip:
-        state["tip_pending"] = False
-        save_doctor_state(cache_dir, state)
-        return None
-    day = time.strftime("%Y%m%d", time.localtime(now or time.time()))
-    if state.get("tip_consumed_day") == day:
-        state["tip_pending"] = False
-        save_doctor_state(cache_dir, state)
-        return None
-    state["tip_pending"] = False
-    state["tip_consumed_day"] = day
-    save_doctor_state(cache_dir, state)
-    return tip
-
-
-def maybe_lazy_doctor_on_hook(root: Path, event: str, cache_dir: Path | None = None) -> str | None:
-    """到期则后台巡检；只在会展示给 Agent 的事件上取出高信号提示。"""
-    if os.environ.get("PMEM_NO_LAZY_DOCTOR"):
-        return None
-    cache_dir = cache_dir or _doctor_cache_dir(root)
-    if cache_dir is None:
-        return None
-    if event in DOCTOR_SPAWN_EVENTS and try_claim_lazy_doctor(cache_dir):
-        spawn_lazy_doctor(root, cache_dir, source=f"hook:{event}")
-    if event not in DOCTOR_TIP_EVENTS:
-        return None
-    return consume_doctor_tip(cache_dir)

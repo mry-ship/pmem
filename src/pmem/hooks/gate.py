@@ -188,7 +188,7 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
 
     def _lazy_doctor(self, event: str) -> str | None:
         try:
-            from pmem.cli.doctor_cmd import maybe_lazy_doctor_on_hook
+            from pmem.hooks.lazy_doctor import maybe_lazy_doctor_on_hook
             tip = maybe_lazy_doctor_on_hook(self.root, event, self.config.cache_dir)
         except Exception:  # noqa: BLE001
             return None

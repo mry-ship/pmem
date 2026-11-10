@@ -46,6 +46,12 @@ def build_parser():
     p.add_argument("--history", action="store_true", help="列出本机最近 20 次自动登记各新增了多少模块")
     p.add_argument("--root", default=".")
 
+    p = sub.add_parser("context", help="改前上下文（实验）：某个文件常一起改的文件和近期修复提交，从版本历史算出，不依赖记忆")
+    p.add_argument("path", nargs="?", default="")
+    p.add_argument("--refresh", action="store_true", help="重算缓存（后台进程调用；大项目要几十秒）")
+    p.add_argument("--json", action="store_true", help="输出 JSON")
+    p.add_argument("--root", default=".")
+
     p = sub.add_parser("doctor", help="自检：配置、模块覆盖率、Cursor 接入状态")
     p.add_argument("--root", default=".")
     p.add_argument("--quiet", action="store_true", help=argparse.SUPPRESS)
@@ -354,6 +360,12 @@ def _sync(args) -> int:
     return run_sync(_project_root(args.root), args.apply)
 
 
+def _context(args) -> int:
+    from pmem.cli.context_cmd import run_context
+
+    return run_context(_project_root(args.root), args.path or None, args.refresh, args.json)
+
+
 def _doctor(args) -> int:
     from pmem.cli.doctor_cmd import run_doctor
 
@@ -496,6 +508,7 @@ COMMANDS = {
     "init": _init,
     "scan": _scan,
     "sync": _sync,
+    "context": _context,
     "doctor": _doctor,
     "import": _import,
     "compact": _compact,

@@ -111,10 +111,13 @@ class Snapshots:
         # 编辑工具改过的文件已经过闸门检查；与终端命令并行改的不算到命令头上
         by_tools = {item.split("|", 1)[1] for item in self.state.data["edited_files"]}
         late: dict[str, list[str]] = {}
+        tips: list[str] = []
         for rel in changed:
             if not self._watched(rel) or rel in by_tools:
                 continue
-            self._mark_edited(rel)
+            tip = self._mark_edited(rel)
+            if tip:
+                tips.append(tip)
             module = self.module_of(rel)
             if (module and not self.state.has("searched", module) and not self.state.has("late_warned", module)
                     and self.memory_count(module)):
@@ -122,14 +125,14 @@ class Snapshots:
         for module in late:
             self.state.add("late_warned", module)
         self.save()
-        if not late:
-            return {}
-        messages = []
+        messages = list(tips)
         for module, files in late.items():
             self.log("late_gate", module=module, files=files[:5])
+            sample = files[0]
             messages.append(
                 f"[pmem] 刚才的终端命令改了 {'、'.join(files[:5])}，属于 {module}（已有 {self.memory_count(module)} 条研发记忆），"
-                f"但本对话还没查过该模块的记忆。请立即调用 search_memory(module=\"{module}\") 核对这次修改，"
+                f"但本对话还没查过该模块的记忆。"
+                f"请立即调用 search_memory(module=\"{module}\", path=\"{sample}\") 核对这次修改，"
                 "与记忆冲突就改回。" + self._pitfalls(module)[0]
             )
-        return {"additional_context": "\n\n".join(messages)}
+        return {"additional_context": "\n\n".join(messages)} if messages else {}

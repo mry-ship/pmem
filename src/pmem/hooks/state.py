@@ -31,6 +31,8 @@ _DEFAULTS = {
     "stale_explained": False,
     # 本轮写过的模块规格、以及已经提醒过更新规格的模块（和功能记录的 nudged 分开）
     "spec_written": [], "spec_nudged": [],
+    # harness 实验：本对话跑过的终端命令（前 200 字符），以及已提醒过的漏改/未验证/无记忆轻提示
+    "ran": [], "harness_nudged": [],
 }
 
 

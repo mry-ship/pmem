@@ -583,8 +583,9 @@ score   = (rel + bonus) * (0.7 + 0.3 * recency)
 |---|---|
 | `pmem doctor` | 自检覆盖率、接入状态、可合并议题等；接入后约每 24 小时后台巡检一次，有问题才提一行；只检查、不改库 |
 | `pmem sync` | 重新扫描，列出新目录与新模块候选；只追加，不改已有名字；`--apply` 才写入（细则见模块与初始化设计文档第 7.1 节） |
+| `pmem context [--refresh] [文件]` | harness 实验：读版本历史缓存，列出某文件常一起改的伙伴与近期修复；`--refresh` 重算（大项目可能较慢，Hook 只后台拉起） |
 | `pmem health` | 健康报告：未登记模块、疑似重复模块、检索落空热点（模块 × 议题）、无归属新目录、可能过时的记忆、60 天无人检索的模块、被拒绝的写入统计等 |
-| `pmem report` | 收益报告：闸门拦截、检索与采用、对话内重复等（本机统计） |
+| `pmem report` | 收益报告：闸门拦截、检索与采用、对话内重复等（本机统计）；`harness.mode` 非 off 时另有漏改采纳、验证回合、返工率 |
 | `pmem migrate rename A B` | 改名，旧名自动成为别名 |
 | `pmem migrate merge A B` | A 的路径、别名等并入 B，A 标为 `merged_into:B`，记忆文件随之搬到 B；默认只预览，`--apply` 才写 |
 | `pmem migrate split A --to B=路径 [--by path\|entity] [--assign id=模块]` | 拆分，按路径或议题重新分配；记忆按关联代码的新归属分配，判断不了的留在 A 并列出 |

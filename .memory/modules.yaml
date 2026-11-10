@@ -23,10 +23,10 @@ synonyms:
   - [过期, 失效, stale]
 modules:
   feature.Gate:
-    description: Hooks 闸门：改代码前按模块拦截、读代码附摘要、问答审查、结束提醒、终端写命令识别
-    paths: [src/pmem/hooks/**, src/pmem/cli/hook_cmd.py, src/pmem/core/seen.py, tests/hooks/**, tests/fixtures/hook_payloads/**, tests/test_hook_cmd.py, spike/cursor_hooks/**]
+    description: Hooks 闸门：改代码前按模块拦截、读代码附摘要、问答审查、结束提醒、终端写命令识别；harness 实验提示与检查
+    paths: [src/pmem/hooks/**, src/pmem/context/**, src/pmem/cli/hook_cmd.py, src/pmem/cli/context_cmd.py, src/pmem/core/seen.py, tests/hooks/**, tests/test_context.py, tests/fixtures/hook_payloads/**, tests/test_hook_cmd.py, spike/cursor_hooks/**]
     aliases: [Hooks, Hook]
-    entities: [Encoding, Payload, State, ShellParse, AutoAnchors, PromptReview, HookLatency, SeenHandoff]
+    entities: [Encoding, Payload, State, ShellParse, AutoAnchors, PromptReview, HookLatency, SeenHandoff, Harness]
   feature.Retrieval:
     description: 检索：索引与缓存、分词、同义词、嵌入、排序、过期核对（stale）与知识图谱
     paths: [src/pmem/index/**, src/pmem/cli/reindex_cmd.py, tests/index/**, scripts/eval_retrieval.py, scripts/eval_real_queries.py, tests/fixtures/eval/**]

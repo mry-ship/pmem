@@ -112,7 +112,7 @@ def test_warn_denies_once_then_allows(make_project):
     root = make_project("warn")
     first = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
     assert first["permission"] == "deny"
-    assert 'search_memory(module="gameplay.Jigsaw")' in first["agent_message"]
+    assert 'search_memory(module="gameplay.Jigsaw", path="src/Jigsaw/Board.cs")' in first["agent_message"]
     second = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
     assert second["permission"] == "allow"
 
@@ -174,7 +174,7 @@ def test_successful_search_result_counts_as_searched(make_project):
 def test_deny_message_shown_to_agent_is_actionable(make_project):
     root = make_project("warn")
     verdict = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
-    assert 'search_memory(module="gameplay.Jigsaw")' in verdict["user_message"]
+    assert 'search_memory(module="gameplay.Jigsaw", path="src/Jigsaw/Board.cs")' in verdict["user_message"]
     assert "重试" in verdict["user_message"]
 
 
@@ -1447,7 +1447,7 @@ def test_script_writes_with_built_paths_are_caught_after_the_fact(git_project):
     assert handle("pre-tool", shell("python gen.py"), root)["permission"] == "allow"
     (root / "src" / "Jigsaw" / "Board.cs").write_text("class Board { int x; }\n", encoding="utf-8")
     context = handle("post-tool", shell("python gen.py"), root)["additional_context"]
-    assert "src/Jigsaw/Board.cs" in context and 'search_memory(module="gameplay.Jigsaw")' in context
+    assert "src/Jigsaw/Board.cs" in context and 'search_memory(module="gameplay.Jigsaw", path="src/Jigsaw/Board.cs")' in context
     assert handle("post-tool", shell("python gen.py"), root) == {}
     assert "gameplay.Jigsaw" in handle("stop", stop_payload(), root)["followup_message"]
 

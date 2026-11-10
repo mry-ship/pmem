@@ -600,6 +600,7 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem archive &lt;id&gt;...</code></td><td>归档：不再出现在检索里，文件保留；<code>--restore</code> 恢复到归档前的状态</td></tr>
     <tr><td><code>pmem migrate rename|merge|split|deprecate|tidy</code></td><td>模块改名、合并、拆分，把记忆文件搬到新模块名下；<code>split A --to 新模块=路径[,路径]</code> 可写多次，<code>--by entity</code> 按议题拆，<code>--assign id=模块</code> 指定个别记忆的去向；<code>deprecate</code> 把模块标为只读（<code>--undo</code> 撤销）；<code>tidy</code> 只搬还在旧名下的记忆。默认预览，<code>--apply</code> 执行；<code>--root</code>、<code>--apply</code> 写在子命令之后</td></tr>
     <tr><td><code>pmem sync</code></td><td>对照代码目录列出新模块、新冷候选、要给已有模块追加的路径、新的第三方目录和可转正的冷候选；默认预览，<code>--apply</code> 只追加、不改已有模块名。<code>--auto edit|session|full</code> 是 Hook 在后台调用的自动同步（按 <code>sync.auto</code>，<code>full</code> 强制带热度的完整扫描）；<code>--history</code> 列出本机最近 20 次自动登记各新增了几个模块</td></tr>
+    <tr><td><code>pmem context [--refresh] [文件]</code></td><td>harness 实验：从版本历史缓存列出某文件常一起改的伙伴与近期修复（不依赖记忆）；<code>--refresh</code> 重算缓存（大项目可能较慢；开了 <code>harness.mode</code> 后新对话开始时也会后台算）；加 <code>--json</code> 输出原始数据</td></tr>
     <tr><td><code>pmem health [--days 60]</code></td><td>健康报告：未登记和疑似重复的模块、还在旧模块名下的记忆、无归属的代码目录、检索落空热点、可能过时的记忆、疑似互相矛盾的记忆、没人检索的模块、被拒绝的写入、待确认的种子、改了代码却没写功能记录的模块、建议归档与清理待核对、召回偏低的模块</td></tr>
     <tr><td><code>pmem map [--out 文件] [--days 30] [--json]</code></td><td>记忆演化图：默认写 Wiki 目录下的 <code>map.html</code>（单文件、不联网，可缩放、拖动、按类型筛选、只看现行，点节点看全文），终端打印总评和自检（漏记、断链、悬而未决、过期）；<code>--days</code> 是漏记统计的天数，<code>--json</code> 输出图数据。配置里的 Wiki 目录指到项目外时拒绝并返回 2；<code>--out</code> 可以指到别处</td></tr>
     <tr><td><code>pmem graph --module X</code></td><td>模块全貌，或某议题的时间线</td></tr>
@@ -614,7 +615,7 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem format [--apply]</code></td><td>把旧记忆里一整行的长正文按句号、分号和编号断行，编号小项缩进两格，方便直接打开文件阅读（默认只预览；新写入和导入的记忆会自动整理）</td></tr>
     <tr><td><code>pmem import</code></td><td>从 LanceDB 记忆库只读导入</td></tr>
     <tr><td><code>pmem reindex</code></td><td>清空本机索引缓存并重建</td></tr>
-    <tr><td><code>pmem report</code></td><td>本机收益报告</td></tr>
+    <tr><td><code>pmem report</code></td><td>本机收益报告；开了 <code>harness.mode</code> 时另有漏改提示采纳率、验证回合比例、同文件 3 天返工率</td></tr>
     <tr><td><code>pmem bench</code></td><td>有 / 无记忆对照实验</td></tr>
     <tr><td><code>pmem serve</code> / <code>pmem hook</code></td><td>由工具自动调用，不需要手动运行</td></tr>
   </table>
@@ -675,6 +676,14 @@ server:
   request_timeout: 120      <span class="c"># 单次调用超过这么多秒没响应就判定卡死并重启</span>
 sync:
   auto: apply               <span class="c"># 发现没登记的代码目录：apply 自动追加到 modules.yaml / remind 只提醒 / "off" 关闭</span>
+harness:
+  mode: off                 <span class="c"># 实验：off 关闭 / hint 检索附 context / check 再加上 Stop 漏改与验证检查</span>
+  window_days: 180          <span class="c"># 统计近多少天的提交</span>
+  min_pair: 3               <span class="c"># 至少一起提交几次才算常一起改</span>
+  min_ratio: 0.3            <span class="c"># 在含该文件的提交里至少占多少比例</span>
+  max_files: 3              <span class="c"># 每次最多列几个伙伴 / 修复 / 规格必须保持</span>
+  refresh_hours: 24         <span class="c"># 缓存超过多久后台重算</span>
+  verify_commands: []       <span class="c"># check 档：本轮改了代码却没跑过这些命令时，结束提醒一行</span>
   interval_minutes: 30      <span class="c"># 会话开始时距上次扫描超过这么久才在后台扫一次；改到没登记的目录时立即扫</span>
   full_hours: 24            <span class="c"># 至少这么久做一次带提交热度的完整扫描</span></code></pre>
   <p><code>modules.yaml</code> 改了随时生效；<code>config.yaml</code> 改了之后 Hook、命令行和已在运行的 MCP 服务都在下一次调用时生效；只有 <code>server</code> 下的两项（看门狗开关和超时）要在 Cursor 里重启 pmem 服务（或重开窗口）才会读到。</p>
@@ -812,6 +821,9 @@ sync:
     <tr><td>对话内重复</td><td>同一对话里给过全文又整条再给的条数，以及已折叠成标题的条数</td></tr>
     <tr><td>记忆被采用</td><td>返回的记忆有多少条在 Agent 回复里被明确用到（保守下限）</td></tr>
     <tr><td>闸门 / 提醒转化</td><td>被提醒后有多少次真的照做了</td></tr>
+    <tr><td>漏改提示采纳</td><td>harness：提示过的伙伴文件，同对话随后改了的比例</td></tr>
+    <tr><td>验证回合</td><td>harness check：改了代码且配置了验证命令的回合里，跑过验证的比例</td></tr>
+    <tr><td>返工率</td><td>harness：统计期内改过的文件，3 天内又被改的比例</td></tr>
     <tr><td>知识资产</td><td>有记忆的模块占比、单作者模块、改动多却没记忆的模块</td></tr>
   </table>
   <p class="muted">数据只存在本机，不会上传；团队汇总尚未实现。</p>

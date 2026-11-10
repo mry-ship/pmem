@@ -100,6 +100,10 @@ class VCS:
         """since（YYYY-MM-DD）以来的每次提交：(提交日期, 改动的文件)，路径相对项目根；取不到时返回空列表。"""
         return []
 
+    def history_since(self, since: str) -> list[tuple[str, str, list[str]]]:
+        """since（YYYY-MM-DD）以来的每次提交：(提交日期, 提交说明首行, 改动的文件)，新的在前；取不到时返回空列表。"""
+        return []
+
     def changed_since(self, paths: list[str], since: float) -> dict[str, float]:
         """since（Unix 秒）之后有改动的文件 → 最近一次改动的时刻；未提交的修改取文件修改时间。
 

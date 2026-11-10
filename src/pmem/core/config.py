@@ -53,16 +53,21 @@ DEFAULTS: dict = {
     "server": {"watchdog": True, "request_timeout": 120},
     # 自动发现没登记的代码目录：改到这类文件时立即、会话开始时按间隔在后台扫描；full_hours 内至少一次带提交热度的完整扫描
     "sync": {"auto": "apply", "interval_minutes": 30, "full_hours": 24},
+    # 实验：没有记忆也能给的改前提示（常一起改的文件、近期修复提交、规格必须保持）与回合结束的漏改/未验证检查；off 时行为与以前完全一致
+    "harness": {"mode": "off", "window_days": 180, "min_pair": 3, "min_ratio": 0.3, "max_files": 3,
+                "refresh_hours": 24, "verify_commands": []},
 }
 
-_LIST_KEYS = ("gate.watch", "gate.ignore", "gate.skip_markers", "gate.resume_markers", "gate.analysis_markers",
-              "gate.record_exempt")
+_LIST_KEYS = ("harness.verify_commands", "gate.watch", "gate.ignore", "gate.skip_markers", "gate.resume_markers",
+              "gate.analysis_markers", "gate.record_exempt")
 # 数值配置项：（最小值, 类型）；写成字符串或负数会在写入、检索时才抛异常栈
 _NUMBERS = {
     "write.content_min": (0, int), "write.content_max": (1, int), "write.recommend_max": (1, int),
     "write.max_per_day_per_entity": (1, int), "search.limit": (1, int), "search.max_per_batch": (1, int),
     "search.recency_half_life_days": (1, float), "search.feature_limit": (0, int), "search.inherit_max": (0, int),
     "server.request_timeout": (1, float), "sync.interval_minutes": (0, float), "sync.full_hours": (1, float),
+    "harness.window_days": (1, int), "harness.min_pair": (1, int), "harness.min_ratio": (0, float),
+    "harness.max_files": (1, int), "harness.refresh_hours": (1, float),
 }
 _CHOICES = {
     "vcs": ("auto", "git", "svn", "none"),
@@ -70,6 +75,7 @@ _CHOICES = {
     "write.default_status": ("active", "draft"),
     "embedding.backend": ("auto", "onnx", "ollama", "openai", "none"),
     "sync.auto": ("off", "remind", "apply"),
+    "harness.mode": ("off", "hint", "check"),
 }
 
 
@@ -136,7 +142,7 @@ class Config:
     def __init__(self, root: Path, data: dict):
         self.root = root
         self.data = data
-        for section in ("gate", "write", "search", "server", "embedding", "wiki", "project", "sync", "spec"):
+        for section in ("gate", "write", "search", "server", "embedding", "wiki", "project", "sync", "spec", "harness"):
             if not isinstance(data.get(section), dict):
                 raise ConfigError(f"配置项 {section} 应是键值对，当前为 {data.get(section)!r}")
         gate = data["gate"]
@@ -145,6 +151,9 @@ class Config:
         # YAML 把不加引号的 off / on 读成布尔值
         if isinstance(data["sync"].get("auto"), bool):
             data["sync"]["auto"] = "apply" if data["sync"]["auto"] else "off"
+        # 同样，不加引号的 harness.mode: off 会被读成 False
+        if isinstance(data["harness"].get("mode"), bool):
+            data["harness"]["mode"] = "hint" if data["harness"]["mode"] else "off"
         for key, allowed in _CHOICES.items():
             value = self.get(key)
             if value not in allowed:

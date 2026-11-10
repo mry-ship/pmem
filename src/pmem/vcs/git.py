@@ -6,6 +6,8 @@ from pathlib import Path
 
 from pmem.vcs.base import HISTORY_TIMEOUT, VCS, fallback_user, file_mtime, path_batches, run_tool
 
+UNIT_SEP = chr(31)
+
 
 def _iso(moment: float) -> str:
     """git 的 --since/--before 参数：UTC 时间，精确到秒（含这一秒）。
@@ -120,6 +122,20 @@ class GitVCS(VCS):
             lines = [f.strip() for f in block.splitlines() if f.strip()]
             if lines:
                 commits.append((lines[0][:10], lines[1:]))
+        return commits
+
+    def history_since(self, since: str) -> list[tuple[str, str, list[str]]]:
+        args = ["git", "-c", "core.quotepath=off", "log", f"--since={since} 00:00", "--name-only", "--relative",
+                f"--pretty=format:@@%ci{UNIT_SEP}%s"]
+        proc = run_tool(args, self.root, timeout=HISTORY_TIMEOUT)
+        if proc.returncode != 0:
+            return []
+        commits = []
+        for block in proc.stdout.decode("utf-8", errors="replace").split("@@")[1:]:
+            lines = [f.strip() for f in block.splitlines() if f.strip()]
+            if lines:
+                head, _, subject = lines[0].partition(UNIT_SEP)
+                commits.append((head[:10], subject.strip(), lines[1:]))
         return commits
 
     def dirty_files(self) -> list[str] | None:

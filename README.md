@@ -164,7 +164,8 @@ pmem search --id <id> ...              # 按 id 取全文（功能记录在检�
 pmem record ... --kind feature         # 命令行写功能记录；--applies 写适用条件
 pmem list                              # 模块和记忆数量
 pmem doctor                            # 体检
-pmem report                            # 本机收益报告
+pmem context [--refresh] [文件]        # 实验：某文件常一起改的伙伴与近期修复（版本历史缓存；不依赖记忆）
+pmem report                            # 本机收益报告（开 harness 时另有漏改采纳、验证回合、返工率）
 pmem health                            # 健康报告（负责人收口用）
 pmem seed                              # 待确认的种子记忆；--accept / --reject 处理
 pmem archive <id>                      # 归档过时记忆；--restore 撤销

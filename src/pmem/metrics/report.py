@@ -202,6 +202,51 @@ def _pitfall_share(entries: list, since: float) -> dict:
             "old": len(old), "old_pitfalls": sum(e.kind in AVOID_KINDS for e in old)}
 
 
+def _harness(events: list[dict], window_seconds: float = 3 * 86400) -> dict:
+    """harness 实验三项：漏改提示采纳率、验证回合比例、同文件 3 天内返工率。"""
+    nudges = [e for e in events if e["type"] == "harness_nudge" and e.get("partners")]
+    partner_hits = 0
+    partner_total = 0
+    for nudge in nudges:
+        partners = [p for p in (nudge.get("partners") or []) if p]
+        if not partners or not nudge.get("conv"):
+            continue
+        partner_total += len(partners)
+        later = {e.get("file") for e in events
+                 if e["type"] == "edit" and e.get("conv") == nudge["conv"] and e["ts"] >= nudge["ts"]}
+        partner_hits += sum(1 for p in partners if p in later)
+
+    verifies = [e for e in events if e["type"] == "harness_verify"]
+    verify_ran = sum(1 for e in verifies if e.get("ran"))
+
+    edits = sorted((e for e in events if e["type"] == "edit" and e.get("file")), key=lambda e: e["ts"])
+    by_file: dict[str, list[float]] = defaultdict(list)
+    for e in edits:
+        by_file[e["file"]].append(e["ts"])
+    reworked = sum(
+        1 for times in by_file.values()
+        if any(later - earlier <= window_seconds for earlier, later in zip(times, times[1:]))
+    )
+
+    empty_nudges = [e for e in events if e["type"] == "context_nudge" and e.get("reason") == "empty"]
+    empty_followed = sum(
+        1 for nudge in empty_nudges
+        if nudge.get("conv") and any(
+            e["type"] == "context" and e.get("conv") == nudge["conv"] and e.get("file") == nudge.get("file")
+            and e["ts"] >= nudge["ts"] for e in events)
+    )
+    return {
+        "co_partners": partner_total,
+        "co_adopted": partner_hits,
+        "verify_checks": len(verifies),
+        "verify_ran": verify_ran,
+        "edited_files": len(by_file),
+        "reworked_files": reworked,
+        "empty_nudges": len(empty_nudges),
+        "empty_followed": empty_followed,
+    }
+
+
 def _feature_coverage(events: list[dict], convs: dict[str, dict], mine: list) -> dict:
     """改过代码、需要写功能记录的模块（stop 事件的 required）里，同一对话写了功能记录的比例。
     终端写入可能不带对话 id，对话期间（首尾放宽）本机新写的同模块功能记录也算。"""
@@ -335,6 +380,7 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
         "pitfall_share": _pitfall_share(entries, since),
         "repeats": _repeats(events),
         "feature_coverage": _feature_coverage(events, convs, mine),
+        "harness": _harness(events),
         "habits": {
             "gates": len(gates), "gate_converted": gate_converted,
             "nudges": len(nudges), "nudge_converted": nudge_converted,
@@ -357,6 +403,37 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
             "uncommitted": uncommitted,
         },
     }
+
+
+def _render_harness(harness: dict | None) -> list[str]:
+    """有 harness 事件时才显示；全 0 时仍给一行，方便实验对照。"""
+    if not harness:
+        return []
+    if not (harness["co_partners"] or harness["verify_checks"] or harness["edited_files"]
+            or harness["empty_nudges"]):
+        return []
+    lines = ["", "【harness 实验】"]
+    if harness["co_partners"]:
+        lines.append(
+            f"  漏改提示采纳：提示伙伴文件 {harness['co_partners']} 个次，同对话随后改了"
+            f" {harness['co_adopted']} 个次（{_pct(harness['co_adopted'], harness['co_partners'])}）"
+        )
+    if harness["verify_checks"]:
+        lines.append(
+            f"  验证回合：改了代码且配置了验证命令的回合 {harness['verify_checks']} 次，"
+            f"跑过验证 {harness['verify_ran']} 次（{_pct(harness['verify_ran'], harness['verify_checks'])}）"
+        )
+    if harness["edited_files"]:
+        lines.append(
+            f"  返工率：统计期内改过的文件 {harness['edited_files']} 个，其中 {harness['reworked_files']} 个"
+            f"在 3 天内又被改（{_pct(harness['reworked_files'], harness['edited_files'])}）"
+        )
+    if harness["empty_nudges"]:
+        lines.append(
+            f"  无记忆轻提示：给过 {harness['empty_nudges']} 次，随后带 path 查了"
+            f" {harness['empty_followed']} 次（{_pct(harness['empty_followed'], harness['empty_nudges'])}）"
+        )
+    return lines
 
 
 def _pct(part: int, whole: int) -> str:
@@ -440,6 +517,7 @@ def render(report: dict) -> str:
         f"  新写记忆 {r['total']} 条" + (f"（{kinds}）" if kinds else ""),
     ]
     lines += _render_quality(report.get("pitfall_share"), report.get("repeats"), report.get("feature_coverage"))
+    lines += _render_harness(report.get("harness"))
     lines += [
         "",
         "【习惯】",

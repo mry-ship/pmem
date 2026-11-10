@@ -162,6 +162,7 @@ class Reminders:
             analysis_pending = [m for m in analysis_pending if m not in concluded]
             consulted_pending = [m for m in consulted_pending if m not in concluded]
         notice = self.error_notice() if follow else None
+        harness = self.harness_nudges() if follow else []
         usage = {k: self.payload.get(k) for k in TOKEN_FIELDS if isinstance(self.payload.get(k), int)}
         self.save()
         self.log(
@@ -179,7 +180,8 @@ class Reminders:
             **usage,
         )
         if not review and not pending and not analysis_pending and not consulted_pending and not specs:
-            return {"followup_message": notice} if notice else {}
+            extra = "\n".join([*harness, *([notice] if notice else [])])
+            return {"followup_message": extra} if extra else {}
         for module in review:
             self.state.add("review_nudged", module)
         # 功能记录、查阅、规格各记一本，免得先催了查阅，后来改了代码却不再催功能记录
@@ -232,6 +234,7 @@ class Reminders:
                 "目录里还没有美术设计.md 时补上这一份。"
                 "不要整篇重写，也不要改其他模块。不要询问用户。"
             )
+        messages.extend(harness)
         if notice:
             messages.append(notice)
         # 每条都以 [pmem] 开头：下一轮靠它认出这是自动提醒、不是用户提问

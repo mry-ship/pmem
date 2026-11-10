@@ -58,7 +58,7 @@ def test_claude_edit_is_denied_until_module_searched(root):
     denied = run("claude", "pre-tool", claude_edit(root, "src/Jigsaw/Board.cs"), root)
     output = denied["hookSpecificOutput"]
     assert output["permissionDecision"] == "deny"
-    assert 'search_memory(module="gameplay.Jigsaw")' in output["permissionDecisionReason"]
+    assert 'search_memory(module="gameplay.Jigsaw", path="src/Jigsaw/Board.cs")' in output["permissionDecisionReason"]
 
     search = {"session_id": "s1", "tool_name": "mcp__pmem__search_memory",
               "tool_input": {"module": "gameplay.Jigsaw", "query": "奖励"}}

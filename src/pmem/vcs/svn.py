@@ -151,6 +151,9 @@ class SvnVCS(VCS):
         return list(dict.fromkeys(files))
 
     def commits_since(self, since: str) -> list[tuple[str, list[str]]]:
+        return [(day, files) for day, _, files in self.history_since(since)]
+
+    def history_since(self, since: str) -> list[tuple[str, str, list[str]]]:
         info = self._xml("info", str(self.root))
         rel = info.findtext("./entry/relative-url") if info is not None else None
         # relative-url 是 URL 编码的（中文、空格成了 %XX），svn log 里的路径不编码
@@ -168,7 +171,9 @@ class SvnVCS(VCS):
         commits = []
         for entry in log.iter("logentry"):
             paths = [p.text or "" for p in entry.iter("path") if p.get("kind") != "dir" and not p.get("copyfrom-path")]
-            commits.append(((entry.findtext("date") or "")[:10], [p[len(prefix):] for p in paths if p.startswith(prefix)]))
+            subject = ((entry.findtext("msg") or "").strip().splitlines() or [""])[0]
+            files = [p[len(prefix):] for p in paths if p.startswith(prefix)]
+            commits.append(((entry.findtext("date") or "")[:10], subject, files))
         return commits
 
     def add(self, path: Path) -> None:

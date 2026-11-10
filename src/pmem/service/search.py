@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import time
 
+from pmem import context
 from pmem.core import seen
 from pmem.core.entry import auto_summary
 from pmem.core.registry import ancestor_modules, is_lineage, parent_module
@@ -60,6 +61,8 @@ class SearchOps(ServiceBase):
         except ValueError as exc:  # 含 RegistryError
             response = fail(str(exc))
         conversation = source_conversation or self._claim_conversation(response)
+        if response.get("ok") and path and not ids:
+            self._attach_context(response, path, conversation)
         collapsed = self._collapse_seen(response, conversation, full, keep) if response.get("ok") else []
         if response.get("ok"):
             self._hints_once(response, conversation)
@@ -83,6 +86,19 @@ class SearchOps(ServiceBase):
             ms=round((time.perf_counter() - started) * 1000),
         )
         return response
+
+    def _attach_context(self, response: dict, path: str, conversation: str | None) -> None:
+        """harness 实验：按文件附上版本历史与规格算出的提示；没有记忆的项目也有内容。"""
+        rel = self._relative(path)
+        match = self.registry.module_for_path(rel or "") if rel else None
+        module = response.get("module") or (match.module_id if match else None)
+        text, hints = context.offer(self.config, rel, conversation, module=module)
+        if text:
+            response["context"] = text
+            self._log("context", file=rel, conv=conversation, via="search",
+                      co=[o for o, _ in hints.get("co") or []] or None,
+                      fix=len(hints.get("fix") or []) or None,
+                      keep=len(hints.get("keep") or []) or None)
 
     def _claim_conversation(self, response: dict) -> str | None:
         """终端里的 pmem search 不带对话 id，认领 Hook 执行前登记的那个对话。"""

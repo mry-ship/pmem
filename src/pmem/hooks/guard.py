@@ -57,7 +57,7 @@ class Guard:
                 return None
             self.state.add("warned", module)
             self.save()
-        call = f'search_memory(module="{module}")'
+        call = f'search_memory(module="{module}", path="{rel}")'
         # Cursor 只把 user_message 交给 Agent（实测），因此指引必须完整写在这里
         held = f"已有 {count} 条研发记忆" + (f"，上级模块另有 {upper} 条教训" if upper else "")
         message = f"pmem：{rel} 属于 {module}（{held}）。请先调用 {call} 了解已有结论，"
@@ -65,7 +65,8 @@ class Guard:
             message += "然后重试本次修改。"
         else:
             message += (
-                f"查过之后才能修改该模块。MCP 工具不可用时，在终端运行 pmem search --module {module} 也算"
+                f"查过之后才能修改该模块。MCP 工具不可用时，在终端运行 "
+                f"pmem search --module {module} --path {rel} 也算"
                 "（输出不能丢弃，如 > $null、| Out-Null）；检索要真正返回结果才算查过。"
                 "确实不需要记忆时，请用户回复“跳过记忆”。"
             )

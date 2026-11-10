@@ -3,12 +3,14 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+from pmem import context
 from pmem.core import autosync, seen
 from pmem.core.codefiles import is_code_file
 from pmem.core.config import Config
 from pmem.core.entry import Entry
 from pmem.core.registry import ModuleRegistry, is_module_id
 from pmem.hooks.guard import Guard
+from pmem.hooks.harness import Harness
 from pmem.hooks.mcp import ALLOW, PMEM_TOOLS, McpCalls, foreign_tool
 from pmem.hooks.memories import MemoryView
 from pmem.hooks.payload import asks_to_skip, fuzzy_contains, readable, tool_input
@@ -40,7 +42,7 @@ def _around(text: str, marker: str, width: int = 12) -> str:
     return ("…" if start else "") + flat[start:end] + ("…" if end < len(flat) else "")
 
 
-class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
+class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders, Harness):
     """各类 Hook 事件的入口；具体逻辑按职责分在各个基类里，共用会话状态和配置。"""
 
     def __init__(self, root: Path, payload: dict):
@@ -108,6 +110,7 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
             return dict(ALLOW)
         if name.lower() == "shell":
             command = str(args.get("command") or "")
+            self.note_command(command)
             # 命令里的 pmem search 先挂起，执行完才算查过；同一条命令里，按顺序接在某模块检索之后的写入先放行
             # （检索失败时执行后补提醒，见 _confirm_cli_calls），先写后查、隔着 || 或 & 的照样检查
             in_command = self._note_cli_calls(command)
@@ -134,10 +137,10 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
 
 
     def on_edited(self) -> dict:
-        self._mark_edited(str(self.payload.get("file_path") or ""))
-        return {}
+        tip = self._mark_edited(str(self.payload.get("file_path") or ""))
+        return {"additional_context": tip} if tip else {}
 
-    def _mark_edited(self, path: str) -> None:
+    def _mark_edited(self, path: str) -> str | None:
         self._note_spec(path)
         rel = self.relative(path)
         module = self.module_of(rel)
@@ -145,11 +148,14 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
             self.state.add("edited", module)
             self.state.add("edited_files", f"{module}|{rel}")
             self.save()
+        tip = None
         if rel is not None:
             self.log("edit", module=module, file=rel)
             self._lazy_doctor("edited")
             if module is None and self._unregistered_code(rel):
                 self._autosync("edit", rel.rsplit("/", 1)[0] if "/" in rel else "")
+            tip = self.empty_context_tip(rel, module)
+        return tip
 
     def _note_spec(self, path: str) -> None:
         """规格在 .memory/ 里，闸门忽略它，不记成业务改动；只记下这份规格本轮写过。"""
@@ -196,8 +202,17 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
             self.log("lazy_doctor_tip", event=event)
         return tip
 
+    def _refresh_context(self) -> None:
+        """harness 开着、缓存过期或不存在时，在后台重算常一起改的文件统计；Hook 本身不读版本历史。"""
+        if self.config.get("harness.mode") == "off":
+            return
+        cache_dir = self.config.cache_dir
+        if context.is_stale(cache_dir, float(self.config.get("harness.refresh_hours"))):
+            context.spawn_refresh(self.root, cache_dir)
+
     def on_session(self) -> dict:
         self._autosync("session")
+        self._refresh_context()
         tip = self._lazy_doctor("session")
         return {"additional_context": tip} if tip else {}
 
@@ -257,9 +272,8 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders):
                 result = dict(result or {})
                 result["additional_context"] = "\n\n".join(filter(None, [result.get("additional_context"), failed]))
             return result
-        for path in edited_files(self.payload):
-            self._mark_edited(path)
-        return {}
+        tips = [tip for tip in (self._mark_edited(path) for path in edited_files(self.payload)) if tip]
+        return {"additional_context": "\n\n".join(tips)} if tips else {}
 
 
     def on_compact(self) -> dict:

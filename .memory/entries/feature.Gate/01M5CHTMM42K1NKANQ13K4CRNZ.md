@@ -24,6 +24,8 @@ aliases:
 - updated_input 合并
 - 乱码回传
 - 压缩事件
+verified: '2026-11-16'
+verified_at: '2026-11-16T23:26:35.793+08:00'
 source:
   conversation: 56cad1c4-fae9-44ef-a1f2-9a52de89fdf1
 ---

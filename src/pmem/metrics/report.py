@@ -1,6 +1,7 @@
 """pmem report：从本机事件日志与记忆库算出可量化的收益。"""
 from __future__ import annotations
 
+import hashlib
 import json
 import statistics
 import time
@@ -10,7 +11,7 @@ from pathlib import Path
 from pmem.catalog.coverage import module_heat
 from pmem.core.entry import KIND_LABELS, LESSON_KINDS, RECORD_KINDS, VISIBLE_STATUSES
 from pmem.core.ids import ulid_ms
-from pmem.metrics.cite import assistant_text, judge
+from pmem.metrics.cite import CITE_CACHE_VERSION, assistant_text, judge
 from pmem.metrics.events import MIN_SEARCHES_FOR_IDLE, read_events
 from pmem.scan.lite import file_heat
 from pmem.service import MemoryService
@@ -74,12 +75,20 @@ def _conversations(events: list[dict]) -> dict[str, dict]:
     return convs
 
 
-def _citations(cache_dir: Path, convs: dict[str, dict], contents: dict[str, str]) -> dict:
+def _cite_material_stamp(ids: list[str], contents: dict[str, str], citables: dict[str, str]) -> str:
+    """正文或可复述标题改了要重判；只靠对话记录 mtime 会沿用过期 verdict。"""
+    blob = "\n".join(f"{i}\t{citables.get(i, '')}\t{contents.get(i, '')}" for i in ids)
+    return hashlib.sha1(blob.encode("utf-8")).hexdigest()[:12]
+
+
+def _citations(cache_dir: Path, convs: dict[str, dict], contents: dict[str, str],
+               citables: dict[str, str] | None = None) -> dict:
     cache_path = cache_dir / "cites.json"
     try:
         cache = json.loads(cache_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         cache = {}
+    citables = citables or {}
     returned = cited = 0
     cited_ids: Counter = Counter()
     judged_ids: Counter = Counter()
@@ -88,10 +97,12 @@ def _citations(cache_dir: Path, convs: dict[str, dict], contents: dict[str, str]
         transcript = Path(c["transcript"]) if c["transcript"] else None
         if not ids or transcript is None or not transcript.exists():
             continue
-        stamp = f"{transcript.stat().st_mtime_ns}:{','.join(ids)}"
+        material = _cite_material_stamp(ids, contents, citables)
+        stamp = f"v{CITE_CACHE_VERSION}:{transcript.stat().st_mtime_ns}:{','.join(ids)}:{material}"
         hit = cache.get(conv)
         if not hit or hit.get("stamp") != stamp:
-            verdict = judge({i: contents[i] for i in ids}, assistant_text(transcript))
+            verdict = judge({i: contents[i] for i in ids}, assistant_text(transcript),
+                           citables={i: citables[i] for i in ids if i in citables})
             hit = {"stamp": stamp, "cited": [i for i, v in verdict.items() if v["cited"]]}
             cache[conv] = hit
         returned += len(ids)
@@ -309,6 +320,7 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
     finally:
         service.close()
     contents = {e.id: e.content for e in entries}
+    citables = {e.id: e.title for e in entries if e.title}
 
     searches = [e for e in events if e["type"] == "search" and e.get("ok")]
     hits = [e for e in searches if e.get("ids")]
@@ -363,7 +375,7 @@ def build_report(root: Path, days: int = 30, now: float | None = None, heat: boo
         totals = module_heat(registry, file_counts)
         hot = [(m, n, len([e for e in visible if e.module == m])) for m, n in totals.most_common(HOT_TOP)]
 
-    citations = _citations(cache_dir, convs, contents)
+    citations = _citations(cache_dir, convs, contents, citables)
     return {
         "days": days,
         "search": {
@@ -513,7 +525,7 @@ def render(report: dict) -> str:
         f"  避坑提示 {s['avoided']} 次：命中结果里含排除项、风险或更正",
         f"  跨人复用 {s['reused']} 次：用到了 {s['reused_authors']} 位同事写的记忆",
         (f"  记忆被采用：对话中返回 {c['returned']} 条，Agent 回复里明确用到 {c['cited']} 条"
-         f"（{_pct(c['cited'], c['returned'])}，按字面重合计，是保守下限）"),
+         f"（{_pct(c['cited'], c['returned'])}，按字面重合计，含够长标题，是保守下限）"),
         f"  新写记忆 {r['total']} 条" + (f"（{kinds}）" if kinds else ""),
     ]
     lines += _render_quality(report.get("pitfall_share"), report.get("repeats"), report.get("feature_coverage"))

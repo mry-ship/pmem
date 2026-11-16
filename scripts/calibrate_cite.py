@@ -14,14 +14,19 @@ from pmem.service import MemoryService
 
 def main() -> None:
     service = MemoryService(sys.argv[1])
-    memories = {e.id: e.content for e in service.index.entries()}
-    labels = {e.id: f"{e.module}/{e.entity}" for e in service.index.entries()}
-    for raw in sys.argv[2:]:
-        reply = assistant_text(Path(raw))
-        print(f"\n== {Path(raw).name}  回复 {len(reply)} 字")
-        scores = judge(memories, reply)
-        for mid, info in sorted(scores.items(), key=lambda kv: -kv[1]["score"]):
-            print(f"  {labels[mid]:<32} score={info['score']:.3f} {'CITED' if info['cited'] else ''}")
+    try:
+        entries = service.index.entries()
+        memories = {e.id: e.content for e in entries}
+        citables = {e.id: e.title for e in entries if e.title}
+        labels = {e.id: f"{e.module}/{e.entity}" for e in entries}
+        for raw in sys.argv[2:]:
+            reply = assistant_text(Path(raw))
+            print(f"\n== {Path(raw).name}  回复 {len(reply)} 字")
+            scores = judge(memories, reply, citables=citables)
+            for mid, info in sorted(scores.items(), key=lambda kv: -kv[1]["score"]):
+                print(f"  {labels[mid]:<32} score={info['score']:.3f} {'CITED' if info['cited'] else ''}")
+    finally:
+        service.close()
 
 
 if __name__ == "__main__":

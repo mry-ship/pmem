@@ -17,6 +17,8 @@ aliases:
 - 文件被回退
 - 检查点恢复
 - checkpoint
+verified: '2026-11-16'
+verified_at: '2026-11-16T23:26:35.793+08:00'
 source:
   conversation: 9ef91500-0ba8-471d-b103-5d232ce0615e
 ---

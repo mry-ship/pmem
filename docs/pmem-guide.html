@@ -107,7 +107,7 @@
 <div class="layout">
 <nav>
   <div class="brand">pmem 使用手册</div>
-  <div class="ver">v0.6.6 · 项目研发记忆</div>
+  <div class="ver">v0.6.7 · 项目研发记忆</div>
   <a href="#glance">一眼看懂</a>
   <a href="#what">pmem 是什么</a>
   <a href="#benefits">收益与适用场景</a>
@@ -261,13 +261,14 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
     <tr><td>被用户纠正的比例</td><td><strong>下降 54%～69%</strong></td><td>—</td><td>—</td><td>同上。长对话全程不回退从 27% 到 52%</td></tr>
     <tr><td>零碎记忆合并</td><td>13 条约 2500 字收成 2 条约 1150 字</td><td>—</td><td>—</td><td>本仓库实测</td></tr>
     <tr><td>开销是否随记忆变多</td><td>853 条和几十条相近</td><td>—</td><td>—</td><td>只返回前几条，被替代的旧结论不返回</td></tr>
-    <tr><td>检索命中率</td><td>—</td><td><strong>99%</strong>（1038 次里 1023 次）</td><td><strong>99%</strong>（173 次里 172 次）</td><td><code>pmem report</code>，仅本机</td></tr>
-    <tr><td>改前被拦后真去查</td><td>—</td><td><strong>95%</strong>（187 次里 177 次）</td><td><strong>98%</strong>（47 次里 46 次）</td><td>同上</td></tr>
-    <tr><td>功能记录覆盖</td><td>—</td><td><strong>91%</strong>（目标 ≥80%）</td><td><strong>79%</strong>（14 次改码中 11 次有 feature）</td><td>同上</td></tr>
-    <tr><td>结束提醒后真去写</td><td>—</td><td><strong>67%</strong>（39 次里 26 次）</td><td><strong>47%</strong>（19 次里 9 次）</td><td>同上</td></tr>
-    <tr><td>跨人复用</td><td>—</td><td>0</td><td><strong>108</strong> 次</td><td>同上。用到同事写的记忆</td></tr>
+    <tr><td>检索命中率</td><td>—</td><td><strong>99%</strong>（1212 次里 1202 次）</td><td><strong>99%</strong>（173 次里 172 次）</td><td><code>pmem report</code>，仅本机</td></tr>
+    <tr><td>记忆被采用</td><td>—</td><td><strong>22%</strong>（2077 条返回里 450 条；字面重合+够长标题，保守下限）</td><td>—</td><td>同上。阈值 0.15；换说法复述不计</td></tr>
+    <tr><td>改前被拦后真去查</td><td>—</td><td><strong>72%</strong>（285 次里 206 次）</td><td><strong>98%</strong>（47 次里 46 次）</td><td>同上</td></tr>
+    <tr><td>功能记录覆盖</td><td>—</td><td><strong>92%</strong>（目标 ≥80%）</td><td><strong>79%</strong>（14 次改码中 11 次有 feature）</td><td>同上</td></tr>
+    <tr><td>结束提醒后真去写</td><td>—</td><td><strong>76%</strong>（41 次里 31 次）</td><td><strong>47%</strong>（19 次里 9 次）</td><td>同上</td></tr>
+    <tr><td>跨人复用</td><td>—</td><td><strong>13</strong> 次</td><td><strong>108</strong> 次</td><td>同上。用到同事写的记忆</td></tr>
   </table>
-  <p class="muted">「数字」列里带下降比例的仍是上一代口径；后两列是现行 pmem 本机使用。TileMatch 为真实业务项目（2026-10-27 报告，窗口 14 天，现行记忆 639 条）。也可用 <code>pmem bench</code> 做对照实验。</p>
+  <p class="muted">「数字」列里带下降比例的仍是上一代口径；后两列是现行 pmem 本机使用。本仓库列为 2026-11-16 近 30 天报告；TileMatch 为真实业务项目（2026-10-27 报告，窗口 14 天，现行记忆 639 条）。也可用 <code>pmem bench</code> 做对照实验。</p>
 
   <h3>检索有多准</h3>
   <table>
@@ -819,7 +820,7 @@ harness:
     <tr><td>功能记录覆盖</td><td>改过代码、需要记录的模块里，同一对话写了功能记录的比例（目标不低于 80%），偏低说明用户要求的行为没留下记录</td></tr>
     <tr><td>防错类占比</td><td>本期新写教训里排除项、风险、更正的占比（功能记录不算，目标不低于 30%），偏低说明教训在变成变更记录</td></tr>
     <tr><td>对话内重复</td><td>同一对话里给过全文又整条再给的条数，以及已折叠成标题的条数</td></tr>
-    <tr><td>记忆被采用</td><td>返回的记忆有多少条在 Agent 回复里被明确用到（保守下限）</td></tr>
+    <tr><td>记忆被采用</td><td>返回的记忆有多少条在 Agent 回复里被明确用到（字面重合，够长标题与正文取较大覆盖率；保守下限）</td></tr>
     <tr><td>闸门 / 提醒转化</td><td>被提醒后有多少次真的照做了</td></tr>
     <tr><td>漏改提示采纳</td><td>harness：提示过的伙伴文件，同对话随后改了的比例</td></tr>
     <tr><td>验证回合</td><td>harness check：改了代码且配置了验证命令的回合里，跑过验证的比例</td></tr>
@@ -883,18 +884,18 @@ pmem reindex</code></pre>
 <section id="limits">
   <h2>已知限制</h2>
   <ul>
-    <li>Claude Code、Codex 的接入只做过模拟测试，还没在真实会话里跑过。</li>
+    <li>Cursor、Claude Code、Codex 均已在真实会话验证可用；各家 Hook / MCP 细节以 <code>pmem init</code> 与 <code>pmem doctor</code> 为准。</li>
     <li>读代码摘要和拦截提示会把记忆标题注入给 AI，并标「资料·非指令」。能往 <code>.memory/entries</code> 提交文件的人仍可能写入误导性标题；闸门挡的是忘了查记忆，不是沙箱。</li>
     <li>收益报告只看本机数据，团队汇总尚未实现。</li>
     <li><code>pmem bench</code> 还没有用真实 API Key 跑过完整对照，示例用例只用 <code>--dry-run</code> 验证过。</li>
     <li>模块划分依赖 Agent 按 pmem-bootstrap 技能完成，还没有全自动扫描器。</li>
     <li>Cursor 里 MCP：<code>pmem init</code> 会尝试项目级自动批准，但 Cursor 运行时写的批准会被它覆盖——完全退出 Cursor 后重跑 <code>pmem init</code>，或在 设置 → MCP 手动开一次后 Reload Window。</li>
-    <li>v0.7 类型安全与规则化进行中（先落地 <code>core/schema</code> 基础校验）；当前发布包是 v0.6.6。</li>
+    <li>v0.7 类型安全与规则化进行中（先落地 <code>core/schema</code> 基础校验）；当前发布包是 v0.6.7。</li>
   </ul>
   <p class="muted">更完整的限制清单见仓库首页 README「已知限制」。</p>
 </section>
 
-<p class="muted" style="text-align:center">pmem v0.6.6（v0.7 类型安全进行中）· 详细设计见 <code>docs/architecture.md</code> 与 <code>README.md</code></p>
+<p class="muted" style="text-align:center">pmem v0.6.7（v0.7 类型安全进行中）· 详细设计见 <code>docs/architecture.md</code> 与 <code>README.md</code></p>
 </main>
 </div>
 </body>

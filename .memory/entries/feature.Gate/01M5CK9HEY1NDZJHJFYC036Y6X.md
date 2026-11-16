@@ -19,8 +19,8 @@ aliases:
 - 标头
 - followup
 - 自动提醒
-verified: '2026-10-27'
-verified_at: '2026-10-27T17:33:08.864+08:00'
+verified: '2026-11-16'
+verified_at: '2026-11-16T23:26:35.793+08:00'
 source:
   conversation: 56cad1c4-fae9-44ef-a1f2-9a52de89fdf1
 ---

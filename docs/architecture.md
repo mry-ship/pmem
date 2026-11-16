@@ -92,7 +92,7 @@ flowchart LR
 
 **教训与功能记录分层**：类型分两层。教训（`exclusion`、`risk`、`correction`、`decision`、`conclusion`，`core/entry.py` 的 `LESSON_KINDS`）和功能记录（`feature`、`plan`，`RECORD_KINDS`）放在同一模块目录、靠类型区分，不分物理目录。`MemoryIndex.search` 带 `feature_limit` 时两层各自排序：`items` 只放教训全文，`features` 只放功能记录标题（`title_row`），默认 3 条，所以功能记录再多也挤不掉教训；`search(ids=[...])` 按 id 取全文。读代码摘要（`graph.digest`）只从教训里挑，末尾附至多 2 条锚点就是当前文件的功能记录（`file_features`）；拦截提示同样列出目标文件上的功能记录。结束提醒按模块要求功能记录，只改了 `gate.record_exempt` 里文件的模块不提醒；stop 事件记下 `required`（需要记录的模块），`pmem report` 据此算功能记录覆盖率。可选字段 `applies` 写适用条件，参与检索文本，结果里出现时附 `applies_hint`。
 
-**度量**：服务和 Hooks 把事件追加到用户缓存目录的 `events.jsonl`。`pmem report` 按对话聚合；“记忆被采用”在报告时离线比对对话记录，不在 Hook 里计算。
+**度量**：服务和 Hooks 把事件追加到用户缓存目录的 `events.jsonl`。`pmem report` 按对话聚合；“记忆被采用”在报告时离线比对对话记录（字面重合阈值 0.15；够长标题与正文取较大覆盖率），不在 Hook 里计算。
 
 ## 存储布局
 
@@ -125,7 +125,7 @@ flowchart LR
 | Hook 只依赖 ASCII 字段，输出纯 ASCII | Windows 中文代码页下 Cursor 会把 Hook 输入按 GBK 误解码，JSON 常被破坏 |
 | Cursor 下的问答审查放在 stop 追问 | Cursor 的 beforeSubmitPrompt 只能放行或拦截，sessionStart 只在新对话触发一次；能每轮生效的只有 postToolUse 的 `additional_context` 和 stop 的 `followup_message`（读码摘要已实测送达） |
 | `warn` 只拒绝一次 | 不打断节奏；Agent 并行发出的多个编辑实际逐个执行，只有第一个被拒，需要重做的只有那一处 |
-| 引用识别只看字面重合（阈值 0.15） | 语义相似度在长对话里取最大值后，无关对话也能到 0.8，区分不开；字面重合在无关对话中不超过 0.11 |
+| 引用识别只看字面重合（阈值 0.15）；够长的 summary/title 与正文取较大覆盖率 | 语义相似度在长对话里取最大值后，无关对话也能到 0.8，区分不开；字面重合在无关对话中不超过 0.11；长正文会稀释覆盖率，故标题指纹≥12 时参与取 max |
 | bench 两组都不加载项目设置 | 只比较“记忆内容”的价值，排除规则、Hooks 等其他变量 |
 
 这些结论在本仓库的 `.memory/entries/` 中都有对应条目，包含证据和影响范围。
@@ -137,4 +137,4 @@ flowchart LR
 - 收益报告只看本机数据，团队汇总尚未实现。
 - `pmem bench` 还没有用真实 API Key 跑过完整对照；示例用例已用 `--dry-run` 验证有效。
 - 模块划分依赖 Agent 按 `pmem-bootstrap` 技能完成：`pmem scan` 只给出目录和提交热度，不会自动划分。
-- Claude Code、Codex 的接入只做过模拟测试，还没在真实会话里跑过。
+- Cursor、Claude Code、Codex 均已在真实会话验证可用；各家 Hook / MCP 细节以 `pmem init` 与 `pmem doctor` 为准。

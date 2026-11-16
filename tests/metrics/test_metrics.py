@@ -75,6 +75,61 @@ def test_judge_detects_reuse_and_ignores_unrelated_reply():
     assert judge({"m": MEMORY}, unrelated)["m"]["cited"] is False
 
 
+def test_judge_uses_long_enough_title_when_body_would_dilute():
+    """长正文稀释覆盖率时，足够长的可复述标题仍能判为采用；过短标题不计。"""
+    body = MEMORY + "。" + ("补充背景说明无关细节。" * 40)
+    title = "断线重连时 Claim 被调用两次，须按关卡 id 做幂等领取记录防重复发放"
+    reply = "按已有结论：断线重连时 Claim 被调用两次，须按关卡 id 做幂等领取记录防重复发放。"
+    assert judge({"m": body}, reply)["m"]["cited"] is False
+    assert judge({"m": body}, reply, citables={"m": title})["m"]["cited"] is True
+    assert judge({"m": body}, reply, citables={"m": "防重复发放"})["m"]["cited"] is False
+
+
+def test_report_counts_title_citation_and_invalidates_cache_on_summary_edit(
+        project, tmp_path, monkeypatch):
+    """报告走标题指纹；改 summary 后 cites 缓存必须重算。"""
+    title = "断线重连时 Claim 被调用两次，须按关卡 id 做幂等领取记录防重复发放"
+    body = MEMORY + "。" + ("补充背景说明无关细节。" * 40)
+    mid = record_as(project, monkeypatch, "alice", "exclusion", body)
+    # record_as 不传 summary，补上够长的可复述标题
+    monkeypatch.setenv("PMEM_AUTHOR", "alice")
+    service = MemoryService(project)
+    try:
+        assert service.record(
+            "gameplay.Jigsaw", "Reward", "exclusion", body, summary=title, draft_id=mid,
+        )["ok"]
+    finally:
+        service.close()
+
+    monkeypatch.setenv("PMEM_AUTHOR", "me")
+    cache = Config.load(project).cache_dir
+    transcript = write_transcript(tmp_path / "title.jsonl", f"按已有结论：{title}。")
+    log_event(cache, "mcp_search", conv="t1", ids=[mid])
+    log_event(cache, "stop", conv="t1", status="completed", transcript=str(transcript))
+
+    report = build_report(project, days=7, heat=False)
+    assert report["citations"]["cited"] == 1, report["citations"]
+    stamp1 = json.loads((cache / "cites.json").read_text(encoding="utf-8"))["t1"]["stamp"]
+
+    monkeypatch.setenv("PMEM_AUTHOR", "alice")
+    service = MemoryService(project)
+    try:
+        rewritten = service.record(
+            "gameplay.Jigsaw", "Reward", "exclusion", body,
+            summary="商店按钮颜色与排行榜刷新间隔的无关标题凑够连续汉字以便单独计分",
+            draft_id=mid,
+        )
+    finally:
+        service.close()
+    assert rewritten["ok"], rewritten
+
+    monkeypatch.setenv("PMEM_AUTHOR", "me")
+    report2 = build_report(project, days=7, heat=False)
+    assert report2["citations"]["cited"] == 0, report2["citations"]
+    stamp2 = json.loads((cache / "cites.json").read_text(encoding="utf-8"))["t1"]["stamp"]
+    assert stamp1 != stamp2
+
+
 CONFIG = "project: { name: demo }\nvcs: none\nembedding: { backend: none }\n"
 MODULES = "categories: { gameplay: {} }\nmodules:\n  gameplay.Jigsaw: { paths: [src/Jigsaw/**] }\n  gameplay.Shop: { paths: [src/Shop/**] }\n"
 

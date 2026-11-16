@@ -219,6 +219,20 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
   <h2>收益与适用场景</h2>
   <p>固定开销、速度和检索命中是本仓库实测。少被纠正、少花时间、少用 token，测的是上一代记忆系统；pmem 自己的端到端对比还没做，那组数字只能当保守参考。</p>
 
+  <h3>当前版本 0.6.7</h3>
+  <p class="muted">本版可直接看到的效果与口径（本仓库 <code>pmem report --days 30</code>，2026-11-16）：</p>
+  <table>
+    <tr><th>指标</th><th>当前数字</th><th>本版相关说明</th></tr>
+    <tr><td>检索命中率</td><td><strong>99%</strong>（1220 次里 1210 次）</td><td>与上版同级；只返回前几条，开销不随记忆变多</td></tr>
+    <tr><td>记忆被采用</td><td><strong>22%</strong>（2083 条返回里 454 条）</td><td>够长 summary/title（指纹≥12）与正文取较大字面覆盖率；阈值仍 0.15。旧口径只看正文时约 <strong>13%</strong>；没有靠降阈值或按采用率改搜索排序</td></tr>
+    <tr><td>改前被拦后真去查</td><td><strong>73%</strong>（286 次里 208 次）</td><td>闸门习惯指标</td></tr>
+    <tr><td>功能记录覆盖</td><td><strong>92%</strong>（目标 ≥80%）</td><td>改过的模块多数有 feature</td></tr>
+    <tr><td>结束提醒后真去写</td><td><strong>74%</strong>（42 次里 31 次）</td><td>同上</td></tr>
+    <tr><td>防错类占比</td><td>本期新增教训里 <strong>45%</strong>（目标 ≥30%）</td><td>排除项 / 风险 / 更正</td></tr>
+    <tr><td>接入成熟度</td><td>Cursor / Claude Code / Codex</td><td>均已在<strong>真实会话</strong>验证可用</td></tr>
+  </table>
+  <p class="muted">对照实验仍见下方「v0.5 和 v0.3 比」；端到端「少被纠正 / 少耗时 / 少 token」还没在现行 pmem 上测完，请用 <code>pmem bench</code> 或继续看 <code>pmem report</code>。</p>
+
   <h3>优点和限制</h3>
   <table>
     <tr><th>优点</th><th>限制</th></tr>
@@ -227,6 +241,7 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
     <tr><td>只返回前几条（默认 5 条），853 条和几十条的单次开销差不多</td><td>刚接入时每个对话大约净增 3000～5000 token</td></tr>
     <tr><td>写进去不会被悄悄删掉（上一代约 19%，这里是 0）</td><td>记忆没跟上代码时会给出过期结论，要核对后确认或更正</td></tr>
     <tr><td>人工核对 18 个查询，正确结论进前 3：6 → 16</td><td>被纠正比例、耗时、token 总量的下降还没在 pmem 上测完</td></tr>
+    <tr><td><code>pmem init</code> 支持 Cursor、Claude Code、Codex；均已在真实会话验证可用</td><td>Cursor 纯问答要等回合结束才核对</td></tr>
   </table>
 
   <h3>速度</h3>
@@ -261,14 +276,14 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
     <tr><td>被用户纠正的比例</td><td><strong>下降 54%～69%</strong></td><td>—</td><td>—</td><td>同上。长对话全程不回退从 27% 到 52%</td></tr>
     <tr><td>零碎记忆合并</td><td>13 条约 2500 字收成 2 条约 1150 字</td><td>—</td><td>—</td><td>本仓库实测</td></tr>
     <tr><td>开销是否随记忆变多</td><td>853 条和几十条相近</td><td>—</td><td>—</td><td>只返回前几条，被替代的旧结论不返回</td></tr>
-    <tr><td>检索命中率</td><td>—</td><td><strong>99%</strong>（1212 次里 1202 次）</td><td><strong>99%</strong>（173 次里 172 次）</td><td><code>pmem report</code>，仅本机</td></tr>
-    <tr><td>记忆被采用</td><td>—</td><td><strong>22%</strong>（2077 条返回里 450 条；字面重合+够长标题，保守下限）</td><td>—</td><td>同上。阈值 0.15；换说法复述不计</td></tr>
-    <tr><td>改前被拦后真去查</td><td>—</td><td><strong>72%</strong>（285 次里 206 次）</td><td><strong>98%</strong>（47 次里 46 次）</td><td>同上</td></tr>
+    <tr><td>检索命中率</td><td>—</td><td><strong>99%</strong>（1220 次里 1210 次）</td><td><strong>99%</strong>（173 次里 172 次）</td><td><code>pmem report</code>，仅本机</td></tr>
+    <tr><td>记忆被采用</td><td>—</td><td><strong>22%</strong>（2083 条返回里 454 条；字面重合+够长标题，保守下限）</td><td>—</td><td>同上。阈值 0.15；旧正文口径约 13%；换说法复述不计</td></tr>
+    <tr><td>改前被拦后真去查</td><td>—</td><td><strong>73%</strong>（286 次里 208 次）</td><td><strong>98%</strong>（47 次里 46 次）</td><td>同上</td></tr>
     <tr><td>功能记录覆盖</td><td>—</td><td><strong>92%</strong>（目标 ≥80%）</td><td><strong>79%</strong>（14 次改码中 11 次有 feature）</td><td>同上</td></tr>
-    <tr><td>结束提醒后真去写</td><td>—</td><td><strong>76%</strong>（41 次里 31 次）</td><td><strong>47%</strong>（19 次里 9 次）</td><td>同上</td></tr>
+    <tr><td>结束提醒后真去写</td><td>—</td><td><strong>74%</strong>（42 次里 31 次）</td><td><strong>47%</strong>（19 次里 9 次）</td><td>同上</td></tr>
     <tr><td>跨人复用</td><td>—</td><td><strong>13</strong> 次</td><td><strong>108</strong> 次</td><td>同上。用到同事写的记忆</td></tr>
   </table>
-  <p class="muted">「数字」列里带下降比例的仍是上一代口径；后两列是现行 pmem 本机使用。本仓库列为 2026-11-16 近 30 天报告；TileMatch 为真实业务项目（2026-10-27 报告，窗口 14 天，现行记忆 639 条）。也可用 <code>pmem bench</code> 做对照实验。</p>
+  <p class="muted">「数字」列里带下降比例的仍是上一代口径；后两列是现行 pmem 本机使用。本仓库列为 <strong>0.6.7</strong> 口径下 2026-11-16 近 30 天报告；TileMatch 为真实业务项目（2026-10-27 报告，窗口 14 天，现行记忆 639 条）。也可用 <code>pmem bench</code> 做对照实验。</p>
 
   <h3>检索有多准</h3>
   <table>

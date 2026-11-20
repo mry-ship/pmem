@@ -1,0 +1,19 @@
+{
+  "include": [
+    "src/pmem/core",
+    "src/pmem/index",
+    "src/pmem/service",
+    "src/pmem/catalog"
+  ],
+  "exclude": [
+    "**/__pycache__"
+  ],
+  "pythonVersion": "3.10",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "none",
+  "reportArgumentType": "none",
+  "reportUnknownArgumentType": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownVariableType": "none",
+  "reportUnknownParameterType": "none"
+}

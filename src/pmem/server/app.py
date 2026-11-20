@@ -97,17 +97,20 @@ def build_server(root: Path | None) -> MCPServer:
         as_of: str = "",
         full: bool = False,
         ids: list[str] | None = None,
+        when: dict | None = None,
         source_conversation: str = "",
     ) -> str:
         """检索项目研发记忆。改代码前传 path（要改的文件）或 module（category.Module，子模块用点号续写，最多 4 段，
         如 system.Ads.AdMob；查子模块会带上上级模块的教训，查父模块会列出下级模块和各自最新的记忆标题）；entity 是模块内议题，可省；
         query 是关键词或问题描述（按同义词表展开），都不确定时只传 query 全局检索。as_of=YYYY-MM-DD 看那天有效的记忆；
         limit 不传按项目配置。ids=[...] 按 id 取全文，优先于其他参数；full=true 时本对话给过的也给全文。
-        返回 items（教训，全文）和 features（功能记录与规划，只有标题）；seen=true 的只给标题，要全文带 full=true；
-        stale、applies 等字段的含义在结果的 *_hint 里说明（每个对话说明一次）。source_conversation 由系统填写，无需传。"""
+        when：结构化适用条件过滤（如 {"platform":"android"}），需项目在 config.yaml 声明 facets；
+        明确冲突的记忆排除，没写 when 的保留。返回 items（教训，全文）和 features（功能记录与规划，只有标题）；
+        seen=true 的只给标题，要全文带 full=true；stale、applies、when 等字段见 *_hint。
+        source_conversation 由系统填写，无需传。"""
         return call(lambda s: s.search(module or None, path or None, entity or None, query or None, limit,
                                        source_conversation or None, as_of or None, full=bool(full),
-                                       ids=ids or None))
+                                       ids=ids or None, when=when or None))
 
     @server.tool()
     def record_memory(
@@ -121,6 +124,8 @@ def build_server(root: Path | None) -> MCPServer:
         summary: str = "",
         verify: str = "",
         applies: str = "",
+        when: dict | None = None,
+        enforced_by: list[str] | None = None,
         scope: str = "",
         draft_id: str = "",
         source_conversation: str = "",
@@ -131,7 +136,9 @@ def build_server(root: Path | None) -> MCPServer:
         对所有下级都成立的写到父模块；entity：模块内议题短名。
         content 自包含（现象、原因、证据、影响范围），不写“改了哪个方法”。summary：一句话结论或必须保持的行为（60 字内），
         摘要、Wiki 和去重后的检索只显示它。verify：怎么确认结论仍成立（命令、测试名、现象），结论和更正尽量填。
-        applies：成立前提（120 字内）。scope=project：编码、环境、跨模块约定这类全项目都会踩的坑。
+        applies：自由文字成立前提（120 字内）。when：结构化适用条件（如 {"platform":["android"]}），
+        需项目在 config.yaml 声明 facets；能枚举的前提优先写 when。enforced_by：已由工程规则保障（路径#规则名）；
+        规则文件改了会标需核实，摘要标「已由规则拦截」并靠后排。scope=project：编码、环境、跨模块约定这类全项目都会踩的坑。
         aliases：现象和术语的其他叫法（如 ["闪退", "崩溃"]），换说法也能搜到。
         anchors：相关代码，尽量写到函数（路径#函数名；只写文件时该文件任何改动都会标需核实），不填按本对话改过的文件补。
         supersedes：本模块（或其下级模块）里被推翻的旧结论、说同一件事的旧功能记录、已实现的规划（plan）的 id。
@@ -141,7 +148,8 @@ def build_server(root: Path | None) -> MCPServer:
         return call(lambda s: s.record(module, entity, kind, content, supersedes or None, anchors or None,
                                        draft_id or None, source_conversation or None, aliases or None,
                                        summary=summary or None, scope=scope or None, verify=verify or None,
-                                       applies=applies or None))
+                                       applies=applies or None, enforced_by=enforced_by or None,
+                                       when=when if when is not None else None))
 
     @server.tool()
     def confirm_memory(ids: list[str], source_conversation: str = "") -> str:

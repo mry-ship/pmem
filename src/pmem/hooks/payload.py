@@ -111,6 +111,36 @@ def parse_payload(raw: bytes) -> dict:
     return _extract(text)
 
 
+# Hook 实际会读的字段：类型不对时记警告并放行（闸门不能因数据结构变化卡住开发）
+_HOOK_STR = ("conversation_id", "generation_id", "hook_event_name", "tool_name", "status", "cwd", "prompt",
+             "transcript_path", "file_path")
+_HOOK_LIST = ("workspace_roots",)
+
+
+def validate_hook_payload(data: dict) -> list[str]:
+    """只校验 pmem 用到的字段；结构不对返回警告列表，不抛错。"""
+    if not isinstance(data, dict):
+        return ["Hook 输入应是键值对"]
+    warnings: list[str] = []
+    for key in _HOOK_STR:
+        if key in data and data[key] is not None and not isinstance(data[key], str):
+            warnings.append(f"Hook 字段 {key} 应是字符串，实际是 {type(data[key]).__name__}")
+    for key in _HOOK_LIST:
+        if key in data and data[key] is not None and not isinstance(data[key], list):
+            warnings.append(f"Hook 字段 {key} 应是列表，实际是 {type(data[key]).__name__}")
+    if "tool_input" in data and data["tool_input"] is not None:
+        value = data["tool_input"]
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                warnings.append("Hook 字段 tool_input 不是合法 JSON 对象")
+                value = None
+        if value is not None and not isinstance(value, dict):
+            warnings.append(f"Hook 字段 tool_input 应是键值对，实际是 {type(value).__name__}")
+    return warnings
+
+
 def _garbled_patterns(needle: str) -> list[re.Pattern]:
     """needle 的 UTF-8 字节被按 GBK 误解码后可能呈现的样子（两种字节对齐），损坏处用通配。"""
     data = needle.encode("utf-8")

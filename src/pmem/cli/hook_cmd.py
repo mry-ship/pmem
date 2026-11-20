@@ -40,13 +40,22 @@ def run_hook(event: str, agent: str = "cursor") -> int:
         from pmem.core.config import Config
         from pmem.hooks.agents import normalize, render
         from pmem.hooks.gate import handle
-        from pmem.hooks.payload import parse_payload
+        from pmem.hooks.payload import parse_payload, validate_hook_payload
 
         payload = normalize(agent, parse_payload(sys.stdin.buffer.read()))
         root = _find_project(payload)
         if root is None:
             _emit(fallback)
             return 0
+        # 结构不对只记 hook_error 并放行，行为与设计稿 §3.4 一致
+        schema_warnings = validate_hook_payload(payload)
+        if schema_warnings:
+            try:
+                _log(Config.load(root).cache_dir,
+                     f"ERROR {event}@{agent} schema\n" + "\n".join(schema_warnings),
+                     "hook-errors.log")
+            except Exception:  # noqa: BLE001, S110
+                pass
         result = handle(event, payload, root)
         _emit(render(agent, event, result) or fallback)
         emitted = True

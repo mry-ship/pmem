@@ -64,7 +64,8 @@ def digest(entries: list[Entry], limit: int = 6, per_topic: int = 2, path: str |
     功能记录、规划不占教训名额，只在末尾附至多 feature_slots 条锚点就是该文件的功能记录。
     replaced 见 current_entries。"""
     lessons = [e for e in current_entries(entries, replaced) if e.kind not in RECORD_KINDS]
-    ordered = sorted(lessons, key=lambda e: KIND_ORDER.get(e.kind, len(KIND_ORDER)))
+    # 已由规则保障的整体排后，名额优先给仍需靠记忆防的教训；未保障的仍按类型序
+    ordered = sorted(lessons, key=lambda e: (e.enforced, KIND_ORDER.get(e.kind, len(KIND_ORDER))))
     if path:
         near = [e for e in ordered if anchor_affinity(e.anchors, path) == 2][:limit // 2]
         first = {e.id for e in near}
@@ -86,7 +87,7 @@ def project_pitfalls(entries: list[Entry], exclude_module: str | None = None, li
     picked = [e for e in current_entries(entries, replaced)
               if e.project_wide and e.kind in PITFALL_KINDS
               and not (exclude_module and e.module.lower() == exclude_module.lower())]
-    return sorted(picked, key=lambda e: PITFALL_KINDS.index(e.kind))[:limit]
+    return sorted(picked, key=lambda e: (e.enforced, PITFALL_KINDS.index(e.kind)))[:limit]
 
 
 @dataclass

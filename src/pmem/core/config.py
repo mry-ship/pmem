@@ -56,6 +56,10 @@ DEFAULTS: dict = {
     # 实验：没有记忆也能给的改前提示（常一起改的文件、近期修复提交、规格必须保持）与回合结束的漏改/未验证检查；off 时行为与以前完全一致
     "harness": {"mode": "off", "window_days": 180, "min_pair": 3, "min_ratio": 0.3, "max_files": 3,
                 "refresh_hours": 24, "verify_commands": []},
+    # v0.7：健康报告「可以写成规则的教训」阈值
+    "health": {"rule_min": 3, "rule_searches": 5},
+    # v0.7：结构化适用条件维度；空 = 未启用 when
+    "facets": {},
 }
 
 _LIST_KEYS = ("harness.verify_commands", "gate.watch", "gate.ignore", "gate.skip_markers", "gate.resume_markers",
@@ -68,6 +72,7 @@ _NUMBERS = {
     "server.request_timeout": (1, float), "sync.interval_minutes": (0, float), "sync.full_hours": (1, float),
     "harness.window_days": (1, int), "harness.min_pair": (1, int), "harness.min_ratio": (0, float),
     "harness.max_files": (1, int), "harness.refresh_hours": (1, float),
+    "health.rule_min": (1, int), "health.rule_searches": (1, int),
 }
 _CHOICES = {
     "vcs": ("auto", "git", "svn", "none"),
@@ -81,6 +86,24 @@ _CHOICES = {
 
 class ConfigError(ValueError):
     pass
+
+
+_CONFIG_PATH = f"{MEMORY_DIR}/{CONFIG_FILE}"
+# facets 维度超过此数时 doctor 提醒（设计稿风险：写记忆负担变重）
+FACETS_SOFT_MAX = 4
+
+
+def _known_config_keys() -> dict[str, set[str] | None]:
+    """DEFAULTS 推导：节 → 允许的子键；标量顶层键的子键表为 None。facets 维度名自由，不查子键。"""
+    known: dict[str, set[str] | None] = {}
+    for key, value in DEFAULTS.items():
+        if key == "facets":
+            known[key] = None
+        elif isinstance(value, dict):
+            known[key] = set(value)
+        else:
+            known[key] = None
+    return known
 
 
 def _merge(base: dict, override: dict) -> dict:
@@ -139,12 +162,28 @@ def load_yaml(path: Path, encoding: str = "utf-8"):
 
 
 class Config:
-    def __init__(self, root: Path, data: dict):
+    def __init__(self, root: Path, data: dict, *, warnings: list[str] | None = None):
+        from pmem.core.schema import SchemaError, expect_list, expect_mapping, expect_number, expect_one_of
+
         self.root = root
         self.data = data
-        for section in ("gate", "write", "search", "server", "embedding", "wiki", "project", "sync", "spec", "harness"):
-            if not isinstance(data.get(section), dict):
-                raise ConfigError(f"配置项 {section} 应是键值对，当前为 {data.get(section)!r}")
+        self.warnings: list[str] = list(warnings or [])
+        for section in ("gate", "write", "search", "server", "embedding", "wiki", "project", "sync", "spec",
+                        "harness", "health", "facets"):
+            try:
+                expect_mapping(data.get(section), f"{_CONFIG_PATH}：{section}")
+            except SchemaError as exc:
+                raise ConfigError(str(exc)) from exc
+        from pmem.core.facets import FacetError, parse_facets
+
+        try:
+            self.facets = parse_facets(data.get("facets"))
+        except FacetError as exc:
+            raise ConfigError(f"{_CONFIG_PATH}：{exc}") from exc
+        if len(self.facets) > FACETS_SOFT_MAX:
+            self.warnings.append(
+                f"{_CONFIG_PATH}：facets 已声明 {len(self.facets)} 个维度，建议不超过 {FACETS_SOFT_MAX} 个，"
+                "否则写记忆负担变重")
         gate = data["gate"]
         if isinstance(gate.get("mode"), bool):
             gate["mode"] = "warn" if gate["mode"] else "off"
@@ -155,45 +194,55 @@ class Config:
         if isinstance(data["harness"].get("mode"), bool):
             data["harness"]["mode"] = "hint" if data["harness"]["mode"] else "off"
         for key, allowed in _CHOICES.items():
-            value = self.get(key)
-            if value not in allowed:
-                raise ConfigError(f"配置项 {key} 只能是 {' / '.join(allowed)}，当前为 {value!r}")
+            try:
+                expect_one_of(self.get(key), f"{_CONFIG_PATH}：{key}", allowed)
+            except SchemaError as exc:
+                raise ConfigError(str(exc)) from exc
         for key in _LIST_KEYS:
             section, name = key.split(".")
             value = data[section].get(name)
-            if isinstance(value, str):
-                # 只写了一项时常写成字符串；按字符逐个匹配会让闸门静默失效
-                data[section][name] = [value]
-            elif value is not None and not isinstance(value, list):
-                raise ConfigError(f"配置项 {key} 应是列表，当前为 {value!r}")
+            if value is None:
+                continue
+            try:
+                data[section][name] = expect_list(value, f"{_CONFIG_PATH}：{key}")
+            except SchemaError as exc:
+                raise ConfigError(str(exc)) from exc
         for key, (low, kind) in _NUMBERS.items():
-            value = self.get(key)
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or (kind is int and value != int(value)):
-                raise ConfigError(f"配置项 {key} 应是{'整数' if kind is int else '数字'}，当前为 {value!r}")
-            if value < low:
-                raise ConfigError(f"配置项 {key} 不能小于 {low}，当前为 {value!r}")
-        if self.get("write.content_max") < self.get("write.content_min"):
-            raise ConfigError("配置项 write.content_max 不能小于 write.content_min")
+            try:
+                number = expect_number(self.get(key), f"{_CONFIG_PATH}：{key}", minimum=low)
+            except SchemaError as exc:
+                raise ConfigError(str(exc)) from exc
+            if kind is int and number != int(number):
+                raise ConfigError(f"{_CONFIG_PATH}：{key} 应是整数，实际是 {self.get(key)!r}")
+        content_max = float(self.get("write.content_max") or 0)
+        content_min = float(self.get("write.content_min") or 0)
+        if content_max < content_min:
+            raise ConfigError(f"{_CONFIG_PATH}：write.content_max 不能小于 write.content_min")
+        # secret_patterns 不把单个字符串升成列表：那会变成按字符匹配的一串「正则」
         patterns = self.get("write.secret_patterns") or []
         if not isinstance(patterns, list):
-            raise ConfigError("配置项 write.secret_patterns 应是正则表达式列表")
+            raise ConfigError(f"{_CONFIG_PATH}：write.secret_patterns 应是正则表达式列表")
         for pattern in patterns:
             try:
                 re.compile(str(pattern))
             except re.error as exc:
-                raise ConfigError(f"配置项 write.secret_patterns 里的 {pattern!r} 不是有效的正则：{exc}") from exc
+                raise ConfigError(
+                    f"{_CONFIG_PATH}：write.secret_patterns 里的 {pattern!r} 不是有效的正则：{exc}") from exc
 
     @classmethod
     def load(cls, root: str | Path) -> Config:
+        from pmem.core.schema import unknown_key_warnings
+
         root = Path(root).resolve()
         path = root / MEMORY_DIR / CONFIG_FILE
         try:
             raw = load_yaml(path) if path.exists() else None
         except Exception as exc:
-            raise ConfigError(f"{MEMORY_DIR}/{CONFIG_FILE} 无法解析：{exc}") from exc
+            raise ConfigError(f"{_CONFIG_PATH} 无法解析：{exc}") from exc
         if raw is not None and not isinstance(raw, dict):
-            raise ConfigError(f"{MEMORY_DIR}/{CONFIG_FILE} 的顶层应是键值对，当前为 {type(raw).__name__}")
-        return cls(root, _merge(DEFAULTS, raw or {}))
+            raise ConfigError(f"{_CONFIG_PATH} 的顶层应是键值对，当前为 {type(raw).__name__}")
+        warnings = unknown_key_warnings(raw or {}, _known_config_keys(), file_path=_CONFIG_PATH)
+        return cls(root, _merge(DEFAULTS, raw or {}), warnings=warnings)
 
     def get(self, dotted: str, default=None):
         node = self.data

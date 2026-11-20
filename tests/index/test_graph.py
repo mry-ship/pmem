@@ -46,6 +46,16 @@ def test_digest_prefers_exclusions_and_caps_each_topic():
     assert [e.id for e in digest(entries, replaced={"E1"})] == ["O2", "C1", "C2"]
 
 
+def test_digest_puts_enforced_lessons_after_open_ones():
+    entries = [
+        entry("E1", "gameplay.Jigsaw", "Ads", "不要在客户端去重", "2026-09-01", kind="exclusion",
+              enforced_by=["rules/ads.py#no_client_dedupe"]),
+        entry("E2", "gameplay.Jigsaw", "Reward", "不要回退默认奖励", "2026-09-02", kind="exclusion"),
+        entry("R1", "gameplay.Jigsaw", "Ads", "激励视频超时风险", "2026-09-03", kind="risk"),
+    ]
+    assert [e.id for e in digest(entries, limit=3)] == ["E2", "R1", "E1"]
+
+
 def test_related_modules_via_shared_code_and_mentions():
     graph = MemoryGraph([
         entry("J1", "gameplay.Jigsaw", "Reward", "拼图奖励翻倍走追广告的激励视频", "2026-10-01",

@@ -8,6 +8,8 @@ from pmem.core.schema import (
     expect_number,
     expect_one_of,
     expect_str,
+    suggest_key,
+    unknown_key_warnings,
 )
 
 
@@ -30,3 +32,15 @@ def test_expect_scalars_and_one_of():
         expect_number(0, "limit", minimum=1)
     with pytest.raises(SchemaError, match="之一"):
         expect_one_of("blok", "gate.mode", ("warn", "block", "off"))
+
+
+def test_suggest_key_and_unknown_warnings():
+    assert suggest_key("mod", ["mode", "watch"]) == "mode"
+    assert suggest_key("zzz", ["mode"]) is None
+    warnings = unknown_key_warnings(
+        {"gate": {"mod": "block"}, "extra": 1},
+        {"gate": {"mode", "watch"}, "write": {"content_min"}},
+        file_path=".memory/config.yaml",
+    )
+    assert any("不认识的键 extra" in w for w in warnings)
+    assert any("gate.mod" in w and "mode" in w for w in warnings)

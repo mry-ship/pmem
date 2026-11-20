@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from pmem.core.entry import PITFALL_KINDS, RECORD_KINDS, VISIBLE_STATUSES, Entry
+from pmem.core.facets import conflicts as when_conflicts
 from pmem.core.ids import ulid_ms
 from pmem.index.anchors import ANCHOR_CACHE, AnchorChecker, anchor_affinity
 from pmem.index.embedder import Embedder
@@ -287,6 +288,7 @@ class MemoryIndex:
         feature_limit: int | None = None,
         ancestors: list[str] | None = None,
         inherit_max: int = 2,
+        when: dict[str, list[str]] | None = None,
     ) -> SearchResult:
         """排序 = (相关度 + 加分) × 时效；相关度 = 0.6 × 语义 + 0.4 × 关键词（无语义时只用关键词）。
         path 是要改的文件（项目相对路径）：锚点就是它的记忆加分，免得只按新旧排、被模块里别的方面挤掉。
@@ -305,6 +307,9 @@ class MemoryIndex:
                 pool = matched
             elif pool:
                 result.fallback = "module"
+        if when:
+            pool = [i for i in pool if not when_conflicts(i.entry.when, when)]
+            inherited = [i for i in inherited if not when_conflicts(i.entry.when, when)]
         own_ids = {i.entry.id for i in pool}
         pool = pool + inherited
         if not pool:
@@ -444,6 +449,10 @@ def title_row(entry: Entry, problems: list[str] | None, with_module: bool) -> di
            "summary": entry.title, "stale": problems is not None}
     if entry.applies:
         row["applies"] = entry.applies
+    if entry.when:
+        row["when"] = {k: list(v) for k, v in entry.when.items()}
+    if entry.enforced_by:
+        row["enforced_by"] = list(entry.enforced_by)
     if with_module:
         row = {"module": entry.module, **row}
     if problems is not None:
@@ -469,6 +478,10 @@ def entry_row(entry: Entry, problems: list[str] | None, with_module: bool) -> di
         row["verify"] = entry.verify
     if entry.applies:
         row["applies"] = entry.applies
+    if entry.when:
+        row["when"] = {k: list(v) for k, v in entry.when.items()}
+    if entry.enforced_by:
+        row["enforced_by"] = list(entry.enforced_by)
     if entry.project_wide:
         row["scope"] = entry.scope
     if with_module:

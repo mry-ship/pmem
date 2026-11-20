@@ -7,6 +7,7 @@ import time
 
 from pmem.hooks.payload import tool_input
 from pmem.hooks.shell import VARIABLE_PATH, WILDCARD_PATH, may_change_unseen, scan
+from pmem.hooks.types import GateAttrs
 
 MAX_PENDING_SNAPSHOTS = 8
 SLOW_SNAPSHOT_SECONDS = 1.0
@@ -26,7 +27,7 @@ def needs_snapshot(command: str, base: str) -> bool:
             or may_change_unseen(command))
 
 
-class Snapshots:
+class Snapshots(GateAttrs):
     def _dirty_snapshot(self, paused_ok: bool = True) -> dict[str, list[int]] | None:
         # 大型工作副本（尤其 SVN）列未提交文件可能要好几秒；慢过一次就当天不再做，免得拖慢每条终端命令
         slow = self.config.cache_dir / SLOW_SNAPSHOT_MARK

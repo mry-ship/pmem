@@ -18,14 +18,18 @@ FEATURES_HINT = ("features 是本模块已实现的功能（feature）和未实�
                  "必须保持的行为，改动会改变这些行为时先用 ids=[...]（命令行 --id）取全文核对，不要把它们当冗余代码改回去；"
                  "规划还没实现，不是现状。")
 APPLIES_HINT = "带 applies 的记忆只在该前提下成立：先判断当前情况是否满足，不满足就不要套用。"
+WHEN_HINT = ("带 when 的记忆只在结构化条件匹配时返回：项目在 config.yaml 的 facets 声明维度；"
+             "检索可传 when 过滤明确冲突的条目；没写 when 的记忆不过滤。无法枚举的前提仍用 applies。")
+ENFORCED_HINT = ("带 enforced_by 的记忆已由工程规则保障（路径#规则名）：标题会标「已由规则拦截」；"
+                 "读码摘要里它们排在未保障教训之后，名额优先给仍需靠记忆防的坑；规则文件改了会标需核实。")
 INHERITED_HINT = ("标 inherited 的教训来自上级模块（module 字段），对本模块同样成立；"
                   "children 是下级模块、记忆条数和各自最新几条记忆的标题（latest，含更下级，教训和功能记录都有）；"
                   "问整体情况时先看这些标题，涉及某个下级的细节或标题不够判断时再按它检索。")
 # seen_hint 很短且告诉终端用户怎么取全文（终端看不到工具说明），每次都给
-_ONCE_HINTS = ("features_hint", "applies_hint", "verify_hint", "inherited_hint")
+_ONCE_HINTS = ("features_hint", "applies_hint", "when_hint", "verify_hint", "inherited_hint", "enforced_hint")
 _HINT_MARK = "hint:"
 _KEPT_ON_COLLAPSE = ("module", "id", "entity", "kind", "date", "stale", "check", "status", "scope", "applies",
-                     "inherited")
+                     "when", "enforced_by", "inherited")
 
 
 class SearchOps(ServiceBase):
@@ -42,6 +46,7 @@ class SearchOps(ServiceBase):
         as_of: str | None = None,
         full: bool = False,
         ids: list[str] | None = None,
+        when: dict | None = None,
     ) -> dict:
         started = time.perf_counter()
         keep = None
@@ -57,8 +62,8 @@ class SearchOps(ServiceBase):
                     if shown:
                         keep = max(1, min(int(limit or self.config.get("search.limit")), MAX_LIMIT))
                         fetch_limit = min(MAX_LIMIT, keep * 2)
-                response = self._search(module, path, entity, query, fetch_limit, valid_date(as_of))
-        except ValueError as exc:  # 含 RegistryError
+                response = self._search(module, path, entity, query, fetch_limit, valid_date(as_of), when=when)
+        except ValueError as exc:  # 含 RegistryError、FacetError
             response = fail(str(exc))
         conversation = source_conversation or self._claim_conversation(response)
         if response.get("ok") and path and not ids:
@@ -167,9 +172,15 @@ class SearchOps(ServiceBase):
             response["verify_hint"] = VERIFY_HINT
         return response
 
-    def _search(self, module, path, entity, query, limit, as_of=None) -> dict:
+    def _search(self, module, path, entity, query, limit, as_of=None, when=None) -> dict:
+        from pmem.core.facets import FacetError, normalize_when
+
         limit = max(1, min(int(limit or self.config.get("search.limit")), MAX_LIMIT))
         response: dict = {"ok": True}
+        try:
+            when = normalize_when(when, self.config.facets, required=True) if when else {}
+        except FacetError as exc:
+            raise ValueError(str(exc)) from exc
         module_id: str | None = None
         if path:
             match = self.registry.module_for_path(self._relative(path))
@@ -204,6 +215,7 @@ class SearchOps(ServiceBase):
             feature_limit=max(0, int(self.config.get("search.feature_limit", 3))),
             ancestors=ancestors,
             inherit_max=max(0, int(self.config.get("search.inherit_max", 2))),
+            when=when or None,
         )
         response.update({"module": module_id, "items": result.items})
         children = self._children_rows(module_id, stats, as_of) if module_id else []
@@ -216,6 +228,10 @@ class SearchOps(ServiceBase):
             response["features_hint"] = FEATURES_HINT
         if any(i.get("applies") for i in result.items + result.features):
             response["applies_hint"] = APPLIES_HINT
+        if when or any(i.get("when") for i in result.items + result.features):
+            response["when_hint"] = WHEN_HINT
+        if any(i.get("enforced_by") for i in result.items + result.features):
+            response["enforced_hint"] = ENFORCED_HINT
         if as_of:
             response["as_of"] = as_of
         if result.expanded:

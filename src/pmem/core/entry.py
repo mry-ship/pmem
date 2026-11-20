@@ -22,7 +22,7 @@ SUMMARY_MAX = 60
 _FRONT_MATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
 KNOWN_KEYS = frozenset({"id", "module", "entity", "kind", "status", "supersedes", "anchors", "revision", "author",
                         "note_date", "aliases", "verified", "verified_at", "archived", "source",
-                        "summary", "scope", "verify", "applies", "reverted"})
+                        "summary", "scope", "verify", "applies", "when", "enforced_by", "reverted"})
 # 正文开头常自带“决定：”“更正（2026-10-19）：”，和类型标签放在一起就成了“决定：决定：”
 _KIND_PREFIX = re.compile(
     r"^\s*(?:决定|结论|更正|排除项?|风险|根因|原因|注意|背景|现象|问题|坑|功能|规划|需求)(?:\s*[（(][^）)]{0,40}[）)])?\s*[：:]\s*"
@@ -54,6 +54,8 @@ def _line(value) -> str:
 
 def _str_list(meta: dict, key: str) -> list[str]:
     """手改的 YAML 头里列表字段常写成单个值（supersedes: 01JA…）：按一项处理；写成字典等其他类型报 ValueError。"""
+    from pmem.core.schema import SchemaError
+
     value = meta.get(key)
     if value is None or value == "":
         return []
@@ -62,8 +64,7 @@ def _str_list(meta: dict, key: str) -> list[str]:
         return [line] if line else []
     if isinstance(value, list):
         return [line for x in value if x is not None and not isinstance(x, (dict, list)) and (line := _line(x))]
-    raise ValueError(f"YAML 头的 {key} 应是列表")
-
+    raise SchemaError(f"YAML 头的 {key}", f"应是列表（或单个字符串），实际是 {type(value).__name__}")
 
 @dataclass
 class Entry:
@@ -92,6 +93,10 @@ class Entry:
     verify: str | None = None
     # 这条记忆成立的前提（平台、配置、版本、场景）：前提不满足时不适用
     applies: str | None = None
+    # 结构化适用条件（需项目声明 facets）：{维度: [取值]}；与 applies 互补
+    when: dict = field(default_factory=dict)
+    # 已由工程规则保障：路径#规则名，写法同 anchors；规则文件改了会标需核实
+    enforced_by: list[str] = field(default_factory=list)
     # 合并（替代）被撤销的日期与操作人：撤销后这条归档，且不再隐藏它替代过的记忆
     reverted_on: str | None = None
     reverted_by: str | None = None
@@ -106,6 +111,10 @@ class Entry:
     @property
     def project_wide(self) -> bool:
         return self.scope == "project"
+
+    @property
+    def enforced(self) -> bool:
+        return bool(self.enforced_by)
 
     @property
     def checked_date(self) -> str:
@@ -151,6 +160,10 @@ class Entry:
             meta["verify"] = self.verify
         if self.applies:
             meta["applies"] = self.applies
+        if self.when:
+            meta["when"] = {k: (v[0] if len(v) == 1 else list(v)) for k, v in self.when.items()}
+        if self.enforced_by:
+            meta["enforced_by"] = list(self.enforced_by)
         if self.aliases:
             meta["aliases"] = list(self.aliases)
         if self.verified:
@@ -173,6 +186,8 @@ class Entry:
 
     @classmethod
     def from_markdown(cls, text: str) -> Entry:
+        from pmem.core.schema import SchemaError, expect_mapping
+
         match = _FRONT_MATTER.match(text)
         if not match:
             raise ValueError("记忆文件缺少 YAML 头（以 --- 开始和结束）")
@@ -182,15 +197,21 @@ class Entry:
             meta = yaml.safe_load(match.group(1)) or {}
         except yaml.YAMLError as exc:
             raise ValueError(f"YAML 头写错了：{exc}") from exc
-        if not isinstance(meta, dict):
-            raise ValueError("YAML 头不是键值对")  # noqa: TRY004  调用方按 ValueError 统一处理文件格式错误
+        try:
+            meta = expect_mapping(meta, "YAML 头")
+        except SchemaError as exc:
+            raise ValueError(str(exc)) from exc  # noqa: TRY004  调用方按 ValueError 统一处理文件格式错误
         missing = [k for k in ("id", "module", "entity", "kind", "note_date") if not meta.get(k)]
         if missing:
             raise ValueError(f"YAML 头缺少 {'、'.join(missing)}")
-        source = meta.get("source") if isinstance(meta.get("source"), dict) else {}
-        archived = meta.get("archived") if isinstance(meta.get("archived"), dict) else {}
+        # when 结构不对时 parse_when_loose 返回空；若写了非对象则明确报错
+        if meta.get("when") not in (None, "", {}) and not isinstance(meta.get("when"), dict):
+            raise SchemaError("YAML 头的 when", f"应是键值对，实际是 {type(meta.get('when')).__name__}")
+        raw_source, raw_archived, raw_reverted = meta.get("source"), meta.get("archived"), meta.get("reverted")
+        source = raw_source if isinstance(raw_source, dict) else {}
+        archived = raw_archived if isinstance(raw_archived, dict) else {}
+        reverted = raw_reverted if isinstance(raw_reverted, dict) else {}
         restored = str(archived.get("from") or "")
-        reverted = meta.get("reverted") if isinstance(meta.get("reverted"), dict) else {}
         return cls(
             id=str(meta["id"]),
             module=_line(meta["module"]),
@@ -214,7 +235,15 @@ class Entry:
             scope=_text(meta.get("scope")),
             verify=str(meta["verify"]).strip() or None if meta.get("verify") else None,
             applies=_text(meta.get("applies")),
+            when=_parse_when(meta.get("when")),
+            enforced_by=_str_list(meta, "enforced_by"),
             reverted_on=str(reverted["on"]) if reverted.get("on") else None,
             reverted_by=str(reverted["by"]) if reverted.get("by") else None,
             extra={k: v for k, v in meta.items() if k not in KNOWN_KEYS},
         )
+
+
+def _parse_when(raw) -> dict:
+    from pmem.core.facets import parse_when_loose
+
+    return parse_when_loose(raw)

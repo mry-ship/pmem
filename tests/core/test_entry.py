@@ -49,6 +49,19 @@ def test_optional_fields_default_to_empty():
     assert parsed.supersedes == []
     assert parsed.anchors == []
     assert parsed.source_conversation is None
+    assert parsed.enforced_by == []
+    assert parsed.enforced is False
+
+
+def test_enforced_by_round_trips_and_marks_summary_line():
+    from pmem.hooks.memories import MemoryView
+
+    entry = make_entry(enforced_by=["tests/rules/reward.py#no_default_grant"])
+    parsed = Entry.from_markdown(entry.to_markdown())
+    assert parsed.enforced_by == ["tests/rules/reward.py#no_default_grant"]
+    assert parsed.enforced is True
+    line = MemoryView._lines([parsed], {}, "")[0]
+    assert "（已由规则拦截）" in line
 
 
 def test_invalid_kind_is_rejected():

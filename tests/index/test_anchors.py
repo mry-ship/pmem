@@ -114,6 +114,22 @@ def _entry(entry_id: str, anchor: str) -> Entry:
                  author="a", anchors=[anchor])
 
 
+def test_enforced_by_rule_file_change_marks_stale(git_repo):
+    rule = git_repo / "rules" / "reward.py"
+    rule.parent.mkdir(parents=True)
+    rule.write_text("def no_default_grant():\n    return True\n", encoding="utf-8")
+    _commit(git_repo, "rule", "2026-09-01")
+    entry = Entry(id="R1", module="m.M", entity="E", kind="feature", content="x" * 30,
+                  note_date="2026-09-05", author="a",
+                  enforced_by=["rules/reward.py#no_default_grant"])
+    assert "R1" not in AnchorChecker(git_repo, detect_vcs(git_repo)).check([entry], {})
+    rule.write_text("def no_default_grant():\n    return False\n", encoding="utf-8")
+    _commit(git_repo, "tighten", "2026-09-10")
+    # 换新 Checker：同实例的 changed_since 短缓存会沿用改前的空结果
+    problems = AnchorChecker(git_repo, detect_vcs(git_repo)).check([entry], {})
+    assert problems["R1"] == ["规则文件 rules/reward.py 于 2026-09-10 改过"]
+
+
 def test_only_the_changed_function_makes_a_memory_stale(git_repo):
     code = git_repo / "calc.py"
     code.write_text(PY, encoding="utf-8")

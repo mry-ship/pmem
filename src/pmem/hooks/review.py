@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pmem.hooks.payload import last_user_text, tool_paths, turn_tool_paths
+from pmem.hooks.types import GateAttrs
 from pmem.index.graph import current_entries, digest
 
 VIEW_TOOLS = {"read", "grep", "glob", "semanticsearch", "codebase_search"}
@@ -11,7 +12,7 @@ MAX_SEARCH_DIGESTS = 2
 MAX_REVIEW_MODULES = 3
 
 
-class Review:
+class Review(GateAttrs):
     # 提问审查：让 Agent 在回答、修改之前看到相关模块的记忆
 
     def _reviews_on(self, setting: str) -> bool:

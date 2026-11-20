@@ -14,6 +14,7 @@ from pmem.core.fileio import write_atomic
 from pmem.core.registry import RegistryError, ancestor_modules
 from pmem.index.anchors import ANCHOR_CACHE, STALE_LABEL, AnchorChecker
 from pmem.index.graph import current_entries, load_replaced_ids, project_pitfalls
+from pmem.hooks.types import GateAttrs
 from pmem.metrics.events import log_event
 
 GLOB_FLAGS = wglob.GLOBSTAR | wglob.BRACE | wglob.DOTGLOB | wglob.FORCEUNIX | wglob.IGNORECASE
@@ -55,7 +56,7 @@ def _entries_stamp(folder: Path) -> str:
     return f"{count}:{latest}:{total}"
 
 
-class MemoryView:
+class MemoryView(GateAttrs):
     # 路径与模块
 
     def relative(self, path: str, base: str | None = None) -> str | None:
@@ -134,7 +135,7 @@ class MemoryView:
         lessons = [(n, e) for n, a in enumerate(ancestor_modules(module))
                    for e in current_entries(self.module_entries(a), hidden) if e.kind not in RECORD_KINDS]
         pitfalls = sorted(((n, e) for n, e in lessons if e.kind in PITFALL_KINDS),
-                          key=lambda t: (t[0], PITFALL_KINDS.index(t[1].kind)))
+                          key=lambda t: (t[1].enforced, t[0], PITFALL_KINDS.index(t[1].kind)))
         pitfalls = [e for _, e in pitfalls]
         return pitfalls[:MAX_INHERITED_PITFALLS], len(lessons)
 
@@ -244,7 +245,8 @@ class MemoryView:
             upper = own is not None and module.lower() != own.lower() and not e.project_wide
             where = f"{module}/" if e.project_wide else (f"上级 {module}/" if upper else "")
             kind = KIND_LABELS.get(e.kind, " ".join(str(e.kind).split()))
-            lines.append(f"- {kind}{seed}｜{where}{entity}｜{' '.join(str(e.note_date).split())}"
+            enforced = "（已由规则拦截）" if e.enforced else ""
+            lines.append(f"- {kind}{seed}{enforced}｜{where}{entity}｜{' '.join(str(e.note_date).split())}"
                          f"{marks.get(e.id, '')}：{' '.join(str(e.title).split())}")
         if footer:
             lines.append(footer)

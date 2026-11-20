@@ -1,10 +1,15 @@
 # pmem v0.7 类型安全与规则化设计
 
-日期：2026-10-21　状态：进行中（2026-10-27 开工；进度见 [Issue #15](https://github.com/mry-ship/pmem/issues/15)）
+日期：2026-10-21　状态：已完成（2026-11-20 发 0.7.0；进度见 [Issue #15](https://github.com/mry-ship/pmem/issues/15)）
 
 2026-10-23 起版本号为 v0.7。v0.6 改为模块规格，见 `2026-10-23-pmem-module-spec-design.md`。下文范围不变。
 
-开工记录：已落下 `src/pmem/core/schema.py` 基础校验（SchemaError 与 expect_*）；下一刀按 §5 阶段 1 做健康报告「可以写成规则的教训」与 `enforced_by`。
+开工记录：已落下 `src/pmem/core/schema.py` 基础校验（SchemaError 与 expect_*）。
+2026-11-20：§5 阶段 1（3.1、3.2）已落地——`enforced_by` 字段、过期核对、health「可以写成规则的教训」、摘要/拦截已由规则保障排后并标注。
+2026-11-20：§5 阶段 3（3.3）已落地——`config.facets`、记忆 `when`、写入校验、`search`/`record`/`CLI`/`MCP` 全链路过滤。
+2026-11-20：§5 阶段 2 的边界校验（3.4）已落地——`schema` 相近键提示；config/modules 未知键警告进 doctor；记忆头类型错误带路径；Hook 字段类型不对记 hook_error 并放行。
+2026-11-20：§5 阶段 4（3.5、3.6）已落地——`service/contracts.py` TypedDict + 契约测试；Hook `GateAttrs`；core/index/service/catalog 的 pyright 基础模式纳入 `tests/test_pyright.py`。
+2026-11-20：安装包 **0.7.0** 发布，设计范围内功能齐备。
 
 ## 1. 背景与目标
 

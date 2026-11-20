@@ -97,6 +97,32 @@ def test_health_lists_problems_for_owners(project, capsys):
     assert "pmem 健康报告" in capsys.readouterr().out
 
 
+def test_health_lists_rule_candidates_and_skips_enforced_topics(project):
+    body = TEXT + "再补一条足够长的正文，方便三条防错类都过字数下限。"
+    service = MemoryService(project)
+    try:
+        assert service.record("gameplay.Jigsaw", "Reward", "exclusion", "排除：" + body,
+                              anchors=["src/Jigsaw/Reward.cs#Grant"])["ok"]
+        assert service.record("gameplay.Jigsaw", "Reward", "risk", "风险：" + body,
+                              anchors=["src/Jigsaw/Reward.cs#Grant"])["ok"]
+        assert service.record("gameplay.Jigsaw", "Reward", "correction", "更正：" + body,
+                              anchors=["src/Jigsaw/Reward.cs#Grant"])["ok"]
+        assert service.record("gameplay.Jigsaw", "Flow", "exclusion", "排除：" + body,
+                              anchors=["src/Jigsaw/Reward.cs"],
+                              enforced_by=["tests/rules/flow.py#check"])["ok"]
+        assert service.record("gameplay.Jigsaw", "Flow", "risk", "风险：" + body)["ok"]
+        assert service.record("gameplay.Jigsaw", "Flow", "correction", "更正：" + body)["ok"]
+    finally:
+        service.close()
+    h = build_health(project)
+    topics = {(r["module"], r["entity"]) for r in h["rule_candidates"]}
+    assert ("gameplay.Jigsaw", "Reward") in topics
+    assert ("gameplay.Jigsaw", "Flow") not in topics
+    reward = next(r for r in h["rule_candidates"] if r["entity"] == "Reward")
+    assert "现行防错类 3 条" in reward["why"]
+    assert "可以写成规则的教训" in render(h)
+
+
 def test_health_lists_hot_returns_when_enough_searches(project, monkeypatch):
     from pmem.core.config import Config
     from pmem.metrics.events import MIN_SEARCHES_FOR_IDLE, log_event

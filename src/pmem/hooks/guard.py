@@ -8,13 +8,14 @@ import re
 from pmem.core.entry import PITFALL_KINDS
 from pmem.hooks.memories import DIGEST_MATERIAL
 from pmem.hooks.shell import WILDCARD_PATH
+from pmem.hooks.types import GateAttrs
 from pmem.index.graph import current_entries, file_features
 
 MAX_GUARD_PITFALLS = 5
 MAX_GLOB_TARGETS = 200
 
 
-class Guard:
+class Guard(GateAttrs):
     def _guard(self, rel: str | None, searched_here: set[str] = frozenset()) -> dict | None:
         """终端命令的写入目标。编辑工具给的是字面路径，直接用 _guard_path。"""
         if rel is not None and WILDCARD_PATH.search(rel) and not (self.root / rel).exists():
@@ -81,7 +82,7 @@ class Guard:
         entries = self.module_entries(module)
         hidden = self.replaced_ids()
         pitfalls = sorted((e for e in current_entries(entries, hidden) if e.kind in PITFALL_KINDS),
-                          key=lambda e: PITFALL_KINDS.index(e.kind))
+                          key=lambda e: (e.enforced, PITFALL_KINDS.index(e.kind)))
         shown = pitfalls[:MAX_GUARD_PITFALLS]
         inherited, _ = self.ancestor_pitfalls(module)
         features = file_features(entries, rel, replaced=hidden) if rel else []

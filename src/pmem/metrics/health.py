@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pmem.catalog.coverage import coverage_report
 from pmem.catalog.migrate import MigrateError, stray_moves
-from pmem.core.entry import KIND_LABELS, RECORD_KINDS
+from pmem.core.entry import KIND_LABELS, PITFALL_KINDS, RECORD_KINDS
 from pmem.core.ids import ulid_ms
 from pmem.core.quality import similar_entity_pairs
 from pmem.core.registry import MAX_MODULE_DEPTH, RegistryError, is_descendant, is_lineage, parent_module
@@ -45,6 +45,7 @@ REJECT_CODES = {
     "kind_invalid": "类型不对",
     "status_invalid": "状态不对",
     "scope_invalid": "适用范围不对",
+    "when_invalid": "结构化适用条件不对",
     "supersede_cycle": "替代关系成环",
     "supersede_cross_module": "替代了别的模块的记忆",
     "entity_invalid": "议题名不对（多行或过长）",
@@ -211,6 +212,65 @@ def _repeat_corrections(entries: list, since: float) -> list[tuple[str, str, int
     return sorted(rows, key=lambda r: (-r[2], r[0], r[1]))[:TOP]
 
 
+def _rule_shape(anchors: list[str]) -> str:
+    """按关联代码路径猜建议的规则形态（只提示，不生成规则代码）。"""
+    joined = " ".join(a.lower().replace("\\", "/") for a in anchors)
+    if any(p in joined for p in (".py", "/skills/", ".cursor/skills")):
+        if "/skills/" in joined or ".cursor/skills" in joined:
+            return "技能脚本里的参数和输出校验（Pydantic、Zod）"
+        return "ruff 自定义规则、类型标注收紧、断言"
+    if any(joined.endswith(ext) or f"{ext}#" in joined or f"{ext}/" in joined
+           for ext in (".ts", ".tsx", ".js", ".jsx")) or ".ts#" in joined or ".js#" in joined:
+        return "ESLint 规则、TypeScript 类型"
+    if ".cs" in joined:
+        return "Roslyn 分析器、[Obsolete]、编辑器校验"
+    return "检查清单、提交前脚本"
+
+
+def _rule_candidates(visible: list, searches: list[dict], rule_min: int, rule_searches: int,
+                     repeat: list[tuple[str, str, int]]) -> list[dict]:
+    """可以写成规则的教训：同议题现行防错类够多，或反复更正且该议题常被检索；已有 enforced_by 的议题跳过。"""
+    groups: dict[tuple[str, str], list] = defaultdict(list)
+    for e in visible:
+        if e.kind in PITFALL_KINDS:
+            groups[(e.module, e.entity)].append(e)
+    enforced_topics = {(e.module.lower(), e.entity.lower()) for e in visible if e.enforced}
+    search_hits: Counter = Counter()
+    for event in searches:
+        module = event.get("module") or ""
+        entity = event.get("entity") or ""
+        if module and entity:
+            search_hits[(module, entity)] += 1
+    repeat_set = {(m, ent) for m, ent, _ in repeat}
+    rows = []
+    for (module, entity), items in groups.items():
+        if (module.lower(), entity.lower()) in enforced_topics:
+            continue
+        hits = search_hits.get((module, entity), 0)
+        many = len(items) >= rule_min
+        repeated = (module, entity) in repeat_set and hits >= rule_searches
+        if not many and not repeated:
+            continue
+        anchors = list(dict.fromkeys(a for e in items for a in e.anchors))
+        titles = [e.title for e in sorted(items, key=lambda x: x.note_date, reverse=True)[:5]]
+        why = []
+        if many:
+            why.append(f"现行防错类 {len(items)} 条")
+        if repeated:
+            why.append(f"反复更正且检索 {hits} 次")
+        rows.append({
+            "module": module,
+            "entity": entity,
+            "count": len(items),
+            "searches": hits,
+            "titles": titles,
+            "suggest": _rule_shape(anchors),
+            "why": "；".join(why),
+        })
+    rows.sort(key=lambda r: (-r["count"], -r["searches"], r["module"], r["entity"]))
+    return rows[:TOP]
+
+
 def _cross_module_supersedes(entries: list, visible: set[str]) -> list[dict]:
     """现行记忆替代了别的模块的记忆：被替代的那条从原模块的检索里消失，查原模块看不到新结论。
     写入时已经拒绝，这里列出规则之前写下的，以及之后被 migrate move 搬到别处的。"""
@@ -268,12 +328,15 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
             strays, stray_problem = [], str(exc)
         unmapped = coverage_report(service.root, registry)["unmapped"]
         user = service.user
+        rule_min = int(service.config.get("health.rule_min"))
+        rule_searches = int(service.config.get("health.rule_searches"))
+        project_root = service.root
     finally:
         service.close()
     searches_total = sum(1 for e in events if e["type"] == "search" and e.get("ok"))
     used = {i for e in events if e["type"] in ("search", "mcp_search") for i in e.get("ids") or []}
     used.update(i for e in events if e["type"] == "stop" for i in e.get("returned") or [])
-    cleanup = cleanup_candidates(service.root, registry, all_entries,
+    cleanup = cleanup_candidates(project_root, registry, all_entries,
                                  used if searches_total >= MIN_SEARCHES_FOR_IDLE else None)
 
     registered = [mid for mid, m in registry.modules.items() if not m.merged_into]
@@ -287,7 +350,7 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
             "module": mid, "memories": n, "candidate": mid in registry.candidates,
             "similar": difflib.get_close_matches(mid, registered, n=2, cutoff=0.6),
         })
-    promotion_hints(service.root, registry, visible, unregistered)
+    promotion_hints(project_root, registry, visible, unregistered)
 
     searches = [e for e in events if e["type"] == "search" and e.get("ok")]
     searched = {e.get("module") for e in events if e["type"] in SEARCH_EVENTS}
@@ -301,6 +364,7 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
     entities: dict[str, list[str]] = defaultdict(list)
     for e in visible:
         entities[e.module].append(e.entity)
+    repeat = _repeat_corrections(all_entries, since)
 
     return {
         "days": days,
@@ -317,7 +381,8 @@ def build_health(root: Path, days: int = 60, now: float | None = None) -> dict:
         "stale": {"total": len(stale), "by_module": stale_by_module.most_common(TOP),
                   "ids": sorted(stale)[:TOP]},
         "contradictions": _contradictions(visible),
-        "repeat_corrections": _repeat_corrections(all_entries, since),
+        "repeat_corrections": repeat,
+        "rule_candidates": _rule_candidates(visible, searches, rule_min, rule_searches, repeat),
         "cross_supersedes": _cross_module_supersedes(all_entries, {e.id for e in visible}),
         "skipped_records": _skipped(events, all_entries, user, since),
         "cleanup": cleanup,
@@ -375,6 +440,12 @@ def render(h: dict) -> str:
             [f"{m} / {e}：{n} 条更正" for m, e, n in h.get("repeat_corrections") or []],
             "用 pmem graph --module <模块> --entity <议题> 看演变：缺排除项或风险就补一条（全项目都会踩的加 scope: project），"
             "零碎的按 pmem-compact 合并成一条现状")
+    section("可以写成规则的教训（机械检查可拦，别只靠记忆提醒）",
+            [f"{r['module']} / {r['entity']}：{r['why']}；建议 {r['suggest']}；"
+             f"近例：{' / '.join(r['titles'][:3])}"
+             for r in h.get("rule_candidates") or []],
+            "和负责人确认后写成静态规则/类型校验/测试，再写一条 feature："
+            "enforced_by 填 规则文件#规则名，supersedes 填被替代的教训；之后摘要里会标「已由规则拦截」并靠后排")
     section("替代了别的模块的记忆（原模块查不到新结论）",
             [f"{c['module']} 的 {c['id']} 替代了 {c['replaced_module']} 的 {c['replaced']}"
              for c in h.get("cross_supersedes") or []][:TOP],

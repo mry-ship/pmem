@@ -38,6 +38,25 @@ def test_invalid_gate_mode_is_rejected(tmp_path):
         Config.load(tmp_path)
 
 
+def test_unknown_config_keys_warn_with_suggestion(tmp_path):
+    write_config(tmp_path, "gate: { mode: block, mod: warn }\nweird: 1\n")
+    cfg = Config.load(tmp_path)
+    assert cfg.get("gate.mode") == "block"
+    joined = "\n".join(cfg.warnings)
+    assert "gate.mod" in joined and "mode" in joined
+    assert "weird" in joined
+
+
+def test_too_many_facets_warns(tmp_path):
+    write_config(
+        tmp_path,
+        "facets:\n  a: [1]\n  b: [1]\n  c: [1]\n  d: [1]\n  e: [1]\n",
+    )
+    cfg = Config.load(tmp_path)
+    assert len(cfg.facets) == 5
+    assert any("不超过 4" in w for w in cfg.warnings)
+
+
 @pytest.mark.parametrize("text, problem", [
     ("vcs: [unclosed\n", "无法解析"),
     ("- a\n- b\n", "顶层应是键值对"),

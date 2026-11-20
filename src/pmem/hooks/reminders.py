@@ -9,6 +9,7 @@ from wcmatch import glob as wglob
 from pmem.core import seen
 from pmem.hooks.memories import GLOB_FLAGS
 from pmem.hooks.payload import turn_reply_text
+from pmem.hooks.types import GateAttrs
 
 # 【pmem修改】【pmem查询】等，也认旧写法【pmem】
 PMEM_LINE = re.compile(r"【pmem[^】]{0,6}】")
@@ -27,7 +28,7 @@ def _segment_plain(segment: str) -> str:
     return re.sub(r"「[^」]*」", "", segment)
 
 
-class Reminders:
+class Reminders(GateAttrs):
     def _written(self) -> set[str]:
         modules = {key.split("|", 1)[0] for key in self.state.data["written"]}
         modules.update(self.state.data["cli_recorded"])

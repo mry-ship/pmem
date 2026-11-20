@@ -75,6 +75,8 @@ def build_parser():
     p.add_argument("--full", action="store_true", help="本对话已返回过的记忆也给全文（默认只列标题）")
     p.add_argument("--id", dest="ids", action="extend", nargs="+", default=None,
                    help="按 id 取全文（功能记录只列标题时用），给了就忽略其他条件")
+    p.add_argument("--when", action="extend", nargs="*", default=None,
+                   help="结构化过滤：platform=android 或 JSON；需 config facets")
     p.add_argument("--brief", action="store_true", help=BRIEF_HELP)
     p.add_argument("--root", default=".")
 
@@ -124,6 +126,10 @@ def build_parser():
     p.add_argument("--summary", default="", help="一句话标题（60 字以内）；不写时取正文第一句")
     p.add_argument("--verify", default="", help="怎么确认问题已解决或结论仍成立：命令、测试名、现象")
     p.add_argument("--applies", default="", help="这条在什么前提下成立：平台、配置、版本、场景（120 字以内）")
+    p.add_argument("--enforced-by", action="extend", nargs="*", default=None,
+                   help="已由工程规则保障，写成 路径#规则名" + keep)
+    p.add_argument("--when", action="extend", nargs="*", default=None,
+                   help="结构化适用条件：platform=android 或 JSON；需 config facets" + keep)
     p.add_argument("--scope", default="", choices=("", "module", "project"),
                    help="project：全项目都会踩的坑，任何模块的摘要都带上；默认只属于本模块")
     p.add_argument("--draft-id", default="", help="上次写入返回的 draft_id：同一任务再次写入时覆盖那一条")
@@ -546,6 +552,33 @@ def _read_content_file(path: str) -> str:
         raise _InputError(f"--content-file {path} 不是 UTF-8 编码，请另存为 UTF-8 后重试") from exc
 
 
+def _parse_when_arg(values: list[str] | None) -> dict | None:
+    """--when 未传 → None（覆盖草稿沿用）；只写参数名 → {} 清空；platform=android 或 JSON。"""
+    if values is None:
+        return None
+    if not values:
+        return {}
+    import json
+
+    if len(values) == 1 and values[0].lstrip().startswith("{"):
+        try:
+            data = json.loads(values[0])
+        except json.JSONDecodeError as exc:
+            raise SystemExit(f"--when JSON 无效：{exc}") from exc
+        if not isinstance(data, dict):
+            raise SystemExit("--when JSON 须是对象")
+        return data
+    out: dict[str, list[str] | str] = {}
+    for item in values:
+        key, sep, rest = item.partition("=")
+        key = key.strip()
+        if not sep or not key:
+            raise SystemExit(f"--when 须写成 维度=取值[,取值] 或 JSON，收到 {item!r}")
+        parts = [p.strip() for p in rest.split(",") if p.strip()]
+        out[key] = parts[0] if len(parts) == 1 else parts
+    return out
+
+
 def _record_content(args) -> str:
     if args.content_file:
         return _read_content_file(args.content_file)
@@ -561,13 +594,15 @@ SERVICE_COMMANDS = {
     "record": lambda s, a: s.record(a.module, a.entity, a.kind, _record_content(a), a.supersedes, a.anchor,
                                     a.draft_id or None, aliases=a.alias, status="seed" if a.seed else None,
                                     summary=a.summary or None, scope=a.scope or None, verify=a.verify or None,
-                                    applies=a.applies or None),
+                                    applies=a.applies or None, enforced_by=a.enforced_by,
+                                    when=_parse_when_arg(a.when)),
     "archive": lambda s, a: s.change_status(a.ids, "restore" if a.restore else "archive"),
     "confirm": lambda s, a: s.confirm(a.ids),
     "graph": lambda s, a: s.graph(a.module, a.entity or None),
     "terms": lambda s, a: s.terms(a.module or None, a.top, a.min),
     "search": lambda s, a: s.search(a.module or None, a.path or None, a.entity or None, a.query or None, a.limit,
-                                    as_of=a.as_of or None, full=a.full, ids=a.ids or None),
+                                    as_of=a.as_of or None, full=a.full, ids=a.ids or None,
+                                    when=_parse_when_arg(a.when)),
 }
 
 

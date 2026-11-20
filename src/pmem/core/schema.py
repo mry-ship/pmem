@@ -1,10 +1,11 @@
-"""外部输入边界校验（v0.7 起步）：只用标准库，供 config / modules / 记忆头 / Hook 共用。
+"""外部输入边界校验（v0.7）：只用标准库，供 config / modules / 记忆头 / Hook 共用。
 
 设计见 docs/superpowers/specs/2026-10-21-pmem-typesafe-design.md §3.4。
-本模块目前提供通用报错与基础类型检查；各调用方逐步从零散 isinstance 迁过来。
+报错带字段路径；拼错的键给出相近键名提示（只警告，不拒绝）。
 """
 from __future__ import annotations
 
+import difflib
 from typing import Any
 
 
@@ -57,3 +58,63 @@ def expect_one_of(value: Any, path: str, choices: tuple[str, ...]) -> str:
     if text not in choices:
         raise SchemaError(path, f"应是 {' / '.join(choices)} 之一，实际是 {text!r}")
     return text
+
+
+def suggest_key(name: str, known: list[str] | tuple[str, ...] | set[str], *, cutoff: float = 0.6) -> str | None:
+    """拼错键时找最相近的已知键；没有足够相似的返回 None。"""
+    if not name or not known:
+        return None
+    matches = difflib.get_close_matches(str(name), [str(k) for k in known], n=1, cutoff=cutoff)
+    return matches[0] if matches else None
+
+
+def unknown_key_warnings(
+    data: Any,
+    known: dict[str, set[str] | frozenset[str] | None],
+    *,
+    file_path: str,
+    section: str | None = None,
+) -> list[str]:
+    """对照已知键表，对拼错/多余的键给出警告（不拒绝）。
+
+    known：顶层键 → 该节允许的子键集合；值为 None 表示该节不再往下检查（自由形状）。
+    section：只检查某一节时传入节名。
+    """
+    if data is None:
+        return []
+    try:
+        root = expect_mapping(data, file_path)
+    except SchemaError:
+        return []
+    warnings: list[str] = []
+    top_known = set(known)
+    if section is None:
+        for key in root:
+            if key not in top_known:
+                hint = suggest_key(str(key), top_known)
+                tip = f"，是不是 {hint}？" if hint else ""
+                warnings.append(f"{file_path}：不认识的键 {key}{tip}（已忽略）")
+        for key, child_known in known.items():
+            if child_known is None or key not in root:
+                continue
+            child = root.get(key)
+            if not isinstance(child, dict):
+                continue
+            for name in child:
+                if name not in child_known:
+                    hint = suggest_key(str(name), child_known)
+                    tip = f"，是不是 {hint}？" if hint else ""
+                    warnings.append(f"{file_path}：不认识的键 {key}.{name}{tip}（已忽略）")
+        return warnings
+    # 单节
+    if section not in root or not isinstance(root.get(section), dict):
+        return warnings
+    child_known = known.get(section)
+    if child_known is None:
+        return warnings
+    for name in root[section]:
+        if name not in child_known:
+            hint = suggest_key(str(name), child_known)
+            tip = f"，是不是 {hint}？" if hint else ""
+            warnings.append(f"{file_path}：不认识的键 {section}.{name}{tip}（已忽略）")
+    return warnings

@@ -5,7 +5,8 @@
 - search：search_memory、memory_graph、list_modules（只读）；
 - record：record_memory 的全部写入规则；
 - status：confirm、归档与恢复、种子转正与退回；
-- curation：高频词、可合并的议题分组（只读统计）。
+- curation：高频词、可合并的议题分组（只读统计）；
+- contracts：工具返回 TypedDict 与形状检查（测试用）。
 """
 from __future__ import annotations
 

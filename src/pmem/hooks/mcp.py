@@ -11,6 +11,7 @@ from pmem.core.ids import ULID_PATTERN
 from pmem.hooks.payload import tool_input
 from pmem.hooks.shell import cli_args, scan
 from pmem.hooks.snapshot import MAX_PENDING_SNAPSHOTS, command_key
+from pmem.hooks.types import GateAttrs
 
 ALLOW = {"permission": "allow"}
 PMEM_TOOLS = ("record_memory", "search_memory", "memory_graph")
@@ -81,7 +82,7 @@ def draft_key(module: str, entity: str | None, kind: str | None = None) -> str:
     return f"{key}|record" if kind in RECORD_KINDS else key
 
 
-class McpCalls:
+class McpCalls(GateAttrs):
     def _note_cli_calls(self, command: str) -> set[str]:
         """终端里的 pmem search/graph/record 与 MCP 工具等价。都先挂起，命令执行完、看得到结果才登记
         （见 _confirm_cli_calls）；返回这条命令里检索的模块。"""

@@ -107,7 +107,7 @@
 <div class="layout">
 <nav>
   <div class="brand">pmem 使用手册</div>
-  <div class="ver">v0.6.7 · 项目研发记忆</div>
+  <div class="ver">v0.7.0 · 项目研发记忆</div>
   <a href="#glance">一眼看懂</a>
   <a href="#what">pmem 是什么</a>
   <a href="#benefits">收益与适用场景</a>
@@ -219,17 +219,18 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
   <h2>收益与适用场景</h2>
   <p>固定开销、速度和检索命中是本仓库实测。少被纠正、少花时间、少用 token，测的是上一代记忆系统；pmem 自己的端到端对比还没做，那组数字只能当保守参考。</p>
 
-  <h3>当前版本 0.6.7</h3>
-  <p class="muted">本版可直接看到的效果与口径（本仓库 <code>pmem report --days 30</code>，2026-11-16）：</p>
+  <h3>当前版本 0.7.0</h3>
+  <p class="muted">本版可直接看到的效果与口径（本仓库 <code>pmem report --days 30</code>，2026-11-20）：</p>
   <table>
     <tr><th>指标</th><th>当前数字</th><th>本版相关说明</th></tr>
-    <tr><td>检索命中率</td><td><strong>99%</strong>（1220 次里 1210 次）</td><td>与上版同级；只返回前几条，开销不随记忆变多</td></tr>
-    <tr><td>记忆被采用</td><td><strong>22%</strong>（2083 条返回里 454 条）</td><td>够长 summary/title（指纹≥12）与正文取较大字面覆盖率；阈值仍 0.15。旧口径只看正文时约 <strong>13%</strong>；没有靠降阈值或按采用率改搜索排序</td></tr>
-    <tr><td>改前被拦后真去查</td><td><strong>73%</strong>（286 次里 208 次）</td><td>闸门习惯指标</td></tr>
-    <tr><td>功能记录覆盖</td><td><strong>92%</strong>（目标 ≥80%）</td><td>改过的模块多数有 feature</td></tr>
-    <tr><td>结束提醒后真去写</td><td><strong>74%</strong>（42 次里 31 次）</td><td>同上</td></tr>
-    <tr><td>防错类占比</td><td>本期新增教训里 <strong>45%</strong>（目标 ≥30%）</td><td>排除项 / 风险 / 更正</td></tr>
+    <tr><td>检索命中率</td><td><strong>98%</strong>（658 次里 645 次）</td><td>与上版同级；只返回前几条，开销不随记忆变多</td></tr>
+    <tr><td>记忆被采用</td><td><strong>16%</strong>（1616 条返回里 259 条）</td><td>够长 summary/title（指纹≥12）与正文取较大字面覆盖率；阈值仍 0.15。本期功能记录偏多，字面采用率低于 0.6.7 的 22%；没有靠降阈值或按采用率改搜索排序</td></tr>
+    <tr><td>改前被拦后真去查</td><td><strong>58%</strong>（186 次里 107 次）</td><td>闸门习惯指标；本统计窗含大量本仓自研对话</td></tr>
+    <tr><td>功能记录覆盖</td><td><strong>88%</strong>（目标 ≥80%）</td><td>改过的模块多数有 feature</td></tr>
+    <tr><td>结束提醒后真去写</td><td><strong>70%</strong>（33 次里 23 次）</td><td>同上</td></tr>
+    <tr><td>防错类占比</td><td>本期新增教训里 <strong>65%</strong>（目标 ≥30%）</td><td>排除项 / 风险 / 更正</td></tr>
     <tr><td>接入成熟度</td><td>Cursor / Claude Code / Codex</td><td>均已在<strong>真实会话</strong>验证可用</td></tr>
+    <tr><td>v0.7 能力</td><td>已发布</td><td><code>enforced_by</code>、health 规则候选、<code>facets</code>/<code>when</code>、边界校验、返回契约、pyright 基线</td></tr>
   </table>
   <p class="muted">对照实验仍见下方「v0.5 和 v0.3 比」；端到端「少被纠正 / 少耗时 / 少 token」还没在现行 pmem 上测完，请用 <code>pmem bench</code> 或继续看 <code>pmem report</code>。</p>
 
@@ -276,14 +277,14 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
     <tr><td>被用户纠正的比例</td><td><strong>下降 54%～69%</strong></td><td>—</td><td>—</td><td>同上。长对话全程不回退从 27% 到 52%</td></tr>
     <tr><td>零碎记忆合并</td><td>13 条约 2500 字收成 2 条约 1150 字</td><td>—</td><td>—</td><td>本仓库实测</td></tr>
     <tr><td>开销是否随记忆变多</td><td>853 条和几十条相近</td><td>—</td><td>—</td><td>只返回前几条，被替代的旧结论不返回</td></tr>
-    <tr><td>检索命中率</td><td>—</td><td><strong>99%</strong>（1220 次里 1210 次）</td><td><strong>99%</strong>（173 次里 172 次）</td><td><code>pmem report</code>，仅本机</td></tr>
-    <tr><td>记忆被采用</td><td>—</td><td><strong>22%</strong>（2083 条返回里 454 条；字面重合+够长标题，保守下限）</td><td>—</td><td>同上。阈值 0.15；旧正文口径约 13%；换说法复述不计</td></tr>
-    <tr><td>改前被拦后真去查</td><td>—</td><td><strong>73%</strong>（286 次里 208 次）</td><td><strong>98%</strong>（47 次里 46 次）</td><td>同上</td></tr>
-    <tr><td>功能记录覆盖</td><td>—</td><td><strong>92%</strong>（目标 ≥80%）</td><td><strong>79%</strong>（14 次改码中 11 次有 feature）</td><td>同上</td></tr>
-    <tr><td>结束提醒后真去写</td><td>—</td><td><strong>74%</strong>（42 次里 31 次）</td><td><strong>47%</strong>（19 次里 9 次）</td><td>同上</td></tr>
-    <tr><td>跨人复用</td><td>—</td><td><strong>13</strong> 次</td><td><strong>108</strong> 次</td><td>同上。用到同事写的记忆</td></tr>
+    <tr><td>检索命中率</td><td>—</td><td><strong>98%</strong>（658 次里 645 次）</td><td><strong>99%</strong>（173 次里 172 次）</td><td><code>pmem report</code>，仅本机</td></tr>
+    <tr><td>记忆被采用</td><td>—</td><td><strong>16%</strong>（1616 条返回里 259 条；字面重合+够长标题，保守下限）</td><td>—</td><td>同上。阈值 0.15；换说法复述不计</td></tr>
+    <tr><td>改前被拦后真去查</td><td>—</td><td><strong>58%</strong>（186 次里 107 次）</td><td><strong>98%</strong>（47 次里 46 次）</td><td>同上</td></tr>
+    <tr><td>功能记录覆盖</td><td>—</td><td><strong>88%</strong>（目标 ≥80%）</td><td><strong>79%</strong>（14 次改码中 11 次有 feature）</td><td>同上</td></tr>
+    <tr><td>结束提醒后真去写</td><td>—</td><td><strong>70%</strong>（33 次里 23 次）</td><td><strong>47%</strong>（19 次里 9 次）</td><td>同上</td></tr>
+    <tr><td>跨人复用</td><td>—</td><td><strong>14</strong> 次</td><td><strong>108</strong> 次</td><td>同上。用到同事写的记忆</td></tr>
   </table>
-  <p class="muted">「数字」列里带下降比例的仍是上一代口径；后两列是现行 pmem 本机使用。本仓库列为 <strong>0.6.7</strong> 口径下 2026-11-16 近 30 天报告；TileMatch 为真实业务项目（2026-10-27 报告，窗口 14 天，现行记忆 639 条）。也可用 <code>pmem bench</code> 做对照实验。</p>
+  <p class="muted">「数字」列里带下降比例的仍是上一代口径；后两列是现行 pmem 本机使用。本仓库列为 <strong>0.7.0</strong> 口径下 2026-11-20 近 30 天报告；TileMatch 为真实业务项目（2026-10-27 报告，窗口 14 天，现行记忆 639 条）。也可用 <code>pmem bench</code> 做对照实验。</p>
 
   <h3>检索有多准</h3>
   <table>
@@ -415,11 +416,13 @@ summary: 断线重连重复发奖的根因在服务端，不要在客户端去�
 verify: 断线重连后领取，服务端日志只有一次发奖
 ---
 拼图奖励在断线重连时会重复发放：服务端 Claim 接口没有按关卡做幂等校验……不要在客户端做去重。</code></pre>
-  <p>四个可选字段：</p>
+  <p>可选字段：</p>
   <ul>
     <li><code>summary</code>：一句话标题（60 字以内）。读代码摘要、拦截提示、Wiki 和同一对话里的重复检索只显示它；没填时取正文第一句并去掉“决定：”这类前缀。</li>
     <li><code>verify</code>：怎么确认问题已解决或结论仍成立（命令、测试名、现象），下次遇到同样的问题直接验证。</li>
-    <li><code>applies</code>：这条在什么前提下成立（平台、配置、版本、场景，120 字以内）。检索结果会提醒 AI 先判断前提是否满足，不满足就不套用。</li>
+    <li><code>applies</code>：自由文字前提（平台、配置、版本、场景，120 字以内）。检索结果会提醒 AI 先判断前提是否满足，不满足就不套用。能枚举的前提优先写 <code>when</code>。</li>
+    <li><code>when</code>：结构化适用条件（如 <code>platform: [android]</code>）。需在 <code>config.yaml</code> 声明 <code>facets</code>（枚举列表或 <code>str</code>）；写入按声明校验，检索带同维度条件时排除明确冲突的条目，没写 <code>when</code> 的仍返回。未声明 <code>facets</code> 时不可用。</li>
+    <li><code>enforced_by</code>：已由工程规则保障（路径#规则名，写法同 anchors）。规则文件改了会标需核实；摘要标「已由规则拦截」并靠后排，名额优先给仍需靠记忆防的坑。<code>pmem health</code> 会列出可写成规则的教训议题。</li>
     <li><code>scope: project</code>：全项目都会踩的坑（编码、环境、跨模块约定）。读任何模块的代码时，都会附上本对话还没给过的至多 3 条全项目级排除项、风险、更正，Wiki 首页单列“全项目通用”。</li>
   </ul>
   <p class="muted">旧版 pmem 读写带这些字段的文件不会丢字段；但 <code>feature</code>、<code>plan</code> 两种类型需要新版本才认得，旧版会跳过这类文件，团队请一起升级。</p>
@@ -592,13 +595,13 @@ git commit -m "接入 pmem"</code></pre>
   <p>MCP（Model Context Protocol，AI 调用外部工具的协议）服务由 <code>pmem serve</code> 提供，Agent 通过下面 5 个工具读写记忆。服务自带看门狗：崩溃、卡死（单次调用超过 <code>server.request_timeout</code>，默认 120 秒）或 pmem 升级后自动重启并重新握手，Cursor 不用手动重连；当时正在进行的调用会返回错误，重试即可。</p>
   <table>
     <tr><th>工具</th><th>用途</th><th>主要参数</th></tr>
-    <tr><td><code>search_memory</code></td><td>检索记忆。改代码前按文件或模块查一次</td><td><code>path</code> 或 <code>module</code>；可选 <code>entity</code>、<code>query</code>、<code>limit</code>（默认 5，上限 10）、<code>as_of</code>（按某天视角查）、<code>full</code>（本对话给过的也返回全文）、<code>ids</code>（按 id 取全文，给了就忽略其他条件）</td></tr>
-    <tr><td><code>record_memory</code></td><td>写入一条记忆</td><td><code>module</code>、<code>entity</code>、<code>kind</code>、<code>content</code>；可选 <code>summary</code>、<code>verify</code>、<code>applies</code>、<code>scope</code>、<code>supersedes</code>、<code>anchors</code>、<code>aliases</code>、<code>draft_id</code></td></tr>
+    <tr><td><code>search_memory</code></td><td>检索记忆。改代码前按文件或模块查一次</td><td><code>path</code> 或 <code>module</code>；可选 <code>entity</code>、<code>query</code>、<code>limit</code>（默认 5，上限 10）、<code>as_of</code>（按某天视角查）、<code>full</code>（本对话给过的也返回全文）、<code>ids</code>（按 id 取全文，给了就忽略其他条件）、<code>when</code>（结构化条件过滤，需 config facets）</td></tr>
+    <tr><td><code>record_memory</code></td><td>写入一条记忆</td><td><code>module</code>、<code>entity</code>、<code>kind</code>、<code>content</code>；可选 <code>summary</code>、<code>verify</code>、<code>applies</code>、<code>when</code>、<code>enforced_by</code>、<code>scope</code>、<code>supersedes</code>、<code>anchors</code>、<code>aliases</code>、<code>draft_id</code></td></tr>
     <tr><td><code>confirm_memory</code></td><td>核对后确认仍然成立，刷新核对日期</td><td><code>ids</code></td></tr>
     <tr><td><code>memory_graph</code></td><td>模块全貌：每个议题的最新两条结论（过期的带 <code>stale</code>）和相关模块；带 <code>entity</code> 时看该议题的时间线（谁哪天替代了谁）</td><td><code>module</code>；可选 <code>entity</code></td></tr>
     <tr><td><code>list_modules</code></td><td>列出模块、记忆数量和常用议题</td><td>可选 <code>category</code></td></tr>
   </table>
-  <p>检索结果里几个关键字段：<code>items</code>（教训，全文）、<code>features</code>（功能记录和规划，只有标题；改动会改变这些行为时先用 <code>ids</code> 取全文核对）、<code>applies</code>（适用条件）、<code>stale</code>（关联代码已变）、<code>check</code>（具体哪些文件变了）、<code>fallback: module</code>（议题内没命中，退回整个模块）、<code>related</code>（相关模块）、<code>status</code>（只在不是正式记忆时出现，如 <code>seed</code>）、<code>seen</code>（本对话已返回过全文，这次只给标题；上下文里找不到原文时带 <code>full=true</code> 重查）。同一对话的去重记录在上下文压缩后清空；终端里的 <code>pmem search</code> 由 Hook 在执行前交接对话 id，同样参与去重。MCP 不提供改状态的工具，转正、退回、归档只能由人在命令行操作。</p>
+  <p>检索结果里几个关键字段：<code>items</code>（教训，全文）、<code>features</code>（功能记录和规划，只有标题；改动会改变这些行为时先用 <code>ids</code> 取全文核对）、<code>applies</code>（自由文字适用条件）、<code>when</code>（结构化适用条件）、<code>stale</code>（关联代码已变）、<code>check</code>（具体哪些文件变了）、<code>fallback: module</code>（议题内没命中，退回整个模块）、<code>related</code>（相关模块）、<code>status</code>（只在不是正式记忆时出现，如 <code>seed</code>）、<code>seen</code>（本对话已返回过全文，这次只给标题；上下文里找不到原文时带 <code>full=true</code> 重查）。同一对话的去重记录在上下文压缩后清空；终端里的 <code>pmem search</code> 由 Hook 在执行前交接对话 id，同样参与去重。MCP 不提供改状态的工具，转正、退回、归档只能由人在命令行操作。</p>
 </section>
 
 <!-- ============ CLI ============ -->
@@ -607,10 +610,10 @@ git commit -m "接入 pmem"</code></pre>
   <table>
     <tr><th>命令</th><th>用途</th></tr>
     <tr><td><code>pmem init</code></td><td>在项目中接入（生成 <code>.memory/</code> 和各工具配置）</td></tr>
-    <tr><td><code>pmem doctor</code></td><td>自检：配置、模块覆盖率、路径重叠、各工具接入、语义模型、可合并议题、最近 Hook 错误。接入后约每 24 小时后台巡检一次，有问题才提一行；只检查、不改库</td></tr>
+    <tr><td><code>pmem doctor</code></td><td>自检：配置、模块覆盖率、路径重叠、各工具接入、语义模型、可合并议题、配置/modules 拼错键提示、最近 Hook 错误（含字段类型不对）。接入后约每 24 小时后台巡检一次，有问题才提一行；只检查、不改库</td></tr>
     <tr><td><code>pmem scan</code></td><td>输出目录概览和提交热度，供 Agent 划分模块</td></tr>
-    <tr><td><code>pmem search</code></td><td>检索：<code>--path</code> / <code>--module</code> / <code>--entity</code> / <code>--as-of</code>，加关键词；<code>--brief</code> 每条一行（<code>graph</code>、<code>record</code> 同样支持）；同一对话里给过全文的记忆再查到只显示标题，<code>--full</code> 取全文；<code>--id</code> 按 id 取全文</td></tr>
-    <tr><td><code>pmem record</code></td><td>写入一条记忆，规则与 MCP 相同；长正文用 <code>--content-file</code>；<code>--alias</code>、<code>--anchor</code>、<code>--supersedes</code> 可跟多个值；<code>--seed</code> 写成种子记忆；<code>--kind feature</code> 写功能记录，<code>--summary</code> 一句话标题，<code>--verify</code> 怎么验证，<code>--applies</code> 适用条件，<code>--scope project</code> 标为全项目都会踩的坑（读任何模块的代码时都会附上）</td></tr>
+    <tr><td><code>pmem search</code></td><td>检索：<code>--path</code> / <code>--module</code> / <code>--entity</code> / <code>--as-of</code> / <code>--when platform=android</code>，加关键词；<code>--brief</code> 每条一行（<code>graph</code>、<code>record</code> 同样支持）；同一对话里给过全文的记忆再查到只显示标题，<code>--full</code> 取全文；<code>--id</code> 按 id 取全文</td></tr>
+    <tr><td><code>pmem record</code></td><td>写入一条记忆，规则与 MCP 相同；长正文用 <code>--content-file</code>；<code>--alias</code>、<code>--anchor</code>、<code>--supersedes</code> 可跟多个值；<code>--seed</code> 写成种子记忆；<code>--kind feature</code> 写功能记录，<code>--summary</code> 一句话标题，<code>--verify</code> 怎么验证，<code>--applies</code> 适用条件，<code>--when platform=android</code> 结构化条件（需 config facets），<code>--scope project</code> 标为全项目都会踩的坑（读任何模块的代码时都会附上）</td></tr>
     <tr><td><code>pmem confirm &lt;id&gt;...</code></td><td>核对后确认仍然成立</td></tr>
     <tr><td><code>pmem seed</code></td><td>列出待确认的种子记忆；<code>--plan</code> 看候选模块；<code>--accept</code>（给 id、<code>--module</code> 或 <code>--all</code>）转正；<code>--reject &lt;id&gt;</code> 退回（归档）</td></tr>
     <tr><td><code>pmem archive &lt;id&gt;...</code></td><td>归档：不再出现在检索里，文件保留；<code>--restore</code> 恢复到归档前的状态</td></tr>
@@ -700,8 +703,10 @@ harness:
   max_files: 3              <span class="c"># 每次最多列几个伙伴 / 修复 / 规格必须保持</span>
   refresh_hours: 24         <span class="c"># 缓存超过多久后台重算</span>
   verify_commands: []       <span class="c"># check 档：本轮改了代码却没跑过这些命令时，结束提醒一行</span>
-  interval_minutes: 30      <span class="c"># 会话开始时距上次扫描超过这么久才在后台扫一次；改到没登记的目录时立即扫</span>
-  full_hours: 24            <span class="c"># 至少这么久做一次带提交热度的完整扫描</span></code></pre>
+health:
+  rule_min: 3               <span class="c"># 同议题现行防错类达到几条时，health 提示可写成规则</span>
+  rule_searches: 5          <span class="c"># 反复更正的议题至少被检索几次才提示规则化</span></code></pre>
+  <p class="muted">另有 <code>sync.interval_minutes</code> / <code>sync.full_hours</code>：会话开始扫描间隔与完整热度扫描间隔。</p>
   <p><code>modules.yaml</code> 改了随时生效；<code>config.yaml</code> 改了之后 Hook、命令行和已在运行的 MCP 服务都在下一次调用时生效；只有 <code>server</code> 下的两项（看门狗开关和超时）要在 Cursor 里重启 pmem 服务（或重开窗口）才会读到。</p>
 </section>
 
@@ -905,12 +910,12 @@ pmem reindex</code></pre>
     <li><code>pmem bench</code> 还没有用真实 API Key 跑过完整对照，示例用例只用 <code>--dry-run</code> 验证过。</li>
     <li>模块划分依赖 Agent 按 pmem-bootstrap 技能完成，还没有全自动扫描器。</li>
     <li>Cursor 里 MCP：<code>pmem init</code> 会尝试项目级自动批准，但 Cursor 运行时写的批准会被它覆盖——完全退出 Cursor 后重跑 <code>pmem init</code>，或在 设置 → MCP 手动开一次后 Reload Window。</li>
-    <li>v0.7 类型安全与规则化进行中（先落地 <code>core/schema</code> 基础校验）；当前发布包是 v0.6.7。</li>
+    <li>v0.7 类型安全与规则化已发布（schema、<code>enforced_by</code>、<code>facets</code>/<code>when</code>、边界校验、返回契约、pyright）；当前发布包是 v0.7.0。</li>
   </ul>
   <p class="muted">更完整的限制清单见仓库首页 README「已知限制」。</p>
 </section>
 
-<p class="muted" style="text-align:center">pmem v0.6.7（v0.7 类型安全进行中）· 详细设计见 <code>docs/architecture.md</code> 与 <code>README.md</code></p>
+<p class="muted" style="text-align:center">pmem v0.7.0 · 详细设计见 <code>docs/architecture.md</code> 与 <code>README.md</code></p>
 </main>
 </div>
 </body>

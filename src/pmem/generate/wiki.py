@@ -100,6 +100,9 @@ def _entry_block(entry: Entry, to_root: str, problems: list[str] | None) -> list
     lines += [entry.content.strip(), ""]
     if entry.applies:
         lines += [f"**适用条件**：{entry.applies}", ""]
+    if entry.when:
+        parts = [f"{k}={'/'.join(v) if isinstance(v, list) else v}" for k, v in entry.when.items()]
+        lines += [f"**结构化条件**：{'，'.join(parts)}", ""]
     if entry.verify:
         lines += [f"**怎么验证**：{entry.verify}", ""]
     meta = [f"id `{entry.id}`"]

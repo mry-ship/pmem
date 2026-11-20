@@ -3,7 +3,15 @@ from pathlib import Path
 
 import pytest
 
-from pmem.hooks.payload import asks_to_skip, fuzzy_contains, last_user_text, parse_payload, tool_input, workspace_root
+from pmem.hooks.payload import (
+    asks_to_skip,
+    fuzzy_contains,
+    last_user_text,
+    parse_payload,
+    tool_input,
+    validate_hook_payload,
+    workspace_root,
+)
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "hook_payloads"
 
@@ -168,3 +176,15 @@ def test_merged_commands_keep_the_first_module():
     from pmem.hooks.gate import cli_args
 
     assert cli_args("pmem record --module a.B --alias 符npmem record --module c.D", "record") == [{"module": "a.B"}]
+
+
+def test_validate_hook_payload_reports_bad_types_without_raising():
+    assert validate_hook_payload({"conversation_id": "c1", "tool_name": "Read"}) == []
+    warnings = validate_hook_payload({
+        "conversation_id": 1,
+        "workspace_roots": "not-a-list",
+        "tool_input": ["x"],
+    })
+    assert any("conversation_id" in w for w in warnings)
+    assert any("workspace_roots" in w for w in warnings)
+    assert any("tool_input" in w for w in warnings)

@@ -16,6 +16,16 @@ def _stale(row: dict) -> list[str]:
     return [f"    ⚠ {STALE_LABEL}：{'；'.join(row.get('check') or [])}"] if row.get("stale") else []
 
 
+def _format_when(when: dict) -> str:
+    parts = []
+    for key, values in when.items():
+        if isinstance(values, list):
+            parts.append(f"{key}={'/'.join(str(v) for v in values)}")
+        else:
+            parts.append(f"{key}={values}")
+    return "，".join(parts)
+
+
 def _children_lines(children: list[dict]) -> list[str]:
     lines = ["下级模块：" + "；".join(
         f"{c['module']}（{c['count']} 条" + (f"，下级 {c['children']} 个" if c.get("children") else "") + "）"
@@ -56,10 +66,13 @@ def _search(result: dict) -> list[str]:
             body = preview(strip_kind_prefix(item.get("content") or ""), PREVIEW)
             text = f"{item['summary']}｜{body}" if item.get("summary") else body
         scope = "（全项目）" if item.get("scope") == "project" else ""
-        lines.append(f"- {where}{_kind(item['kind'])}{seed}{scope}｜{item['entity']}｜{item['date']}｜{item['id']}："
+        enforced = "（已由规则拦截）" if item.get("enforced_by") else ""
+        lines.append(f"- {where}{_kind(item['kind'])}{seed}{enforced}{scope}｜{item['entity']}｜{item['date']}｜{item['id']}："
                      f"{text}")
         if item.get("applies"):
             lines.append(f"    适用：{item['applies']}")
+        if item.get("when"):
+            lines.append(f"    条件：{_format_when(item['when'])}")
         if item.get("verify"):
             lines.append(f"    验证：{preview(item['verify'], PREVIEW)}")
         lines += _stale(item)
@@ -68,16 +81,19 @@ def _search(result: dict) -> list[str]:
         lines.append(f"功能记录与规划 {len(features)} 条（只列标题；改动会改变这些行为时先用 --id 取全文核对，规划还没实现）：")
         for row in features:
             where = f"{row['module']} · " if row.get("module") else ""
-            lines.append(f"- {where}{_kind(row['kind'])}｜{row['entity']}｜{row['date']}｜{row['id']}：{row['summary']}")
+            enforced = "（已由规则拦截）" if row.get("enforced_by") else ""
+            lines.append(f"- {where}{_kind(row['kind'])}{enforced}｜{row['entity']}｜{row['date']}｜{row['id']}：{row['summary']}")
             if row.get("applies"):
                 lines.append(f"    适用：{row['applies']}")
+            if row.get("when"):
+                lines.append(f"    条件：{_format_when(row['when'])}")
             lines += _stale(row)
     children = result.get("children") or []
     if children:
         lines += _children_lines(children)
     if result.get("context"):
         lines.append(result["context"])
-    for key in ("seen_hint", "applies_hint"):
+    for key in ("seen_hint", "applies_hint", "when_hint", "enforced_hint"):
         if result.get(key):
             lines.append(f"提示：{result[key]}")
     if result.get("missing"):

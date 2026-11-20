@@ -13,12 +13,22 @@ def test_scalar_paths_and_aliases_are_not_split_into_characters():
 @pytest.mark.parametrize("data, problem", [
     ({"modules": {"Reward": {}}}, "大类.模块名"),
     ({"modules": {"economy.Shop": {"paths": {"a": 1}}}}, "应是列表"),
-    ({"modules": ["economy.Shop"]}, "modules 应是键值对"),
+    ({"modules": ["economy.Shop"]}, "modules.*应是键值对"),
     ({"modules": {"economy.Shop": "src/Shop"}}, "内容应是键值对"),
 ])
 def test_malformed_modules_raise_registry_error(data, problem):
     with pytest.raises(RegistryError, match=problem):
         ModuleRegistry(data)
+
+
+def test_unknown_module_keys_warn_with_suggestion():
+    registry = ModuleRegistry({
+        "modules": {"economy.Shop": {"paths": ["src/Shop"], "pathz": ["x"]}},
+        "moduls": {},
+    })
+    joined = "\n".join(registry.warnings)
+    assert "pathz" in joined and "paths" in joined
+    assert "moduls" in joined
 
 
 @pytest.mark.parametrize("pattern", ["app/[id]/**", "app/[id]"])

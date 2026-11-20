@@ -86,9 +86,12 @@ class RecordOps(ServiceBase):
         scope: str | None = None,
         verify: str | None = None,
         applies: str | None = None,
+        enforced_by: list[str] | None = None,
+        when: dict | None = None,
     ) -> dict:
         response = self._record(module, entity, kind, content, supersedes, anchors, draft_id,
-                                source_conversation, aliases, status, summary, scope, verify, applies)
+                                source_conversation, aliases, status, summary, scope, verify, applies,
+                                enforced_by, when)
         if not response.get("ok"):
             self._log("record_rejected", conv=source_conversation, module=module, entity=entity or None,
                       code=response.get("code"), error=str(response.get("error") or "")[:200])
@@ -96,8 +99,11 @@ class RecordOps(ServiceBase):
 
     @returns_errors
     def _record(self, module, entity, kind, content, supersedes, anchors, draft_id, source_conversation, aliases,
-                status, summary=None, scope=None, verify=None, applies=None) -> dict:
+                status, summary=None, scope=None, verify=None, applies=None, enforced_by=None, when=None) -> dict:
+        from pmem.core.facets import FacetError, normalize_when
+
         given_anchors = set(anchors or [])
+        given_rules = set(enforced_by or [])
         resolved = self.registry.resolve_module(module)
         target = self.registry.modules.get(resolved.id)
         if target is not None and target.deprecated:
@@ -152,8 +158,14 @@ class RecordOps(ServiceBase):
             scope = scope or old.scope
             verify = verify or old.verify
             applies = applies or old.applies
+            enforced_by = old.enforced_by if enforced_by is None else enforced_by
+            when = old.when if when is None else when
             if status is None and old.status in WRITABLE_STATUSES:
                 status = old.status
+        try:
+            when = normalize_when(when, self.config.facets, required=True) if when else {}
+        except FacetError as exc:
+            return fail(str(exc), "when_invalid")
 
         today = date.today().isoformat()
         supersedes = list(dict.fromkeys(s for s in supersedes or [] if s))
@@ -171,10 +183,11 @@ class RecordOps(ServiceBase):
             return fail(f"supersedes 会和 {old.id} 已有的替代关系连成环，两条记忆都会从检索里消失；"
                         "请新建一条（不带 draft_id）替代它们", "supersede_cycle")
         aliases = _clean_aliases(aliases)
-        hits = find_secrets(" ".join([entity_id, *aliases, *(anchors or []), summary or "", verify or "", applies or ""]),
+        hits = find_secrets(" ".join([entity_id, *aliases, *(anchors or []), *(enforced_by or []),
+                                      summary or "", verify or "", applies or ""]),
                             self.config.get("write.secret_patterns") or [])
         if hits:
-            return fail("entity、aliases、anchors、summary、verify 或 applies 疑似包含敏感信息，已拒绝写入："
+            return fail("entity、aliases、anchors、enforced_by、summary、verify 或 applies 疑似包含敏感信息，已拒绝写入："
                         + "；".join(hits), "secret")
         hints = self._write_hints(resolved.id, entity_id, kind, content, aliases, merging=len(replaced) >= 2)
         hints += self._field_hints(kind, content, summary, verify)
@@ -199,6 +212,9 @@ class RecordOps(ServiceBase):
         anchors = list(dict.fromkeys(
             self._normalize_anchor(a, warnings if a in given_anchors else []) for a in anchors or [] if a.strip()
         ))
+        enforced_by = list(dict.fromkeys(
+            self._normalize_anchor(a, warnings if a in given_rules else []) for a in enforced_by or [] if a.strip()
+        ))
         entry = Entry(
             id=new_ulid(),
             module=resolved.id,
@@ -217,6 +233,8 @@ class RecordOps(ServiceBase):
             scope=scope if scope != "module" else None,
             verify=verify,
             applies=applies,
+            when=when,
+            enforced_by=enforced_by,
             extra=dict(old.extra) if old is not None else {},
         )
         written = self.storage.write(entry, draft_id=draft_id or None)
@@ -280,11 +298,11 @@ class RecordOps(ServiceBase):
         while rel.startswith("./"):
             rel = rel[2:]
         if Path(rel).is_absolute():
-            warnings.append(f"anchors 中的 {path} 不在项目目录内，无法核对是否过期")
+            warnings.append(f"关联路径 {path} 不在项目目录内，无法核对是否过期")
             return f"{rel}{sep}{symbol}"
         actual = _on_disk_case(self.root, rel)
         if actual is None:
-            warnings.append(f"anchors 中的 {rel} 在项目里不存在，请检查路径")
+            warnings.append(f"关联路径 {rel} 在项目里不存在，请检查路径")
         return f"{actual or rel}{sep}{symbol}"
 
     def _invalid_content(self, kind: str, content: str) -> tuple[str, str] | None:

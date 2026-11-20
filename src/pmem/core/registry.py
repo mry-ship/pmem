@@ -223,14 +223,49 @@ def _item_path(item) -> str:
     return str(item["path"]) if isinstance(item, dict) else str(item)
 
 
+_MODULE_KEYS = frozenset({
+    "paths", "aliases", "entities", "components", "variants", "parent", "related", "status", "description",
+})
+_MODULES_TOP = {
+    "categories": None,  # 大类说明自由
+    "modules": None,  # 模块体单独查 _MODULE_KEYS
+    "candidates": None,
+    "entities": None,  # 同义词表自由
+    "third_party": None,
+    "ignored": None,
+    "synonyms": None,
+}
+_MODULES_FILE = "modules.yaml"
+
+
 class ModuleRegistry:
-    def __init__(self, data: dict | None):
+    def __init__(self, data: dict | None, *, warnings: list[str] | None = None):
+        from pmem.core.schema import SchemaError, expect_mapping, suggest_key, unknown_key_warnings
+
         data = data or {}
-        if not isinstance(data, dict):
-            raise RegistryError("modules.yaml 的顶层应是键值对（categories、modules 等）")
+        try:
+            expect_mapping(data, _MODULES_FILE)
+        except SchemaError as exc:
+            raise RegistryError(str(exc), "modules_yaml") from exc
+        self.warnings: list[str] = list(warnings or [])
+        self.warnings.extend(unknown_key_warnings(data, _MODULES_TOP, file_path=_MODULES_FILE))
         for key in ("modules", "candidates", "categories", "entities"):
-            if data.get(key) is not None and not isinstance(data[key], dict):
-                raise RegistryError(f"modules.yaml 里的 {key} 应是键值对")
+            if data.get(key) is None:
+                continue
+            try:
+                expect_mapping(data[key], f"{_MODULES_FILE}：{key}")
+            except SchemaError as exc:
+                raise RegistryError(str(exc), "modules_yaml") from exc
+        for bucket in ("modules", "candidates"):
+            for mid, body in (data.get(bucket) or {}).items():
+                if not isinstance(body, dict):
+                    continue
+                for name in body:
+                    if name not in _MODULE_KEYS:
+                        hint = suggest_key(str(name), _MODULE_KEYS)
+                        tip = f"，是不是 {hint}？" if hint else ""
+                        self.warnings.append(
+                            f"{_MODULES_FILE}：不认识的键 {bucket}.{mid}.{name}{tip}（已忽略）")
         # 没写 categories（文件为空或被删）时按已登记模块的大类推断，都没有时用通用预设；
         # 原先固定回落到游戏项目的四个大类，非游戏项目已有的 feature.* 记忆全部报“未知大类”
         declared = list((data.get("categories") or {}).keys())

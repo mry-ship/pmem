@@ -6,11 +6,12 @@
 from __future__ import annotations
 
 from pmem import context
+from pmem.hooks.types import GateAttrs
 
 MAX_RAN = 30
 
 
-class Harness:
+class Harness(GateAttrs):
     def _harness_mode(self) -> str:
         if self.state is None or self.state.data["skip"] or self.config.get("gate.mode") == "off":
             return "off"

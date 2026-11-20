@@ -7,6 +7,7 @@ from pathlib import Path
 
 import yaml
 
+from pmem.core.entry import Entry
 from pmem.core.fileio import write_atomic
 from pmem.core.registry import (
     DEPRECATED,
@@ -380,7 +381,7 @@ def plan_split(data: dict, registry: ModuleRegistry, storage: FilesStorage, sour
         raise MigrateError(f"--assign 里的记忆不在 {src_id} 下：{'、'.join(sorted(unknown))}")
     dest: dict[str, str] = {}
     cross: list[tuple[str, list[str]]] = []
-    pending: list[tuple[Path, object]] = []
+    pending: list[tuple[Path, Entry]] = []
     for path, entry in entries:
         if entry.id in manual:
             dest[entry.id] = manual[entry.id]

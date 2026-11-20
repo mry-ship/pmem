@@ -69,9 +69,10 @@ def _definition_line(lines: list[str], name: str) -> int | None:
             return i
     call = re.compile(rf"\b{word}\s*(?:<[^>]*>)?\s*\(")
     for i, line in enumerate(lines):
-        if not call.search(line) or _NOT_DEF_PREFIX.match(line) or line.rstrip().endswith(";"):
+        found = call.search(line)
+        if not found or _NOT_DEF_PREFIX.match(line) or line.rstrip().endswith(";"):
             continue
-        tail = line[call.search(line).end():] + "".join(lines[i + 1:i + 3])
+        tail = line[found.end():] + "".join(lines[i + 1:i + 3])
         if "{" in tail or "=>" in tail:
             return i
     return None
@@ -149,7 +150,9 @@ def _python_block(text: str, parts: tuple[str, ...]) -> str | None:
     for owner in parts[:-1]:
         scope = first(scope, owner) or scope
     node = first(scope, parts[-1])
-    if node is None or node.end_lineno is None:
+    if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return None
+    if node.end_lineno is None:
         return None
     start = min([node.lineno, *(d.lineno for d in node.decorator_list)]) - 1
     lines = text.splitlines()[start:node.end_lineno]
@@ -300,6 +303,8 @@ class AnchorChecker:
         return state
 
     def _load_cache(self, state: str) -> dict[str, list[str]]:
+        if self.cache_path is None:
+            return {}
         try:
             data = json.loads(self.cache_path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
@@ -308,6 +313,8 @@ class AnchorChecker:
         return data.get("results", {}) if fresh else {}
 
     def _save_cache(self, state: str, results: dict[str, list[str]]) -> None:
+        if self.cache_path is None:
+            return
         try:
             self.cache_path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self.cache_path.with_name(f"{self.cache_path.name}.{os.getpid()}.tmp")
@@ -326,7 +333,8 @@ class AnchorChecker:
         if state is None:
             return self._check(entries, files)
         cached = self._load_cache(state)
-        keys = {e.id: "|".join((e.id, e.note_date, e.checked_date, e.verified_at or "", *e.anchors)) for e in entries}
+        keys = {e.id: "|".join((e.id, e.note_date, e.checked_date, e.verified_at or "",
+                                *e.anchors, "E", *e.enforced_by)) for e in entries}
         missing = [e for e in entries if keys[e.id] not in cached]
         if missing:
             found = self._check(missing, files)
@@ -348,26 +356,35 @@ class AnchorChecker:
     def _check(self, entries: list[Entry], files: dict[str, Path]) -> dict[str, list[str]]:
         texts: dict[str, str | None] = {}
         problems: dict[str, list[str]] = {}
-        alive: dict[str, list[tuple[Entry, str]]] = {}
+        # (rel → [(entry, symbol, kind)]) kind: "anchor" | "rule"
+        alive: dict[str, list[tuple[Entry, str, str]]] = {}
         for entry in entries:
-            for anchor in entry.anchors:
-                rel, _, symbol = anchor.partition("#")
-                rel = rel.replace("\\", "/")
-                if rel not in texts:
-                    texts[rel] = self._read_anchor(rel)
-                if texts[rel] is None:
-                    _add(problems, entry.id, f"{rel} 已不存在")
-                elif symbol and _member(symbol) not in texts[rel]:
-                    _add(problems, entry.id, f"{rel} 中找不到 {symbol}")
-                else:
-                    alive.setdefault(rel, []).append((entry, symbol))
+            for kind, refs in (("anchor", entry.anchors), ("rule", entry.enforced_by)):
+                for ref in refs:
+                    rel, _, symbol = ref.partition("#")
+                    rel = rel.replace("\\", "/")
+                    if rel not in texts:
+                        texts[rel] = self._read_anchor(rel)
+                    body = texts[rel]
+                    if body is None:
+                        label = f"规则文件 {rel} 已不存在" if kind == "rule" else f"{rel} 已不存在"
+                        _add(problems, entry.id, label)
+                    elif symbol and kind == "anchor" and _member(symbol) not in body:
+                        _add(problems, entry.id, f"{rel} 中找不到 {symbol}")
+                    elif symbol and kind == "rule" and _member(symbol) not in body:
+                        _add(problems, entry.id, f"规则文件 {rel} 中找不到 {symbol}")
+                    else:
+                        alive.setdefault(rel, []).append((entry, symbol, kind))
         if alive:
-            baselines = self._baselines([e for group in alive.values() for e, _ in group], files)
+            baselines = self._baselines([e for group in alive.values() for e, _, _ in group], files)
             since = min(baselines.values())
             for rel, moment in self._cached("changes", sorted(alive), since, self.vcs.changed_since).items():
-                for entry, symbol in alive.get(rel, []):
+                for entry, symbol, kind in alive.get(rel, []):
                     base = baselines[entry.id]
                     if moment <= base:
+                        continue
+                    if kind == "rule":
+                        _add(problems, entry.id, f"规则文件 {rel} 于 {_day(moment)} 改过")
                         continue
                     problem = self._symbol_problem(rel, symbol, base, texts[rel] or "") if symbol else None
                     if problem is None:
@@ -377,24 +394,31 @@ class AnchorChecker:
             self._check_merged_in(alive, problems)
         return problems
 
-    def _check_merged_in(self, alive: dict[str, list[tuple[Entry, str]]], problems: dict[str, list[str]]) -> None:
+    def _check_merged_in(self, alive: dict[str, list[tuple[Entry, str, str]]],
+                         problems: dict[str, list[str]]) -> None:
         """写入时本地还没有、之后拉取或合并进来的提交：提交时间早于写入，按时间比较看不到。
         确认过的记忆跳过：确认时看到的已是合并后的代码，确认时的版本没有记下来。"""
         prefix = f"{self.vcs.name}:"
-        groups: dict[str, list[tuple[Entry, str, str]]] = {}
+        groups: dict[str, list[tuple[Entry, str, str, str]]] = {}
         for rel, pairs in alive.items():
-            for entry, symbol in pairs:
+            for entry, symbol, kind in pairs:
                 if entry.id not in problems and not entry.verified and entry.revision.startswith(prefix):
-                    groups.setdefault(entry.revision[len(prefix):], []).append((entry, rel, symbol))
+                    groups.setdefault(entry.revision[len(prefix):], []).append((entry, rel, symbol, kind))
         for revision, items in groups.items():
             try:
-                commits = self.vcs.commits_after(revision, sorted({rel for _, rel, _ in items}))
+                commits = self.vcs.commits_after(revision, sorted({rel for _, rel, _, _ in items}))
             except Exception:  # noqa: BLE001, S112
                 continue
-            for entry, rel, symbol in items:
+            for entry, rel, symbol, kind in items:
                 # 写入之后的提交由时间规则判断（含记忆连同代码一起提交的那次）；留一分钟余量，与 _baselines 一致
                 older = [(c, t) for c, t in commits.get(rel, []) if t < written_at(entry) - 60]
-                problem = self._merged_problem(rel, symbol, older) if older else None
+                if not older:
+                    continue
+                if kind == "rule":
+                    _add(problems, entry.id,
+                         f"规则文件 {rel} 于 {_day(older[0][1])} 改过（写入时本地还没有这次提交，之后拉取或合并进来）")
+                    continue
+                problem = self._merged_problem(rel, symbol, older)
                 if problem:
                     _add(problems, entry.id, problem)
 

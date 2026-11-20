@@ -19,8 +19,8 @@ author: 1002378395@qq.com
 note_date: '2026-10-27'
 summary: 用户文档多份各自维护，加命令易漏；Wiki 另仓；流程图五环节分色
 verify: 改 README/手册/架构时对照本条清单；Wiki 改 mry-ship/pmem.wiki
-verified: '2026-11-16'
-verified_at: '2026-11-16T23:58:30.128+08:00'
+verified: '2026-11-20'
+verified_at: '2026-11-20T21:31:53.693+08:00'
 ---
 结论：用户文档分多份各自维护，加命令或发版时容易漏改；docs/** 被闸门忽略，改文档不会触发记忆检查。
 

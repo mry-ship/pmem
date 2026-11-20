@@ -769,7 +769,7 @@ v0.2 末本仓库的实测基线（2026-10-19）：
 
 ### 14.7 v0.7 任务：类型安全与规则化
 
-状态：计划。2026-10-23 从 v0.6 顺延，范围不改。设计见 `2026-10-21-pmem-typesafe-design.md`，GitHub Issue #15。
+状态：已完成（2026-11-20 发 0.7.0，GitHub Issue #15 已关闭）。设计见 `2026-10-21-pmem-typesafe-design.md`。交付：`enforced_by`、health 规则候选、`facets`/`when`、边界校验（schema/doctor）、返回契约 TypedDict + 形状测试、core/index/service/catalog 的 pyright 基线；效果表与 Wiki/Pages「当前版本」同步为 0.7.0。
 
 ---
 

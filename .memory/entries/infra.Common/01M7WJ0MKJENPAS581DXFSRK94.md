@@ -12,6 +12,8 @@ note_date: '2026-11-20'
 summary: 当前安装包 0.7.0：类型安全与规则化已发布
 verify: uv run pmem --version；gh release view v0.7.0
 applies: 发版或改路线表当前版本时
+verified: '2026-11-20'
+verified_at: '2026-11-20T21:27:51.903+08:00'
 ---
 需求来源：v0.7 设计范围内功能齐后发 0.7.0。
 

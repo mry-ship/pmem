@@ -294,8 +294,9 @@ def test_own_fix_commit_is_not_a_later_change(git_repo, tmp_path):
 
 
 def test_synonym_groups_expand_the_query(storage, tmp_path):
-    crash = add(storage, "进入拼图时崩溃，原因是图集为空", entity="Loading")
-    add(storage, "拼图奖励按配置发放", entity="Reward")
+    # 两条都没有「闪退」、关键词分都是 0 时，名次只看 ULID 的毫秒。同一毫秒内先后不稳定，所以把时间错开。
+    crash = add(storage, "进入拼图时崩溃，原因是图集为空", entity="Loading", id=new_ulid(1_700_000_000_000))
+    add(storage, "拼图奖励按配置发放", entity="Reward", id=new_ulid(1_700_000_001_000))
     index = make_index(storage, tmp_path, embedder=None)
     assert ids(index.search(module="gameplay.Jigsaw", query="闪退", today=TODAY))[0] != crash.id
     index.synonyms = [["闪退", "崩溃", "crash"]]
@@ -308,6 +309,44 @@ def test_aliases_are_searchable(storage, tmp_path):
     add(storage, "拼图奖励按配置发放", entity="Reward")
     result = make_index(storage, tmp_path, embedder=None).search(module="gameplay.Jigsaw", query="闪退", today=TODAY)
     assert ids(result)[0] == target.id
+
+
+def test_source_kind_does_not_outrank_a_relevant_memory(storage, tmp_path):
+    add(storage, "商店价格与本次无关", source_kind="human", entity="Price")
+    hit = add(storage, "奖励重复发放的根因是领取按钮没有防连点", source_kind="inference")
+    result = make_index(storage, tmp_path).search(module="gameplay.Jigsaw", query="奖励重复发放", today=TODAY)
+    assert ids(result)[0] == hit.id
+    assert result.items[0]["source_kind"] == "inference" and result.items[0]["unverified"] is True
+
+
+def test_as_of_follows_valid_from_and_current_search_does_not_hide(storage, tmp_path):
+    back = add(storage, "去年就开始改为领取时发放，避免断线丢奖励", note_date="2026-11-21", valid_from="2026-01-01")
+    future = add(storage, "明年才启用的新奖励规则，避免断线丢奖励", note_date="2026-10-01", valid_from="2027-01-01",
+                 entity="Later")
+    index = make_index(storage, tmp_path)
+    assert back.id in ids(index.search(module="gameplay.Jigsaw", as_of="2026-02-01"))
+    assert back.id not in ids(index.search(module="gameplay.Jigsaw", as_of="2025-12-01"))
+    current = ids(index.search(module="gameplay.Jigsaw", today=TODAY))
+    assert back.id in current and future.id in current
+
+
+def test_as_of_supersede_uses_successor_valid_from(storage, tmp_path):
+    old = add(storage, "奖励在关卡结束时发放", note_date="2026-01-01")
+    new = add(storage, "奖励改为领取时发放，避免断线丢奖励", note_date="2026-11-21", valid_from="2026-06-01",
+              supersedes=[old.id])
+    index = make_index(storage, tmp_path)
+    assert ids(index.search(module="gameplay.Jigsaw", as_of="2026-03-01")) == [old.id]
+    assert ids(index.search(module="gameplay.Jigsaw", as_of="2026-07-01")) == [new.id]
+    assert ids(index.search(module="gameplay.Jigsaw", today=TODAY)) == [new.id]
+
+
+def test_future_valid_from_does_not_hide_the_memory_it_will_replace(storage, tmp_path):
+    old = add(storage, "奖励在关卡结束时发放", note_date="2026-01-01")
+    later = (date.today() + timedelta(days=400)).isoformat()
+    new = add(storage, "明年才改成领取时发放，避免断线丢奖励", note_date="2026-10-01", valid_from=later,
+              supersedes=[old.id])
+    found = ids(make_index(storage, tmp_path).search(module="gameplay.Jigsaw", today=TODAY))
+    assert old.id in found and new.id in found
 
 
 def test_as_of_shows_what_was_valid_then(storage, tmp_path):

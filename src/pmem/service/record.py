@@ -5,7 +5,17 @@ import os
 from datetime import date
 from pathlib import Path
 
-from pmem.core.entry import KINDS, RECORD_KINDS, SCOPES, SUMMARY_MAX, VISIBLE_STATUSES, Entry, auto_summary
+from pmem.core.entry import (
+    KINDS,
+    RECORD_KINDS,
+    SCOPES,
+    SOURCE_KINDS,
+    SUMMARY_MAX,
+    VISIBLE_STATUSES,
+    Entry,
+    auto_summary,
+    parse_valid_from,
+)
 from pmem.core.ids import new_ulid
 from pmem.core.quality import content_hints, entity_hint, verify_hint
 from pmem.core.registry import ResolvedModule, is_descendant, parent_module
@@ -88,10 +98,12 @@ class RecordOps(ServiceBase):
         applies: str | None = None,
         enforced_by: list[str] | None = None,
         when: dict | None = None,
+        source_kind: str | None = None,
+        valid_from: str | None = None,
     ) -> dict:
         response = self._record(module, entity, kind, content, supersedes, anchors, draft_id,
                                 source_conversation, aliases, status, summary, scope, verify, applies,
-                                enforced_by, when)
+                                enforced_by, when, source_kind, valid_from)
         if not response.get("ok"):
             self._log("record_rejected", conv=source_conversation, module=module, entity=entity or None,
                       code=response.get("code"), error=str(response.get("error") or "")[:200])
@@ -99,7 +111,8 @@ class RecordOps(ServiceBase):
 
     @returns_errors
     def _record(self, module, entity, kind, content, supersedes, anchors, draft_id, source_conversation, aliases,
-                status, summary=None, scope=None, verify=None, applies=None, enforced_by=None, when=None) -> dict:
+                status, summary=None, scope=None, verify=None, applies=None, enforced_by=None, when=None,
+                source_kind=None, valid_from=None) -> dict:
         from pmem.core.facets import FacetError, normalize_when
 
         given_anchors = set(anchors or [])
@@ -160,8 +173,20 @@ class RecordOps(ServiceBase):
             applies = applies or old.applies
             enforced_by = old.enforced_by if enforced_by is None else enforced_by
             when = old.when if when is None else when
+            # 没传沿用原值。空字符串也算没传，和 summary 一样，避免 MCP 顺手填 "" 把来源清掉。
+            source_kind = old.source_kind if not source_kind else source_kind
+            valid_from = old.valid_from if not valid_from else valid_from
+            source_conversation = old.source_conversation if not source_conversation else source_conversation
             if status is None and old.status in WRITABLE_STATUSES:
                 status = old.status
+        source_kind = str(source_kind or "").strip().lower() or None
+        if source_kind and source_kind not in SOURCE_KINDS:
+            return fail(f"source.kind 只能是 {' / '.join(SOURCE_KINDS)}，当前为 {source_kind!r}。"
+                        "它只说明证据从哪来，不表示已核对，也不参与排序", "source_kind_invalid")
+        try:
+            valid_from = parse_valid_from(valid_from)
+        except ValueError as exc:
+            return fail(f"{exc}。缺省等于写下日期", "valid_from_invalid")
         try:
             when = normalize_when(when, self.config.facets, required=True) if when else {}
         except FacetError as exc:
@@ -228,6 +253,8 @@ class RecordOps(ServiceBase):
             supersedes=replaced_ids,
             anchors=anchors,
             source_conversation=source_conversation or None,
+            source_kind=source_kind,
+            valid_from=valid_from,
             aliases=aliases,
             summary=summary,
             scope=scope if scope != "module" else None,

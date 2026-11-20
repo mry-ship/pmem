@@ -25,6 +25,19 @@ modules:
 TEXT = "结论：奖励在服务端发放，客户端只展示结果，因为多端登录会重复领取。"
 
 
+def test_map_points_at_the_earliest_effective_successor():
+    old = Entry(id="A1", module="gameplay.Jigsaw", entity="Reward", kind="conclusion",
+                content=TEXT, note_date="2026-01-01", author="a")
+    late = Entry(id="B1", module="gameplay.Jigsaw", entity="Reward", kind="conclusion",
+                 content=TEXT, note_date="2026-03-01", author="a", supersedes=["A1"], valid_from="2026-12-01")
+    early = Entry(id="A2", module="gameplay.Jigsaw", entity="Reward", kind="conclusion",
+                  content=TEXT, note_date="2026-11-01", author="a", supersedes=["A1"], valid_from="2026-02-01")
+    topics = build_map([old, late, early])["modules"][0]["topics"]
+    nodes = {node["id"]: node for node in topics[0]["nodes"]}
+    assert nodes["A1"]["superseded_by"] == "A2"
+    assert [node["id"] for node in topics[0]["nodes"]] == ["A1", "B1", "A2"]
+
+
 @pytest.fixture
 def project(tmp_path, monkeypatch) -> Path:
     monkeypatch.setenv("PMEM_AUTHOR", "alice")

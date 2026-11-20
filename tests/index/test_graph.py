@@ -32,6 +32,18 @@ def test_timeline_shows_who_replaced_whom_and_when():
     assert topics["reward"]["latest"][0]["preview"] == "改为领取时发奖励"
 
 
+def test_timeline_until_follows_the_earliest_successor_effective_date():
+    graph = MemoryGraph([
+        entry("A1", "gameplay.Jigsaw", "Reward", "旧奖励", "2026-01-01"),
+        entry("B1", "gameplay.Jigsaw", "Reward", "写下早但生效晚", "2026-03-01",
+              supersedes=["A1"], valid_from="2026-12-01"),
+        entry("A2", "gameplay.Jigsaw", "Reward", "写下晚但去年就生效", "2026-11-01",
+              supersedes=["A1"], valid_from="2026-02-01"),
+    ], REGISTRY)
+    old = next(row for row in graph.timeline("gameplay.Jigsaw", "Reward") if row["id"] == "A1")
+    assert old["superseded_by"] == "A2" and old["until"] == "2026-02-01"
+
+
 def test_digest_prefers_exclusions_and_caps_each_topic():
     entries = [
         entry("C1", "gameplay.Jigsaw", "Reward", "结论一", "2026-10-03"),

@@ -181,10 +181,10 @@ class MemoryIndex:
         return [item.entry for item in self._items.values()]
 
     def superseded(self, as_of: str | None = None) -> set[str]:
-        """被替代的记忆 id；给出 as_of 时只算那天及之前写下的替代关系。"""
+        """被替代的记忆 id。替代在后继生效后才算；现行检索不把未来 valid_from 的替代提前算上。"""
         hidden: set[str] = set()
         for item in self._items.values():
-            if as_of is None or item.entry.note_date <= as_of:
+            if item.entry.supersede_in_force(as_of):
                 hidden.update(item.entry.replaces(as_of))
         return hidden
 
@@ -195,7 +195,7 @@ class MemoryIndex:
             i for i in self._items.values()
             if i.entry.status_on(as_of) in VISIBLE_STATUSES
             and i.entry.id not in hidden
-            and (as_of is None or i.entry.note_date <= as_of)
+            and (as_of is None or i.entry.effective_date <= as_of)
         ]
 
     def visible(self, as_of: str | None = None) -> list[Entry]:
@@ -457,6 +457,7 @@ def title_row(entry: Entry, problems: list[str] | None, with_module: bool) -> di
         row = {"module": entry.module, **row}
     if problems is not None:
         row["check"] = problems
+    _provenance(row, entry)
     if entry.status != "active":
         row["status"] = entry.status
     return row
@@ -490,6 +491,16 @@ def entry_row(entry: Entry, problems: list[str] | None, with_module: bool) -> di
         row["check"] = problems
     if entry.verified:
         row["verified"] = entry.verified
+    _provenance(row, entry)
     if entry.status != "active":
         row["status"] = entry.status
     return row
+
+
+def _provenance(row: dict, entry: Entry) -> None:
+    """来源和核对只展示。缺省来源用 null；没核对过标 unverified。不参与排序。"""
+    row["source_kind"] = entry.source_kind
+    if entry.valid_from:
+        row["valid_from"] = entry.valid_from
+    if not entry.verified:
+        row["unverified"] = True

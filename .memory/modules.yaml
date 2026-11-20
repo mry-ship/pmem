@@ -61,7 +61,7 @@ modules:
     paths: [src/pmem/generate/wiki.py, src/pmem/cli/wiki_cmd.py, tests/test_wiki.py]
   feature.Spec:
     description: 模块规格：每个模块四份可提交的当前文档（策划、美术、程序、现状），骨架和目录由 pmem spec 生成，正文由 pmem-spec 技能写
-    paths: [src/pmem/generate/spec.py, src/pmem/cli/spec_cmd.py, tests/test_spec.py]
+    paths: [src/pmem/generate/spec.py, src/pmem/generate/spec_closed.py, src/pmem/cli/spec_cmd.py, tests/test_spec.py, tests/test_spec_closed.py]
     aliases: [模块规格, RebuildSpec]
   feature.Metrics:
     description: 度量与报告：本机事件日志、收益报告 pmem report、引用识别、健康报告 pmem health（含清理候选）、记忆图 pmem map 与自检、对照实验 pmem bench

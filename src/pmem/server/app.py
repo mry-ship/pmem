@@ -129,6 +129,8 @@ def build_server(root: Path | None) -> MCPServer:
         scope: str = "",
         draft_id: str = "",
         source_conversation: str = "",
+        source_kind: str = "",
+        valid_from: str = "",
     ) -> str:
         """记录一条研发记忆。kind：feature 功能记录（改了模块就写：需求来源、必须保持的行为、适用条件、入口）、
         plan 未实现的需求；教训 exclusion 排除的方向、conclusion 根因或坑、correction 推翻旧结论、risk 看代码看不出的约束、
@@ -141,6 +143,8 @@ def build_server(root: Path | None) -> MCPServer:
         规则文件与符号仍在时摘要标「已由规则拦截」并靠后排；规则缺失/改过/找不到符号时改标「规则需核实」，勿当已拦住。
         scope=project：编码、环境、跨模块约定这类全项目都会踩的坑。
         aliases：现象和术语的其他叫法（如 ["闪退", "崩溃"]），换说法也能搜到。
+        source_kind：证据从哪来，human、code、test、conversation、document、inference 之一。只说明来源，不表示已核对，不写入 verified，不参与排序。不填表示未知。覆盖草稿时不传或传空串沿用原值，不能清空。
+        valid_from：结论实际生效日 YYYY-MM-DD。不填等于写下日期。只影响 as_of 的历史查询，不改变现行检索，也不参与排序。覆盖草稿时不传或传空串沿用原值，不能清空。
         anchors：相关代码，尽量写到函数（路径#函数名；只写文件时该文件任何改动都会标需核实），不填按本对话改过的文件补。
         supersedes：本模块（或其下级模块）里被推翻的旧结论、说同一件事的旧功能记录、已实现的规划（plan）的 id。
         同一任务再写同一模块时带上次返回的 draft_id 覆盖，没填的可选字段沿用原值。
@@ -150,7 +154,8 @@ def build_server(root: Path | None) -> MCPServer:
                                        draft_id or None, source_conversation or None, aliases or None,
                                        summary=summary or None, scope=scope or None, verify=verify or None,
                                        applies=applies or None, enforced_by=enforced_by or None,
-                                       when=when if when is not None else None))
+                                       when=when if when is not None else None,
+                                       source_kind=source_kind or None, valid_from=valid_from or None))
 
     @server.tool()
     def confirm_memory(ids: list[str], source_conversation: str = "") -> str:

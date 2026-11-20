@@ -246,7 +246,7 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
 
     storage = FilesStorage(root, vcs)
     entries = list(storage.iter_all())
-    hidden = {s for _, e in entries for s in e.replaces()}
+    hidden = {s for _, e in entries if e.supersede_in_force() for s in e.replaces()}
     visible = [e for _, e in entries if e.status in VISIBLE_STATUSES and e.id not in hidden]
     line(OK if not storage.warnings else WARN,
          f"现行记忆 {len(visible)} 条（记忆文件共 {len(entries)} 个，其余已被替代或停用）")

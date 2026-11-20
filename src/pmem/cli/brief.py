@@ -16,6 +16,18 @@ def _stale(row: dict) -> list[str]:
     return [f"    ⚠ {STALE_LABEL}：{'；'.join(row.get('check') or [])}"] if row.get("stale") else []
 
 
+def _provenance(row: dict) -> list[str]:
+    """来源和核对只附在结果上。摘要行里的需核实仍只由 _stale 表示锚点过期。"""
+    bits = []
+    if "source_kind" in row:
+        bits.append(f"来源：{row['source_kind'] or '未知'}")
+    if row.get("unverified"):
+        bits.append("未核对")
+    if row.get("valid_from"):
+        bits.append(f"生效：{row['valid_from']}")
+    return [f"    {'；'.join(bits)}"] if bits else []
+
+
 def _format_when(when: dict) -> str:
     parts = []
     for key, values in when.items():
@@ -75,6 +87,7 @@ def _search(result: dict) -> list[str]:
             lines.append(f"    条件：{_format_when(item['when'])}")
         if item.get("verify"):
             lines.append(f"    验证：{preview(item['verify'], PREVIEW)}")
+        lines += _provenance(item)
         lines += _stale(item)
     features = result.get("features") or []
     if features:
@@ -87,13 +100,14 @@ def _search(result: dict) -> list[str]:
                 lines.append(f"    适用：{row['applies']}")
             if row.get("when"):
                 lines.append(f"    条件：{_format_when(row['when'])}")
+            lines += _provenance(row)
             lines += _stale(row)
     children = result.get("children") or []
     if children:
         lines += _children_lines(children)
     if result.get("context"):
         lines.append(result["context"])
-    for key in ("seen_hint", "applies_hint", "when_hint", "enforced_hint"):
+    for key in ("seen_hint", "applies_hint", "when_hint", "enforced_hint", "source_hint"):
         if result.get(key):
             lines.append(f"提示：{result[key]}")
     if result.get("missing"):

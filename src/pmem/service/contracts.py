@@ -36,6 +36,9 @@ class MemoryItem(TypedDict, total=False):
     status: str
     seen: bool
     inherited: bool
+    source_kind: str | None
+    valid_from: str
+    unverified: bool
 
 
 class FeatureItem(TypedDict, total=False):
@@ -54,6 +57,9 @@ class FeatureItem(TypedDict, total=False):
     check: list[str]
     status: str
     seen: bool
+    source_kind: str | None
+    valid_from: str
+    unverified: bool
 
 
 class ChildRow(TypedDict, total=False):
@@ -77,6 +83,7 @@ class SearchResult(TypedDict, total=False):
     verify_hint: str
     inherited_hint: str
     seen_hint: str
+    source_hint: str
     as_of: str
     expanded: list[str]
     fallback: str
@@ -170,6 +177,15 @@ def _check_item(row: Any, *, path: str, require_content: bool = False) -> list[s
         errors.append(f"{path}.when 应是键值对，实际是 {_type_name(row['when'])}")
     if "enforced_by" in row and not isinstance(row["enforced_by"], list):
         errors.append(f"{path}.enforced_by 应是列表，实际是 {_type_name(row['enforced_by'])}")
+    if "source_kind" not in row:
+        errors.append(f"{path} 缺少 source_kind")
+    elif row["source_kind"] is not None and not isinstance(row["source_kind"], str):
+        errors.append(f"{path}.source_kind 应是字符串或 null，实际是 {_type_name(row['source_kind'])}")
+    if row.get("verified"):
+        if row.get("unverified") is True:
+            errors.append(f"{path} 已有 verified 时不应再标 unverified")
+    elif row.get("unverified") is not True:
+        errors.append(f"{path} 没有 verified 时 unverified 应为 true")
     return errors
 
 
@@ -198,7 +214,7 @@ def check_search(response: dict) -> list[str]:
             for i, row in enumerate(features):
                 errors += _check_item(row, path=f"features[{i}]")
     for hint in ("features_hint", "applies_hint", "when_hint", "enforced_hint", "verify_hint",
-                 "inherited_hint", "seen_hint"):
+                 "inherited_hint", "seen_hint", "source_hint"):
         if hint in response and not isinstance(response[hint], str):
             errors.append(f"{hint} 应是字符串，实际是 {_type_name(response[hint])}")
     if "children" in response and not isinstance(response["children"], list):

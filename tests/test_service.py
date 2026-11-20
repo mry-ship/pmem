@@ -2,6 +2,10 @@ from pathlib import Path
 
 import pytest
 
+from pmem.catalog.migrate import Move, apply_moves
+from pmem.cli.anchors_cmd import run_anchors, run_rename
+from pmem.cli.format_cmd import run_format
+from pmem.core.entry import Entry
 from pmem.service import MemoryService
 
 CONFIG = """
@@ -383,6 +387,122 @@ def test_modules_yaml_changes_are_picked_up(svc, project):
 
     os.utime(path, (time.time() + 5, time.time() + 5))
     assert record(svc, module="PuzzleGame")["module"] == "gameplay.Jigsaw"
+
+
+def _disk(svc, entry_id) -> tuple[str, Entry]:
+    path = svc.storage.find_path(entry_id)
+    text = path.read_text(encoding="utf-8")
+    return text, Entry.from_markdown(text)
+
+
+def _assert_provenance(svc, entry_id, step: str, *, conversation: str = "conv-keep") -> Entry:
+    """重写之后必须再从文件解析。检索行能带上字段，不代表 source 字典写回时还在。"""
+    text, parsed = _disk(svc, entry_id)
+    assert parsed.source_kind == "inference", step
+    assert parsed.valid_from == "2026-01-02", step
+    assert parsed.source_conversation == conversation, step
+    assert "kind: inference" in text, step
+    assert conversation in text, step
+    return parsed
+
+
+def test_provenance_survives_every_rewrite(svc, project):
+    """每条会把记忆重新写成 markdown 的路径都要保住 source.kind、valid_from 和 source.conversation。"""
+    fields = {"source_kind": "inference", "valid_from": "2026-01-02", "source_conversation": "conv-keep"}
+
+    written = record(svc, **fields)
+    assert written["ok"] is True
+    _assert_provenance(svc, written["id"], "record")
+    covered = record(svc, draft_id=written["draft_id"], content=LONG + "覆盖草稿时没再传来源。")
+    assert covered["overwritten"] is True
+    _assert_provenance(svc, written["id"], "draft")
+    updated = record(svc, draft_id=written["draft_id"], source_conversation="conv-new",
+                     content=LONG + "这次显式换了对话。")
+    assert updated["overwritten"] is True
+    _assert_provenance(svc, written["id"], "draft-new-conversation", conversation="conv-new")
+    blank = record(svc, draft_id=written["draft_id"], source_kind="", valid_from="", source_conversation="",
+                   content=LONG + "空串也算没传，不能把来源清掉。")
+    assert blank["overwritten"] is True
+    _assert_provenance(svc, written["id"], "draft-empty-string", conversation="conv-new")
+
+    assert svc.confirm([written["id"]])["ok"] is True
+    confirmed = _assert_provenance(svc, written["id"], "confirm", conversation="conv-new")
+    assert confirmed.verified
+    assert svc.change_status([written["id"]], "archive")["ok"] is True
+    archived = _assert_provenance(svc, written["id"], "archive", conversation="conv-new")
+    assert archived.status == "archived" and archived.verified
+    assert svc.change_status([written["id"]], "restore")["ok"] is True
+    restored = _assert_provenance(svc, written["id"], "restore", conversation="conv-new")
+    assert restored.status == "active" and restored.verified
+
+    seeded = record(svc, entity="Seeded", status="seed", content="种子记忆先记下奖励发放规则，等负责人确认。", **fields)
+    assert svc.change_status([seeded["id"]], "accept")["ok"] is True
+    assert _assert_provenance(svc, seeded["id"], "accept").status == "active"
+    rejected_seed = record(svc, entity="Rejected", status="seed",
+                           content="这条种子奖励规则不采用，退回后文件仍要留着来源。", **fields)
+    assert svc.change_status([rejected_seed["id"]], "reject")["ok"] is True
+    assert _assert_provenance(svc, rejected_seed["id"], "reject").status == "archived"
+    assert svc.change_status([rejected_seed["id"]], "restore")["ok"] is True
+    assert _assert_provenance(svc, rejected_seed["id"], "restore-seed").status == "seed"
+
+    drafted = record(svc, entity="Drafted", status="draft", content="草稿归档后再恢复，来源也要还在。", **fields)
+    assert svc.change_status([drafted["id"]], "archive")["ok"] is True
+    assert _assert_provenance(svc, drafted["id"], "archive-draft").status == "archived"
+    assert svc.change_status([drafted["id"]], "restore")["ok"] is True
+    assert _assert_provenance(svc, drafted["id"], "restore-draft").status == "draft"
+
+    old = record(svc, entity="Line", content="奖励在关卡结束时发放，断线会丢。")
+    newer = record(svc, entity="Line", content="奖励改为领取时发放，避免断线丢奖励。",
+                   supersedes=[old["id"]], **fields)
+    assert svc.revert(newer["id"])["ok"] is True
+    reverted = _assert_provenance(svc, newer["id"], "revert")
+    assert reverted.status == "archived" and reverted.reverted_on
+    done_old = record(svc, entity="Done", content="旧结论是关卡结束就发放奖励。")
+    done = record(svc, entity="Done", content="新结论改为领取时发放，避免断线丢奖励。",
+                  supersedes=[done_old["id"]], **fields)
+    assert svc.change_status([done["id"]], "archive")["ok"] is True
+    assert svc.revert(done["id"])["ok"] is True
+    assert _assert_provenance(svc, done["id"], "revert-archived").reverted_on
+    assert svc.change_status([done["id"]], "restore")["ok"] is True
+    redone = _assert_provenance(svc, done["id"], "restore-after-revert")
+    assert redone.status == "active" and redone.reverted_on is None
+
+    formatted = record(svc, entity="Format", content="短结论：奖励要改成领取时发放。", **fields)
+    path = svc.storage.find_path(formatted["id"])
+    head = path.read_text(encoding="utf-8").split("\n---\n", 1)[0]
+    long_line = "奖励在关卡结束时发放，断线会丢，所以要改成领取时发放。" * 6
+    path.write_text(f"{head}\n---\n{long_line}\n", encoding="utf-8")
+    assert run_format(project, None, True) == 0
+    formatted_entry = _assert_provenance(svc, formatted["id"], "format")
+    assert formatted_entry.content != long_line
+
+    panel = project / "src" / "Jigsaw" / "RewardPanel.cs"
+    panel.parent.mkdir(parents=True)
+    panel.write_text("class RewardPanel { void OnClaim() {} }\n", encoding="utf-8")
+    anchored = record(svc, entity="Anchor", content="RewardPanel.OnClaim 里重复发奖，需要防连点。", **fields)
+    assert run_anchors(project, None, True) == 0
+    assert _assert_provenance(svc, anchored["id"], "anchors").anchors == ["src/Jigsaw/RewardPanel.cs#OnClaim"]
+
+    renamed_file = project / "src" / "Jigsaw" / "NewPanel.cs"
+    renamed_file.write_text("class NewPanel { void OnClaim() {} }\n", encoding="utf-8")
+    renamed = record(svc, entity="Rename", content="发奖按钮的关联代码要跟着文件一起改。",
+                     anchors=["src/Jigsaw/RewardPanel.cs#OnClaim"], **fields)
+    assert run_rename(project, ["src/Jigsaw/RewardPanel.cs=src/Jigsaw/NewPanel.cs"], True) == 0
+    assert _assert_provenance(svc, renamed["id"], "rename").anchors == ["src/Jigsaw/NewPanel.cs#OnClaim"]
+    assert _assert_provenance(svc, anchored["id"], "rename-also").anchors == ["src/Jigsaw/NewPanel.cs#OnClaim"]
+
+    moved = record(svc, entity="Moved", content="这条奖励记忆放错了模块，搬走时来源不能丢。", **fields)
+    move_path = svc.storage.find_path(moved["id"])
+    apply_moves(svc.storage, [Move(move_path, moved["id"], "gameplay.Jigsaw", "economy.Shop")])
+    moved_entry = _assert_provenance(svc, moved["id"], "migrate")
+    assert moved_entry.module == "economy.Shop"
+
+    rejected = record(svc, entity="Config", source_kind="guess",
+                      content="配置字段的含义不能凭猜测填写，需要对照表结构。")
+    assert rejected["ok"] is False and rejected["code"] == "source_kind_invalid"
+    compact = record(svc, entity="When", valid_from="20260101",
+                     content="生效日必须写成 YYYY-MM-DD，紧凑日期不能当成已经生效。")
+    assert compact["ok"] is False and compact["code"] == "valid_from_invalid"
 
 
 def test_broken_modules_yaml_gives_readable_error(svc, project):

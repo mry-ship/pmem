@@ -10,7 +10,7 @@
 让 AI 编程助手记住项目里踩过的坑、排除过的方向和做过的决定，<br>
 并在下次改代码前自动想起来。
 
-![Version](https://img.shields.io/badge/version-0.7.1-blue)
+![Version](https://img.shields.io/badge/version-0.7.2-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Cursor](https://img.shields.io/badge/Cursor-支持-000000)
@@ -37,7 +37,7 @@ pmem 把这些结论按**业务模块**沉淀成仓库里的 Markdown 文件。A
 | 👥 **团队共享** | 记忆随代码提交，队友拉代码就有；不需要服务器，不上传任何数据 |
 | 📉 **越用越收敛** | 记忆越积累，AI 越少犯同样的错、越少从头排查、越省 token，维护期越明显 |
 
-**关键数字**（口径见[效果](#效果)）：单次检索中位约 **7 毫秒**；真实问题的正确结论排进前 3 **90%**；一次修 bug 额外约 **3000～5000 token**；写进去的记忆被悄悄删掉 **0 条**。本仓库近 30 天（0.7.1 口径）：检索命中 **98%**、记忆被采用 **16%**、改前真查 **55%**。真实业务项目 TileMatch 近 14 天：检索命中 **99%**、改前真查 **98%**、跨人复用 **108** 次。
+**关键数字**（口径见[效果](#效果)）：单次检索中位约 **7 毫秒**；真实问题的正确结论排进前 3 **90%**；一次修 bug 额外约 **3000～5000 token**；写进去的记忆被悄悄删掉 **0 条**。本仓库近 30 天（0.7.2 口径）：检索命中 **98%**、记忆被采用 **16%**、改前真查 **55%**。真实业务项目 TileMatch 近 14 天：检索命中 **99%**、改前真查 **98%**、跨人复用 **108** 次。
 
 ## 工作原理
 
@@ -119,7 +119,7 @@ pmem init --type game            # 项目类型：game / app / backend / generic
 | 合并错了要撤销 | `pmem compact --undo <合并后的 id>`：被替代的原记忆重新现行 |
 | 看记忆怎么演变 | `pmem map` 生成本地网页 `.memory/wiki/map.html`：按模块分区、议题排时间线，顶部自检列出漏记、断链、悬而未决、过期 |
 | 通读全部结论 | 打开 `.memory/wiki/index.md`，每个模块一页，写入记忆后自动更新 |
-| 看模块现在是什么样 | 打开 `.memory/specs/<模块>/`。四份是当前的完整策划、完整程序、完整美术、完整现状，给美术只拷 `美术设计.md`。还没有就说“补全模块规格”（`pmem spec complete`，写到九成八）。`pmem init` 和自动登记只铺空骨架。模块后来有变化时，说“更新这个模块的规格”。规格提醒默认不提示，想自动跟上再把 `spec.reminder` 设为 true |
+| 看模块现在是什么样 | 打开 `.memory/specs/<模块>/`。四份是当前的完整策划、完整程序、完整美术、完整现状，给美术只拷 `美术设计.md`。还没有就说“补全模块规格”（`pmem spec complete`，写到九成八）。`pmem init` 和自动登记只铺空骨架。模块后来有变化时，说“更新这个模块的规格”。规格提醒默认不提示，想自动跟上再把 `spec.reminder` 设为 true。`pmem spec closed` 只读核对字段闭集、原文整句和入口锚点，不改规格 |
 
 ### 定期体检
 
@@ -147,6 +147,9 @@ verify: 断线重连后领取，服务端日志只有一次发奖            # �
 applies: 开启断线重连的版本                              # 可选：自由文字前提；能枚举的优先写 when
 # when: {platform: android}  # 可选：结构化条件（需 config.yaml 声明 facets）
 # scope: project         # 可选：全项目都会踩的坑，读任何模块的代码时都会附上
+# source:                # 可选：证据从哪来。kind 不表示已核对，也不参与排序
+#   kind: code           # human / code / test / conversation / document / inference
+# valid_from: 2026-01-01 # 可选：结论实际生效日。不填等于写下日期。只影响 as_of，现行检索不因此隐藏
 ---
 断线重连时奖励重复发放：根因是服务端 Claim 没有按关卡做幂等校验，不要在客户端去重。
 ```
@@ -164,7 +167,7 @@ applies: 开启断线重连的版本                              # 可选：自
 pmem search --path <文件>              # 查某个文件所属模块的记忆
 pmem search --module <模块> "关键词"    # 按模块和关键词查；加 --brief 每条一行；同一对话里给过的只显示标题，--full 取全文
 pmem search --id <id> ...              # 按 id 取全文（功能记录在检索结果里只列标题）
-pmem record ... --kind feature         # 命令行写功能记录；--applies 写适用条件；--when platform=android 写结构化条件
+pmem record ... --kind feature         # 命令行写功能记录；--applies 写适用条件；--when platform=android 写结构化条件；--source-kind code 标证据来源；--valid-from 2026-01-01 写生效日
 pmem list                              # 模块和记忆数量
 pmem doctor                            # 体检
 pmem context [--refresh] [文件]        # 实验：某文件常一起改的伙伴与近期修复（版本历史缓存；不依赖记忆）
@@ -178,7 +181,7 @@ pmem migrate tidy                      # 把还在旧模块名下的记忆搬到
 pmem sync                              # 对照代码目录列出新模块、要追加的路径（加 --apply 执行）
 pmem sync --history                    # 最近 20 次自动登记各新增了几个模块（自动登记由 Hook 在后台完成）
 pmem wiki                              # 生成浏览用的模块 Wiki
-pmem spec                              # 模块规格的完成情况；init 写骨架，complete 列出没写完的（补全入口），index 刷新目录
+pmem spec                              # 模块规格的完成情况；init 写骨架，complete 列出没写完的（补全入口），index 刷新目录，closed 只读核对闭集
 pmem format --apply                    # 把旧记忆里一整行的长正文断行（新写入的会自动整理）
 ```
 
@@ -190,9 +193,9 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 
 固定开销、速度和检索命中是本仓库实测。少被纠正、少花时间、少用 token，测的是上一代记忆系统；pmem 自己的端到端对比还没做，那组数字只能当保守参考。
 
-### 当前版本 0.7.1
+### 当前版本 0.7.2
 
-本版可直接看到的效果与口径（本仓库 `pmem report --days 30`，2026-11-21）：
+本版可直接看到的效果与口径（本仓库 `pmem report --days 30`，2026-11-21）。0.7.2 不改检索排序和采用判定，下表沿用这份报告：
 
 | 指标 | 当前数字 | 本版相关说明 |
 |---|---|---|
@@ -204,6 +207,7 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 | 防错类占比 | 本期新增教训里 **65%**（目标 ≥30%） | 排除项 / 风险 / 更正 |
 | 接入成熟度 | Cursor / Claude Code / Codex | 均已在**真实会话**验证可用 |
 | v0.7 能力 | 已发布 | `enforced_by`（规则需核实双态）、health 规则候选、`facets`/`when`、doctor when 对照、返回契约、pyright；0.7.1 补 Watchdog WinError 6 重试 |
+| v0.7.2 能力 | 已发布 | `source.kind` 只标证据来源，不写入核对、不参与排序；`valid_from` 只影响 `as_of`，现行检索不隐藏未来生效的记忆，替代要到生效日才算；`pmem spec closed` 只读核对字段闭集、原文整句和入口锚点 |
 
 对照实验仍见下方「v0.5 和 v0.3 对比」；端到端「少被纠正 / 少耗时 / 少 token」还没在现行 pmem 上测完，请用 `pmem bench` 或继续看 `pmem report`。
 
@@ -266,7 +270,7 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 | 结束提醒后真去写 | — | **65%**（43 次里 28 次） | **47%**（19 次里 9 次） | 同上 |
 | 跨人复用 | — | **14** 次 | **108** 次 | 同上。用到同事写的记忆 |
 
-「数字」列里带下降比例的仍是上一代口径；后两列是现行 pmem 的本机使用。本仓库列为 **0.7.1** 口径下 2026-11-21 近 30 天报告；TileMatch 为真实业务项目（2026-10-27 报告，窗口 14 天，现行记忆 639 条 / 80 个模块）。样本：一个游戏项目里改过代码的对话，没有记忆时 122 个，用上一代系统后 62 个。也可用 `pmem bench` 做对照实验。
+「数字」列里带下降比例的仍是上一代口径；后两列是现行 pmem 的本机使用。本仓库列为 **0.7.2** 口径下 2026-11-21 近 30 天报告；TileMatch 为真实业务项目（2026-10-27 报告，窗口 14 天，现行记忆 639 条 / 80 个模块）。样本：一个游戏项目里改过代码的对话，没有记忆时 122 个，用上一代系统后 62 个。也可用 `pmem bench` 做对照实验。
 
 ### 检索有多准
 
@@ -325,6 +329,7 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 - Windows PowerShell 5 里把 pmem 输出再接给 `Select-String` 等命令会乱码（它按 GBK 解码），直接看输出或用 `--brief`。
 - Windows 防弹窗：Hook 命令必须是 `pmemw`（不要 `pmem`、`.cmd`、`||`）；与 Cursor 同开时不要再装一套 Claude Hooks（init 会把 Claude 侧 `hooks` 清空成 `{}`，这是预期，不是漏配）；不要用控制台版 `python`/`py` 起 Hook。Cursor 默认完整 `full`（含读码摘要），**不要**擅自拆掉 Write/Edit 或读码摘要。
 - 功能记录（`feature` / `plan`）和 `applies` 字段需要较新的 pmem：团队里还在用旧版的人读到这类记忆文件会跳过它，请一起升级。
+- `source.kind` 与 `valid_from` 需要 v0.7.2。来源只说明证据从哪来，不等于已核对，也不改变排序。生效日只供 `as_of` 回看；没写时等于写下日期。现行检索不会因为生效日还在未来就把这条或它将替代的旧结论藏起来。旧版改写带这两个字段的文件时不保证原样保留。
 - 子模块（三段、四段的模块名）需要 v0.5：旧版能读写已登记的子模块，但不会带上父模块的教训，`pmem doctor` 检测到子模块时会提示团队升级。
 - 撤销合并（`compact --undo`）写的 `reverted` 字段旧版不认：旧版仍把撤销的合并当作替代，原记忆在旧版里还是隐藏的。
 - 清理候选里“统计期内没被用过”只看本机检索记录，本机检索太少时不判断这一条；“建议归档”也只是建议，确认后用 `pmem archive` 执行。
@@ -359,7 +364,8 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 | v0.6.5 | 带版本号的 python 事前读脚本；doctor 认完整路径、单引号和 `cmd /c`；Claude 按真实路径启用 MCP，Codex 路径里的单引号不再写坏配置；Cursor 同名目录不删其他批准哈希；锚点与摘要里的换行收成一行 | 已完成 |
 | v0.6.6 | harness 实验：改前提示经 `search_memory` 的 context（常一起改、修复提交、规格必须保持）；`pmem context`；Stop 漏改/验证检查；report 三项指标；默认 `harness.mode: off` | 已完成 |
 | v0.6.7 | 采用判定：够长 summary/title 与正文取较大字面覆盖率（阈值仍 0.15）；cites 缓存按版本与材料摘要重算；Bench 议题收口；Claude Code / Codex 标注为真实会话可用 | 已完成 |
-| [v0.7](https://github.com/mry-ship/pmem/issues/15)（[设计稿](docs/superpowers/specs/2026-10-21-pmem-typesafe-design.md)） | 类型安全与规则化：`enforced_by`（规则需核实双态）、health 规则候选、`facets`/`when`、doctor when 对照、返回契约、pyright；0.7.1 补 Watchdog WinError 6 重试 | 已完成（当前版本 0.7.1） |
+| [v0.7](https://github.com/mry-ship/pmem/issues/15)（[设计稿](docs/superpowers/specs/2026-10-21-pmem-typesafe-design.md)） | 类型安全与规则化：`enforced_by`（规则需核实双态）、health 规则候选、`facets`/`when`、doctor when 对照、返回契约、pyright；0.7.1 补 Watchdog WinError 6 重试 | 已完成 |
+| v0.7.2 | 来源与生效日：`source.kind`（不参与排序、不等于已核对）、`valid_from`（只影响 `as_of`；未来生效日不提前替代）；`pmem spec closed` 只读核对闭集，只出一致 / 可能不一致 / 无法判断 | 已完成（当前版本 0.7.2） |
 
 ## 许可证
 

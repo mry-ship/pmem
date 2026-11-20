@@ -20,7 +20,7 @@ def _memory_prefill(root: Path, config: Config) -> dict:
 
         storage = FilesStorage(root, detect_vcs(root, config.get("vcs")))
         entries = [entry for _, entry in storage.iter_all()]
-        superseded = {s for e in entries for s in e.replaces()}
+        superseded = {s for e in entries if e.supersede_in_force() for s in e.replaces()}
         current = [e for e in entries
                    if e.status in VISIBLE_STATUSES and e.id not in superseded]
         return spec_prefill(current)
@@ -48,7 +48,7 @@ def ensure_spec_skeletons(root: Path) -> tuple[int, str]:
     return 0, f"规格骨架：新写 {result.written}，已有 {result.skipped}，目录 {target}"
 
 
-def run_spec(root: Path, action: str | None, check: bool) -> int:
+def run_spec(root: Path, action: str | None, check: bool, module: str | None = None) -> int:
     config = Config.load(root)
     target = project_spec_dir(root, str(config.get("spec.dir") or ""))
     if target is None:
@@ -59,6 +59,18 @@ def run_spec(root: Path, action: str | None, check: bool) -> int:
     except RegistryError as exc:
         print(f"模块名单读不了：{exc}", file=sys.stderr)
         return 2
+    if module and action != "closed":
+        print("--module 只用于 spec closed", file=sys.stderr)
+        return 2
+    if action == "closed":
+        from pmem.generate.spec_closed import closed_report, format_closed
+
+        report = closed_report(root, registry, target, module)
+        if report.get("error"):
+            print(report["error"], file=sys.stderr)
+            return 2
+        print(format_closed(report))
+        return 0
     if action == "init":
         code, message = ensure_spec_skeletons(root)
         print(message, file=sys.stderr if code else sys.stdout)

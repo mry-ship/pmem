@@ -62,7 +62,10 @@ def unresolved(items: list[Entry], current: set[str]) -> Entry | None:
 def build_map(entries: list[Entry], full: bool = True) -> dict:
     """entries 应包含已归档、已被替代的记忆，图上才看得到完整演化。full=False 时节点不带正文（Wiki 用）。"""
     superseded_by: dict[str, str] = {}
-    for e in sorted(entries, key=_order):
+    # 节点顺序仍按 note_date。尚未到 valid_from 的替代先不算；多条已生效的后继指向最早的那条。
+    for e in sorted(entries, key=lambda e: (e.effective_date, e.note_date, e.id)):
+        if not e.supersede_in_force():
+            continue
         for old in e.replaces():
             superseded_by.setdefault(old, e.id)
     current = {e.id for e in entries if e.status in VISIBLE_STATUSES and e.id not in superseded_by}

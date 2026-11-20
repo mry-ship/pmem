@@ -13,7 +13,7 @@ BRIEF_HELP = "输出精简文本（每条一行）而不是 JSON，免得再用�
 def build_parser():
     import argparse
 
-    from pmem.core.entry import KINDS
+    from pmem.core.entry import KINDS, SOURCE_KINDS
 
     parser = argparse.ArgumentParser(prog="pmem", description="面向项目与团队的 AI 研发记忆系统")
     parser.add_argument("--version", action="version", version=f"pmem {__version__}")
@@ -130,6 +130,12 @@ def build_parser():
                    help="已由工程规则保障，写成 路径#规则名" + keep)
     p.add_argument("--when", action="extend", nargs="*", default=None,
                    help="结构化适用条件：platform=android 或 JSON；需 config facets" + keep)
+    p.add_argument("--source-kind", default="", choices=("", *SOURCE_KINDS),
+                   help="证据从哪来。不表示已核对，不参与排序；不填表示未知。"
+                        "带 --draft-id 时不写或写空则沿用原值，不能清空")
+    p.add_argument("--valid-from", default="",
+                   help="结论实际生效日 YYYY-MM-DD；不填等于写下日期。只影响 as_of，不改变现行检索。"
+                        "带 --draft-id 时不写或写空则沿用原值，不能清空")
     p.add_argument("--scope", default="", choices=("", "module", "project"),
                    help="project：全项目都会踩的坑，任何模块的摘要都带上；默认只属于本模块")
     p.add_argument("--draft-id", default="", help="上次写入返回的 draft_id：同一任务再次写入时覆盖那一条")
@@ -193,9 +199,11 @@ def build_parser():
     p.add_argument("--root", default=".")
 
     p = sub.add_parser("spec", help="模块规格：骨架、目录和完成情况（正文由 pmem-spec 技能写）")
-    p.add_argument("action", nargs="?", choices=("init", "index", "fill", "complete"), default=None,
+    p.add_argument("action", nargs="?", choices=("init", "index", "fill", "complete", "closed"), default=None,
                    help="init 补骨架；index 刷新目录和文首事实；complete 是补全模块规格的入口"
-                        "（铺骨架、列出缺谁，正文由 Agent 写到九成八）；fill 是 complete 的旧名")
+                        "（铺骨架、列出缺谁，正文由 Agent 写到九成八）；fill 是 complete 的旧名；"
+                        "closed 只读核对字段闭集、原文整句和入口锚点，不改规格")
+    p.add_argument("--module", default="", help="只核对这一个模块；仅 closed 使用")
     p.add_argument("--check", action="store_true", help="有模块还没完成首稿时返回 1")
     p.add_argument("--root", default=".")
 
@@ -466,7 +474,7 @@ def _format(args) -> int:
 def _spec(args) -> int:
     from pmem.cli.spec_cmd import run_spec
 
-    return run_spec(_project_root(args.root), args.action, args.check)
+    return run_spec(_project_root(args.root), args.action, args.check, args.module or None)
 
 
 def _wiki(args) -> int:
@@ -595,7 +603,8 @@ SERVICE_COMMANDS = {
                                     a.draft_id or None, aliases=a.alias, status="seed" if a.seed else None,
                                     summary=a.summary or None, scope=a.scope or None, verify=a.verify or None,
                                     applies=a.applies or None, enforced_by=a.enforced_by,
-                                    when=_parse_when_arg(a.when)),
+                                    when=_parse_when_arg(a.when),
+                                    source_kind=a.source_kind or None, valid_from=a.valid_from or None),
     "archive": lambda s, a: s.change_status(a.ids, "restore" if a.restore else "archive"),
     "confirm": lambda s, a: s.confirm(a.ids),
     "graph": lambda s, a: s.graph(a.module, a.entity or None),

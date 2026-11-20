@@ -17,8 +17,8 @@ aliases:
 - 版本号
 - v0.5
 - 发版
-verified: '2026-11-20'
-verified_at: '2026-11-20T21:27:51.903+08:00'
+verified: '2026-11-21'
+verified_at: '2026-11-21T04:47:30.168+08:00'
 source:
   conversation: 9622f1ee-c79a-429b-b50b-25228d393eb8
 ---

@@ -116,3 +116,34 @@ def test_memory_line_flattens_entity_newline():
 def test_crlf_line_endings_are_accepted():
     text = make_entry().to_markdown().replace("\n", "\r\n")
     assert Entry.from_markdown(text).entity == "Reward"
+
+
+def test_source_kind_and_valid_from_round_trip():
+    entry = make_entry(source_kind="code", valid_from="2025-01-01")
+    parsed = Entry.from_markdown(entry.to_markdown())
+    assert parsed.source_kind == "code" and parsed.valid_from == "2025-01-01"
+    assert parsed.effective_date == "2025-01-01"
+    assert parsed.verified is None
+
+
+def test_missing_provenance_stays_unknown():
+    parsed = Entry.from_markdown(make_entry().to_markdown())
+    assert parsed.source_kind is None and parsed.valid_from is None
+    assert parsed.effective_date == "2026-10-14"
+
+
+def test_bad_source_kind_and_valid_from_are_rejected():
+    text = make_entry().to_markdown().replace("conversation: conv-1", "conversation: conv-1\n  kind: guess", 1)
+    with pytest.raises(ValueError, match="source.kind"):
+        Entry.from_markdown(text)
+    dated = make_entry(valid_from="yesterday").to_markdown()
+    with pytest.raises(ValueError, match="valid_from"):
+        Entry.from_markdown(dated)
+
+
+@pytest.mark.parametrize("raw", ["20260101", "2026-W01-5", "2026-02-31"])
+def test_noncanonical_valid_from_is_rejected(raw):
+    text = make_entry(valid_from="2026-01-01").to_markdown().replace(
+        "valid_from: '2026-01-01'", f"valid_from: '{raw}'", 1)
+    with pytest.raises(ValueError, match="valid_from"):
+        Entry.from_markdown(text)

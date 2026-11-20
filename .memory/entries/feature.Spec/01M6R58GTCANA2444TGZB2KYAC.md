@@ -17,6 +17,8 @@ verify: uv run pytest tests/test_spec.py -k prefill
 aliases:
 - 规格预填
 - 防漂移
+verified: '2026-11-21'
+verified_at: '2026-11-21T02:36:38.231+08:00'
 ---
 需求来源：spec complete 原来只铺空骨架，程序设计/模块现状节全靠 Agent 合上代码从零反推到九成八。用户要求从 feature 记忆预填起点，降负担、防 spec 与记忆漂移。
 

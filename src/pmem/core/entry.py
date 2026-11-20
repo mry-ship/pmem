@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import date
 
 KINDS = ("conclusion", "exclusion", "correction", "risk", "decision", "feature", "plan")
 # 展示顺序即先看的顺序：排除项、风险最能避免走弯路
@@ -11,6 +12,8 @@ KIND_LABELS = {"exclusion": "排除项", "risk": "风险", "correction": "更正
 LESSON_KINDS = ("exclusion", "risk", "correction", "decision", "conclusion")
 RECORD_KINDS = ("feature", "plan")
 STATUSES = ("draft", "seed", "active", "archived")
+# 证据从哪来。不是核对，也不参与检索排序。
+SOURCE_KINDS = ("human", "code", "test", "conversation", "document", "inference")
 VISIBLE_STATUSES = ("active", "seed", "draft")
 # 归档记忆不再被检索到，但它的 supersedes 仍然算数：归档表示这条演进线整体过时
 REPLACING_STATUSES = (*VISIBLE_STATUSES, "archived")
@@ -33,7 +36,7 @@ def enforced_mark(enforced_by: list[str] | None, problems: list[str] | None = No
     return ENFORCED_OK
 KNOWN_KEYS = frozenset({"id", "module", "entity", "kind", "status", "supersedes", "anchors", "revision", "author",
                         "note_date", "aliases", "verified", "verified_at", "archived", "source",
-                        "summary", "scope", "verify", "applies", "when", "enforced_by", "reverted"})
+                        "summary", "scope", "verify", "applies", "when", "enforced_by", "reverted", "valid_from"})
 # 正文开头常自带“决定：”“更正（2026-10-19）：”，和类型标签放在一起就成了“决定：决定：”
 _KIND_PREFIX = re.compile(
     r"^\s*(?:决定|结论|更正|排除项?|风险|根因|原因|注意|背景|现象|问题|坑|功能|规划|需求)(?:\s*[（(][^）)]{0,40}[）)])?\s*[：:]\s*"
@@ -91,6 +94,10 @@ class Entry:
     supersedes: list[str] = field(default_factory=list)
     anchors: list[str] = field(default_factory=list)
     source_conversation: str | None = None
+    # 证据来源。缺省表示未知；不据此写入 verified，也不参与排序。
+    source_kind: str | None = None
+    # 结论实际生效日。缺省时生效日等于 note_date（写下日期）。只供 as_of 使用。
+    valid_from: str | None = None
     aliases: list[str] = field(default_factory=list)
     verified: str | None = None
     # 核对的精确时刻（带时区的 ISO 时间）：verified 只到天，同一天写下的新记忆分不出先后
@@ -131,6 +138,19 @@ class Entry:
     def checked_date(self) -> str:
         """最近一次确认成立的日期：核对过取核对日期，否则取写入日期。"""
         return max(self.note_date, self.verified or "")
+
+    @property
+    def effective_date(self) -> str:
+        """结论生效日：写了 valid_from 用它，否则用写下日期。现行检索不按它隐藏记忆。"""
+        return self.valid_from or self.note_date
+
+    def supersede_in_force(self, as_of: str | None = None, *, today: str | None = None) -> bool:
+        """替代是否已经生效。回看某天时用生效日。现行视图里没写 valid_from 立即生效，写了则要到那一天。"""
+        if as_of is not None:
+            return self.effective_date <= as_of
+        if not self.valid_from:
+            return True
+        return self.valid_from <= (today or date.today().isoformat())
 
     def replaces(self, day: str | None = None) -> list[str]:
         """这条记忆在某天（默认现在）让哪些旧记忆失效：归档的也算（整条演进线过时），撤销了的合并不算。"""
@@ -187,8 +207,15 @@ class Entry:
                 meta["archived"]["by"] = self.archived_by
         if self.reverted_on:
             meta["reverted"] = {"on": self.reverted_on, "by": self.reverted_by or ""}
+        source_meta: dict = {}
         if self.source_conversation:
-            meta["source"] = {"conversation": self.source_conversation}
+            source_meta["conversation"] = self.source_conversation
+        if self.source_kind:
+            source_meta["kind"] = self.source_kind
+        if source_meta:
+            meta["source"] = source_meta
+        if self.valid_from:
+            meta["valid_from"] = self.valid_from
         meta.update({k: v for k, v in self.extra.items() if k not in KNOWN_KEYS})
         import yaml
 
@@ -237,6 +264,8 @@ class Entry:
             supersedes=_str_list(meta, "supersedes"),
             anchors=_str_list(meta, "anchors"),
             source_conversation=source.get("conversation"),
+            source_kind=_source_kind(source.get("kind")),
+            valid_from=_valid_from(meta.get("valid_from")),
             aliases=_str_list(meta, "aliases"),
             verified=str(meta["verified"]) if meta.get("verified") else None,
             verified_at=str(meta["verified_at"]) if meta.get("verified_at") else None,
@@ -253,6 +282,33 @@ class Entry:
             reverted_by=str(reverted["by"]) if reverted.get("by") else None,
             extra={k: v for k, v in meta.items() if k not in KNOWN_KEYS},
         )
+
+
+def _source_kind(raw) -> str | None:
+    if raw is None or raw == "":
+        return None
+    kind = _line(raw)
+    if kind not in SOURCE_KINDS:
+        raise ValueError(f"source.kind 必须是 {' / '.join(SOURCE_KINDS)} 之一，当前为 {kind!r}")
+    return kind
+
+
+def parse_valid_from(raw) -> str | None:
+    """只接受日历日 YYYY-MM-DD。紧凑日期和周日期也能被 fromisoformat 认下，存成原字符串后和 as_of 对不上。"""
+    if raw is None or str(raw).strip() == "":
+        return None
+    text = _line(raw)
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        raise ValueError(f"valid_from 须是 YYYY-MM-DD，当前为 {text!r}")
+    try:
+        parsed = date.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(f"valid_from 须是 YYYY-MM-DD，当前为 {text!r}") from exc
+    return parsed.isoformat()
+
+
+def _valid_from(raw) -> str | None:
+    return parse_valid_from(raw)
 
 
 def _parse_when(raw) -> dict:

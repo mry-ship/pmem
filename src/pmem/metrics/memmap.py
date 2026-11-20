@@ -61,7 +61,7 @@ def _gaps(service: MemoryService, entries: list, days: int) -> tuple[list[dict],
 def _broken(entries: list) -> list[dict]:
     """断链：更正没有写替代对象（读的人不知道它推翻了哪条，旧结论仍然现行）；同议题一正一反却没有替代关系。"""
     visible = [e for e in entries if e.status in VISIBLE_STATUSES]
-    hidden = {old for e in entries for old in e.replaces()}
+    hidden = {old for e in entries if e.supersede_in_force() for old in e.replaces()}
     rows = [{"module": e.module, "entity": e.entity, "ids": [e.id], "reason": "更正没有写替代哪条（supersedes）"}
             for e in visible if e.kind == "correction" and not e.supersedes and e.id not in hidden]
     for pair in _contradictions([e for e in visible if e.id not in hidden]):

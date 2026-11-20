@@ -31,7 +31,7 @@ def current_entries(entries: list[Entry], replaced: set[str] | None = None) -> l
     replaced 是这批文件之外仍生效的替代目标（Entry.replaces，例如父模块替代了下级）。
     只读了一个模块目录时，本批文件的 supersedes 看不到它。"""
     visible = [e for e in entries if e.status in VISIBLE]
-    hidden = {old for e in entries for old in e.replaces()}
+    hidden = {old for e in entries if e.supersede_in_force() for old in e.replaces()}
     if replaced:
         hidden.update(replaced)
     return sorted((e for e in visible if e.id not in hidden), key=lambda e: (e.note_date, e.id), reverse=True)
@@ -47,7 +47,8 @@ def load_replaced_ids(entries_dir: Path) -> set[str]:
             entry = Entry.from_markdown(path.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError):
             continue
-        hidden.update(entry.replaces())
+        if entry.supersede_in_force():
+            hidden.update(entry.replaces())
     return hidden
 
 
@@ -107,7 +108,9 @@ class MemoryGraph:
         self.registry = registry
         self.entries = sorted((e for e in entries if e.status in VISIBLE), key=lambda e: (e.note_date, e.id))
         self.superseded_by: dict[str, Entry] = {}
-        replacing = sorted((e for e in entries if e.replaces()), key=lambda e: (e.note_date, e.id))
+        # 只算已经生效的后继。多条同时替代时留下生效最早的，until 用它的生效日。
+        replacing = sorted((e for e in entries if e.replaces() and e.supersede_in_force()),
+                           key=lambda e: (e.effective_date, e.note_date, e.id))
         for entry in replacing:
             for old in entry.replaces():
                 self.superseded_by.setdefault(old, entry)
@@ -186,10 +189,12 @@ class MemoryGraph:
                 continue
             row = {"id": entry.id, "date": entry.note_date, "kind": entry.kind, "author": entry.author,
                    "preview": entry.title}
+            if entry.valid_from:
+                row["valid_from"] = entry.valid_from
             newer = self.superseded_by.get(entry.id)
             if newer is not None:
                 row["superseded_by"] = newer.id
-                row["until"] = newer.note_date
+                row["until"] = newer.effective_date
             if entry.supersedes:
                 row["replaces"] = list(entry.supersedes)
             rows.append(row)

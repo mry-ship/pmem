@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from datetime import date
 from pathlib import Path
 
 from wcmatch import glob as wglob
@@ -43,7 +44,7 @@ def _stale_mark(problems: list[str]) -> str:
 
 
 def _entries_stamp(folder: Path) -> str:
-    """记忆目录变了就要重算替代关系：文件数、最新修改时间、总大小。"""
+    """记忆目录变了，或过了一天，就要重算替代关系。未来的 valid_from 到点后文件本身不会改。"""
     if not folder.is_dir():
         return "0"
     count = latest = total = 0
@@ -55,7 +56,7 @@ def _entries_stamp(folder: Path) -> str:
         count += 1
         latest = max(latest, stat.st_mtime_ns)
         total += stat.st_size
-    return f"{count}:{latest}:{total}"
+    return f"{count}:{latest}:{total}:{date.today().isoformat()}"
 
 
 class MemoryView(GateAttrs):

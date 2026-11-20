@@ -18,8 +18,8 @@ note_date: '2026-11-20'
 summary: 路线：v0.7 类型安全已于 0.7.0 发布
 verify: 'README 路线表与 Issue #15；pmem --version'
 applies: 排版本或改 README/设计路线表时
-verified: '2026-11-20'
-verified_at: '2026-11-20T21:31:53.693+08:00'
+verified: '2026-11-21'
+verified_at: '2026-11-21T04:47:30.168+08:00'
 ---
 版本路线以设计文档第 14 节与 GitHub Issue 为准。
 

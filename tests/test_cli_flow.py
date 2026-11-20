@@ -250,6 +250,48 @@ def test_doctor_reports_coverage(tmp_path, capsys, monkeypatch):
     assert "Hooks 是旧版" in doctor_out
 
 
+def test_doctor_warns_when_without_facets_and_bad_when(tmp_path, capsys, monkeypatch):
+    """未声明 facets 却写 when、以及 when 取值不在声明里时，doctor 都要警告。"""
+    monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
+    main(["init", "--root", str(tmp_path), "--type", "generic"])
+    config = tmp_path / ".memory" / "config.yaml"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace("backend: auto", "backend: none"),
+        encoding="utf-8",
+    )
+    modules = tmp_path / ".memory" / "modules.yaml"
+    modules.write_text(
+        modules.read_text(encoding="utf-8").replace(
+            "modules: {}",
+            "modules:\n  feature.Login:\n    paths: [src/Login/**]\n",
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "src" / "Login").mkdir(parents=True)
+    (tmp_path / "src" / "Login" / "Login.ts").write_text("x", encoding="utf-8")
+    entry_dir = tmp_path / ".memory" / "entries" / "feature.Login"
+    entry_dir.mkdir(parents=True)
+    (entry_dir / "01JA7K3M2X9F4Q8W6ZB1C2D3E4.md").write_text(
+        "---\nid: 01JA7K3M2X9F4Q8W6ZB1C2D3E4\nmodule: feature.Login\nentity: Auth\n"
+        "kind: risk\nnote_date: '2026-11-20'\nauthor: t\nwhen:\n  platform: [ios]\n"
+        "---\n风险：无 facets 时 doctor 应看见 when。xxxxxxxxxx\n",
+        encoding="utf-8",
+    )
+    capsys.readouterr()
+    main(["doctor", "--root", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert "写了 when，但项目未声明 facets" in out
+
+    config.write_text(
+        config.read_text(encoding="utf-8") + "\nfacets:\n  platform: [android]\n",
+        encoding="utf-8",
+    )
+    main(["doctor", "--root", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert "when 与 facets 不符" in out
+    assert "写了 when，但项目未声明 facets" not in out
+
+
 def test_doctor_checks_claude_and_codex_without_requiring_cursor(tmp_path, capsys, monkeypatch):
     monkeypatch.setenv("PMEM_CACHE_DIR", str(tmp_path / "cache"))
     main(["init", "--root", str(tmp_path), "--type", "generic", "--agents", "claude,codex"])

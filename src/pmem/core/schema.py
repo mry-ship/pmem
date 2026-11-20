@@ -103,7 +103,7 @@ def unknown_key_warnings(
             for name in child:
                 if name not in child_known:
                     hint = suggest_key(str(name), child_known)
-                    tip = f"，是不是 {hint}？" if hint else ""
+                    tip = f"，是不是 {key}.{hint}？" if hint else ""
                     warnings.append(f"{file_path}：不认识的键 {key}.{name}{tip}（已忽略）")
         return warnings
     # 单节
@@ -115,6 +115,6 @@ def unknown_key_warnings(
     for name in root[section]:
         if name not in child_known:
             hint = suggest_key(str(name), child_known)
-            tip = f"，是不是 {hint}？" if hint else ""
+            tip = f"，是不是 {section}.{hint}？" if hint else ""
             warnings.append(f"{file_path}：不认识的键 {section}.{name}{tip}（已忽略）")
     return warnings

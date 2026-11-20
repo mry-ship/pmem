@@ -22,7 +22,7 @@ description: 为项目首次划分 pmem 模块并写入 .memory/modules.yaml。�
    - 大业务下的细分按这个梯子从低往高选，够用就停：模块内议题（`entities`）→ 组件或变体（`components`、`variants`）
      → 子模块（名字用点号续写，如 `system.Ads.AdMob`，最多 4 段；父模块必须先登记，可以只作分组、不写路径）
      → 独立模块。子模块要有自己的代码路径，且有只对它成立的教训才值得拆；
-     平台（iOS/Android）、渠道、版本是适用条件，写进记忆的 `applies`，不要单独做一层，除非各自有独立的代码目录。
+     平台（iOS/Android）、渠道、版本是适用条件：能枚举的写 `when`（需 config `facets`），其余写 `applies`；不要单独做一层，除非各自有独立的代码目录。
      跨分支的深层关联（如打包脚本与广告 SDK）在模块的 `related` 里写 `{ module: 模块, reason: 原因 }`。
 3. 写入 `.memory/modules.yaml`（保留文件头注释与 `categories`）。
 4. 运行 `pmem doctor`，处理“未覆盖目录”“路径重叠”“空壳模块”，直到覆盖率 ≥ 95%。

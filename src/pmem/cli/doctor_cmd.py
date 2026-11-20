@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
-import os
 import re
 import shutil
 import sys
@@ -40,6 +39,31 @@ from pmem.storage.files import FilesStorage
 from pmem.vcs.detect import detect_vcs
 
 OK, WARN, BAD = "✔", "!", "✘"
+_WHEN_FACET_WARN_CAP = 8
+
+
+def _check_when_facets(line, config: Config, visible: list) -> None:
+    """现行记忆的 when 与 config facets 对照：未声明、未知维、非法取值都要看见（读盘坏维由 storage.warnings 报）。"""
+    from pmem.core.facets import FacetError, normalize_when
+
+    facets = config.facets or {}
+    shown = 0
+    for entry in visible:
+        if not entry.when:
+            continue
+        if not facets:
+            if shown < _WHEN_FACET_WARN_CAP:
+                line(WARN, f"记忆 {entry.id} 写了 when，但项目未声明 facets（检索不会按 when 过滤）")
+                shown += 1
+            continue
+        try:
+            normalize_when(entry.when, facets)
+        except FacetError as exc:
+            if shown < _WHEN_FACET_WARN_CAP:
+                line(WARN, f"记忆 {entry.id} 的 when 与 facets 不符：{exc}")
+                shown += 1
+    if shown >= _WHEN_FACET_WARN_CAP:
+        print(f"      …when/facets 提醒已截断（最多 {_WHEN_FACET_WARN_CAP} 条）")
 
 # 兼容旧 import：tests / 外部仍可从 doctor_cmd 取懒医生 API
 __all__ = [
@@ -228,6 +252,9 @@ def _run_doctor_body(root: Path, *, warmup_embed: bool = True) -> int:
          f"现行记忆 {len(visible)} 条（记忆文件共 {len(entries)} 个，其余已被替代或停用）")
     for warning in storage.warnings[:5]:
         print(f"      {warning}")
+    if len(storage.warnings) > 5:
+        print(f"      …另有 {len(storage.warnings) - 5} 条（含 when 坏维跳过等）")
+    _check_when_facets(line, config, visible)
     pending = vcs.uncommitted_count(config.entries_dir)
     if pending:
         line(WARN, f"本机有 {pending} 条记忆未提交，队友看不到；请连同 .memory/ 一起提交")

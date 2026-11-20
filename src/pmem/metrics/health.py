@@ -445,7 +445,8 @@ def render(h: dict) -> str:
              f"近例：{' / '.join(r['titles'][:3])}"
              for r in h.get("rule_candidates") or []],
             "和负责人确认后写成静态规则/类型校验/测试，再写一条 feature："
-            "enforced_by 填 规则文件#规则名，supersedes 填被替代的教训；之后摘要里会标「已由规则拦截」并靠后排")
+            "enforced_by 填 规则文件#规则名，supersedes 填被替代的教训；"
+            "规则文件与符号仍在时摘要标「已由规则拦截」并靠后排，否则标「规则需核实」")
     section("替代了别的模块的记忆（原模块查不到新结论）",
             [f"{c['module']} 的 {c['id']} 替代了 {c['replaced_module']} 的 {c['replaced']}"
              for c in h.get("cross_supersedes") or []][:TOP],

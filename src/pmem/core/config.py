@@ -242,7 +242,11 @@ class Config:
         if raw is not None and not isinstance(raw, dict):
             raise ConfigError(f"{_CONFIG_PATH} 的顶层应是键值对，当前为 {type(raw).__name__}")
         warnings = unknown_key_warnings(raw or {}, _known_config_keys(), file_path=_CONFIG_PATH)
-        return cls(root, _merge(DEFAULTS, raw or {}), warnings=warnings)
+        data = _merge(DEFAULTS, raw or {})
+        # YAML 写「facets:」或 facets: null 会盖掉默认 {}；按设计空=未启用 when
+        if data.get("facets") is None:
+            data["facets"] = {}
+        return cls(root, data, warnings=warnings)
 
     def get(self, dotted: str, default=None):
         node = self.data

@@ -45,6 +45,41 @@ def test_entry_when_round_trip():
     assert parsed.when == {"platform": ["android"]}
 
 
+def test_parse_when_loose_skips_bad_dimension_keeps_good():
+    from pmem.core.facets import parse_when_loose, when_structure_issues
+
+    assert parse_when_loose({"platform": ["ios"], "bad": {"nested": 1}}) == {"platform": ["ios"]}
+    issues = when_structure_issues({"platform": ["ios"], "bad": {"nested": 1}})
+    assert any("when.bad" in i and "跳过" in i for i in issues)
+    text = (
+        "---\nid: 01JA7K3M2X9F4Q8W6ZB1C2D3E4\nmodule: gameplay.Jigsaw\nentity: Reward\n"
+        "kind: exclusion\nnote_date: '2026-11-20'\nauthor: a\n"
+        "when:\n  platform: [ios]\n  bad:\n    nested: 1\n"
+        "---\n排除：读盘时坏维度不能拖垮合法 when。xxxxxxxxxx\n"
+    )
+    assert Entry.from_markdown(text).when == {"platform": ["ios"]}
+
+
+def test_storage_warns_on_skipped_when_dims(tmp_path):
+    from pmem.storage.files import FilesStorage
+    from pmem.vcs.detect import detect_vcs
+
+    mem = tmp_path / ".memory" / "entries" / "gameplay.Jigsaw"
+    mem.mkdir(parents=True)
+    (mem / "01JA7K3M2X9F4Q8W6ZB1C2D3E4.md").write_text(
+        "---\nid: 01JA7K3M2X9F4Q8W6ZB1C2D3E4\nmodule: gameplay.Jigsaw\nentity: Reward\n"
+        "kind: exclusion\nnote_date: '2026-11-20'\nauthor: a\n"
+        "when:\n  platform: [ios]\n  bad:\n    nested: 1\n"
+        "---\n排除：坏 when 维应进 storage.warnings。xxxxxxxxxx\n",
+        encoding="utf-8",
+    )
+    storage = FilesStorage(tmp_path, detect_vcs(tmp_path))
+    entries = list(storage.iter_all())
+    assert len(entries) == 1
+    assert entries[0][1].when == {"platform": ["ios"]}
+    assert any("跳过" in w and "when.bad" in w for w in storage.warnings)
+
+
 def test_config_loads_facets(tmp_path):
     mem = tmp_path / ".memory"
     mem.mkdir()

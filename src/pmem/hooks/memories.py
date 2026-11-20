@@ -9,12 +9,12 @@ from pathlib import Path
 
 from wcmatch import glob as wglob
 
-from pmem.core.entry import KIND_LABELS, PITFALL_KINDS, RECORD_KINDS, Entry
+from pmem.core.entry import KIND_LABELS, PITFALL_KINDS, RECORD_KINDS, Entry, enforced_mark
 from pmem.core.fileio import write_atomic
 from pmem.core.registry import RegistryError, ancestor_modules
+from pmem.hooks.types import GateAttrs
 from pmem.index.anchors import ANCHOR_CACHE, STALE_LABEL, AnchorChecker
 from pmem.index.graph import current_entries, load_replaced_ids, project_pitfalls
-from pmem.hooks.types import GateAttrs
 from pmem.metrics.events import log_event
 
 GLOB_FLAGS = wglob.GLOBSTAR | wglob.BRACE | wglob.DOTGLOB | wglob.FORCEUNIX | wglob.IGNORECASE
@@ -32,6 +32,8 @@ DIGEST_MATERIAL = (
 )
 _STALE_SLOT = "\x00stale:{}\x00"
 _STALE_SLOT_RE = re.compile(r"\x00stale:(\w+)\x00")
+_ENFORCED_SLOT = "\x00enforced:{}\x00"
+_ENFORCED_SLOT_RE = re.compile(r"\x00enforced:(\w+)\x00")
 _FOOTER_SLOT = "\x00footer:{}\x00"
 _FOOTER_SLOT_RE = re.compile(r"\n?\x00footer:([\w,]*)\x00")
 
@@ -218,10 +220,12 @@ class MemoryView(GateAttrs):
         if self.defer_stale:
             self._deferred.update((e.id, e) for e in entries)
             marks = {e.id: _STALE_SLOT.format(e.id) for e in entries}
-            return self._lines(entries, marks, _FOOTER_SLOT.format(",".join(marks)), own)
+            return self._lines(entries, marks, _FOOTER_SLOT.format(",".join(marks)), own,
+                              problems=None, defer_enforced=True)
         problems = self.stale_problems(entries)
         marks = {i: _stale_mark(p) for i, p in problems.items()}
-        return self._lines(entries, marks, self._stale_footer() if problems else "", own)
+        return self._lines(entries, marks, self._stale_footer() if problems else "", own,
+                           problems=problems)
 
     def _stale_footer(self) -> str:
         """“需核实”的处理说明每个对话只给一次，上下文压缩后再给。
@@ -236,7 +240,9 @@ class MemoryView(GateAttrs):
         return STALE_FOOTER
 
     @staticmethod
-    def _lines(entries: list[Entry], marks: dict[str, str], footer: str, own: str | None = None) -> list[str]:
+    def _lines(entries: list[Entry], marks: dict[str, str], footer: str, own: str | None = None,
+               problems: dict[str, list[str]] | None = None,
+               defer_enforced: bool = False) -> list[str]:
         lines = []
         for e in entries:
             seed = "（种子，待确认）" if e.status == "seed" else ""
@@ -245,7 +251,10 @@ class MemoryView(GateAttrs):
             upper = own is not None and module.lower() != own.lower() and not e.project_wide
             where = f"{module}/" if e.project_wide else (f"上级 {module}/" if upper else "")
             kind = KIND_LABELS.get(e.kind, " ".join(str(e.kind).split()))
-            enforced = "（已由规则拦截）" if e.enforced else ""
+            if defer_enforced and e.enforced_by:
+                enforced = _ENFORCED_SLOT.format(e.id)
+            else:
+                enforced = enforced_mark(e.enforced_by, (problems or {}).get(e.id))
             lines.append(f"- {kind}{seed}{enforced}｜{where}{entity}｜{' '.join(str(e.note_date).split())}"
                          f"{marks.get(e.id, '')}：{' '.join(str(e.title).split())}")
         if footer:
@@ -256,7 +265,8 @@ class MemoryView(GateAttrs):
         """把锁内留下的占位符换成核对结果；没有需核实的记忆时占位符连同所在的提示行一起去掉。"""
         if not self._deferred:
             return result
-        problems = self.stale_problems(list(self._deferred.values()))
+        deferred = dict(self._deferred)
+        problems = self.stale_problems(list(deferred.values()))
         self._deferred = {}
 
         def fill(value):
@@ -272,7 +282,14 @@ class MemoryView(GateAttrs):
                 text = self._stale_footer()
                 return "\n" + text if text else ""
 
+            def enforced(m) -> str:
+                entry = deferred.get(m.group(1))
+                if entry is None:
+                    return ""
+                return enforced_mark(entry.enforced_by, problems.get(m.group(1), []))
+
             text = _FOOTER_SLOT_RE.sub(footer, value)
+            text = _ENFORCED_SLOT_RE.sub(enforced, text)
             return _STALE_SLOT_RE.sub(lambda m: _stale_mark(problems.get(m.group(1), [])), text)
 
         return fill(result)

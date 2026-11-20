@@ -43,8 +43,14 @@ def test_unknown_config_keys_warn_with_suggestion(tmp_path):
     cfg = Config.load(tmp_path)
     assert cfg.get("gate.mode") == "block"
     joined = "\n".join(cfg.warnings)
-    assert "gate.mod" in joined and "mode" in joined
+    assert "gate.mod" in joined and "gate.mode" in joined
     assert "weird" in joined
+
+
+@pytest.mark.parametrize("text", ["facets:\n", "facets: null\n", "facets: {}\n"])
+def test_null_or_empty_facets_means_disabled(tmp_path, text):
+    write_config(tmp_path, f"project: {{ name: demo }}\n{text}")
+    assert Config.load(tmp_path).facets == {}
 
 
 def test_too_many_facets_warns(tmp_path):

@@ -139,13 +139,31 @@ class Watchdog:
         self.kill_reason = None
         self.started_at = time.monotonic()
         flags = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
-        try:
-            self.child = subprocess.Popen(self.command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                          bufsize=0, creationflags=flags)
-        except OSError as exc:
+        # Windows 偶发 WinError 6（句柄无效）：脚本刚落盘或句柄瞬时不可用时短重试，避免一次失败就进崩溃退避
+        last_exc: OSError | None = None
+        self.child = None
+        for attempt in range(3):
+            try:
+                self.child = subprocess.Popen(
+                    self.command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                    bufsize=0, creationflags=flags)
+                last_exc = None
+                break
+            except OSError as exc:
+                last_exc = exc
+                if sys.platform == "win32" and getattr(exc, "winerror", None) == 6 and attempt < 2:
+                    delay = 0.05 * (attempt + 1)
+                    _log(f"子进程启动遇 WinError 6，{delay:.2f}s 后重试（第 {attempt + 1}/3 次）；"
+                         "若反复出现请查句柄/权限，勿只当瞬时抖动")
+                    time.sleep(delay)
+                    continue
+                break
+        if last_exc is not None:
             self.child = None
-            self._schedule_restart("crash", f"无法启动（{exc}）")
+            self._schedule_restart("crash", f"无法启动（{last_exc}）")
             return
+        if attempt > 0:
+            _log(f"子进程启动在第 {attempt + 1} 次重试后成功（先前遇 WinError 6）")
         threading.Thread(target=self._read_child, args=(self.child, self.gen), daemon=True).start()
         init_pending = any(method == "initialize" for _, method, _ in self.pending.values())
         if self.init_request is None or init_pending:

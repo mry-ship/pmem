@@ -43,4 +43,4 @@ def test_suggest_key_and_unknown_warnings():
         file_path=".memory/config.yaml",
     )
     assert any("不认识的键 extra" in w for w in warnings)
-    assert any("gate.mod" in w and "mode" in w for w in warnings)
+    assert any("gate.mod" in w and "是不是 gate.mode？" in w for w in warnings)

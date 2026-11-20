@@ -3,7 +3,7 @@ id: 01M7WH98QNKS419WSC4JPPQYRW
 module: infra.Common
 entity: Versioning
 kind: feature
-status: active
+status: archived
 supersedes: []
 anchors: []
 revision: git:c4144ab
@@ -11,6 +11,10 @@ author: 1002378395@qq.com
 note_date: '2026-11-20'
 summary: v0.7 边界校验已落地；安装包仍 0.6.7 不跳号
 applies: 发版或改路线表当前版本时
+archived:
+  'on': '2026-11-20'
+  from: active
+  by: 1002378395@qq.com
 ---
 需求来源：v0.7 阶段 2 边界校验落地。
 

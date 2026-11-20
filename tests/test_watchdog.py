@@ -37,6 +37,7 @@ def dog(tmp_path, monkeypatch):
     script.write_text(FAKE_CHILD, encoding="utf-8")
     # 写完立刻再读一次：Windows 上偶发 WinError 6 / 子进程秒退，疑似文件尚未可执行就被 Popen
     assert script.read_text(encoding="utf-8").startswith("import json")
+    time.sleep(0.05)  # 与 Watchdog._start 对 WinError 6 的短重试配合
     cin_r, cin_w = os.pipe()
     out_r, out_w = os.pipe()
     client, replies = os.fdopen(cin_w, "wb", 0), os.fdopen(out_r, "rb", 0)
@@ -67,8 +68,17 @@ def dog(tmp_path, monkeypatch):
         watchdog.timeout = watchdog.current_timeout = 1.5
 
     def handshake():
-        reply = call(1, "initialize", protocolVersion="2025-06-18")
-        assert "result" in reply, (reply, restarts)
+        # Windows 上首启偶发 WinError 6：Watchdog 会立刻重排启动，握手可短重试
+        reply = None
+        for attempt in range(4):
+            reply = call(1 + attempt, "initialize", protocolVersion="2025-06-18")
+            if "result" in reply:
+                break
+            err = str((reply.get("error") or {}).get("message") or "")
+            if "无法启动" not in err and "WinError 6" not in err:
+                break
+            time.sleep(0.15 * (attempt + 1))
+        assert reply is not None and "result" in reply, (reply, restarts)
         pid = reply["result"]["pid"]
         send(None, "notifications/initialized")
         return pid

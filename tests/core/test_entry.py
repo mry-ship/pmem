@@ -54,6 +54,7 @@ def test_optional_fields_default_to_empty():
 
 
 def test_enforced_by_round_trips_and_marks_summary_line():
+    from pmem.core.entry import ENFORCED_OK, ENFORCED_STALE, enforced_mark
     from pmem.hooks.memories import MemoryView
 
     entry = make_entry(enforced_by=["tests/rules/reward.py#no_default_grant"])
@@ -61,7 +62,9 @@ def test_enforced_by_round_trips_and_marks_summary_line():
     assert parsed.enforced_by == ["tests/rules/reward.py#no_default_grant"]
     assert parsed.enforced is True
     line = MemoryView._lines([parsed], {}, "")[0]
-    assert "（已由规则拦截）" in line
+    assert ENFORCED_OK in line
+    assert enforced_mark(["rules/x.py#y"], ["规则文件 rules/x.py 已不存在"]) == ENFORCED_STALE
+    assert enforced_mark(["rules/x.py#y"], ["src/foo.py 于 2026-11-20 改过"]) == ENFORCED_OK
 
 
 def test_invalid_kind_is_rejected():

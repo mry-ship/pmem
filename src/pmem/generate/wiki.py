@@ -10,7 +10,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pmem.core.entry import KIND_LABELS, Entry
+from pmem.core.entry import KIND_LABELS, Entry, enforced_mark
 from pmem.core.registry import is_lineage, is_module_id, module_depth, parent_module
 from pmem.generate.memmap import SELF_IGNORE, render_mermaid
 from pmem.index.anchors import STALE_LABEL
@@ -92,7 +92,8 @@ def _code_link(anchor: str, to_root: str) -> str:
 
 def _entry_block(entry: Entry, to_root: str, problems: list[str] | None) -> list[str]:
     scope = " · 全项目" if entry.project_wide else ""
-    title = f"### {_kind(entry)}{scope} · {entry.note_date} · {entry.author}：{entry.title}"
+    enforced = enforced_mark(entry.enforced_by, problems)
+    title = f"### {_kind(entry)}{scope} · {entry.note_date} · {entry.author}：{entry.title}{enforced}"
     lines = [f"{title} · ⚠ {STALE_LABEL}" if problems else title, ""]
     if problems:
         lines += [f"> ⚠ {STALE_LABEL}：{'；'.join(problems)}。核对后仍成立就 confirm_memory，不成立就写 correction 替代。",
@@ -113,6 +114,8 @@ def _entry_block(entry: Entry, to_root: str, problems: list[str] | None) -> list
     lines.append(" · ".join(meta))
     if entry.anchors:
         lines += ["", "关联代码：" + "，".join(_code_link(a, to_root) for a in entry.anchors)]
+    if entry.enforced_by:
+        lines += ["", "已由规则：" + "，".join(_code_link(a, to_root) for a in entry.enforced_by)]
     return [*lines, ""]
 
 
@@ -212,13 +215,16 @@ def _index_page(title: str, by_module: dict[str, list[Entry]], graph: MemoryGrap
         lines += ["## 全项目通用", "", "不限某个模块、改哪里都可能踩到的坑和约定（读任何模块的代码时都会附上）。", ""]
         for entry in project:
             mark = f" ⚠ {STALE_LABEL}" if entry.id in stale else ""
-            lines.append(f"- {_module_link(entry.module)} · {entry.entity} · {_kind(entry)}{mark}：{entry.title}")
+            enforced = enforced_mark(entry.enforced_by, stale.get(entry.id))
+            lines.append(
+                f"- {_module_link(entry.module)} · {entry.entity} · {_kind(entry)}{enforced}{mark}：{entry.title}")
         lines.append("")
     lines += ["## 最近更新", ""]
     for entry in sorted(current, key=lambda e: (e.note_date, e.id), reverse=True)[:RECENT]:
         mark = f" ⚠ {STALE_LABEL}" if entry.id in stale else ""
+        enforced = enforced_mark(entry.enforced_by, stale.get(entry.id))
         lines.append(f"- {entry.note_date} {_module_link(entry.module)} · {entry.entity} · "
-                     f"{_kind(entry)}{mark}：{entry.title}")
+                     f"{_kind(entry)}{enforced}{mark}：{entry.title}")
     return "\n".join(lines).rstrip() + "\n"
 
 

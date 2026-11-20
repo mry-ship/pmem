@@ -113,8 +113,34 @@ def normalize_when(raw: Any, facets: dict[str, FacetDef], *, required: bool = Tr
     return out
 
 
+def when_structure_issues(raw: Any) -> list[str]:
+    """读盘时会被跳过的 when 问题（结构不对）；不按 facets 校验。
+
+    供 doctor / 存储扫描：坏维仍跳过以免拖垮整条记忆，但必须能被看见。
+    """
+    if raw is None or raw == {} or raw == "":
+        return []
+    if not isinstance(raw, dict):
+        return [f"when 应是键值对，实际是 {type(raw).__name__}"]
+    issues: list[str] = []
+    for key, value in raw.items():
+        name = " ".join(str(key).split())
+        if not name:
+            issues.append("when 含空维度名（读盘已跳过）")
+            continue
+        try:
+            _as_values(value, f"when.{name}")
+        except FacetError as exc:
+            issues.append(f"{exc}（读盘已跳过该维）")
+    return issues
+
+
 def parse_when_loose(raw: Any) -> dict[str, list[str]]:
-    """读盘时不按 facets 校验，只收成 {维度: [取值]}；结构不对则返回空（原值进 Entry.extra）。"""
+    """读盘时不按 facets 校验，只收成 {维度: [取值]}。
+
+    非对象 → 空（调用方应对非对象报错）；某个维度结构不对则跳过该维，保留其余合法维。
+    跳过的维度用 when_structure_issues 查出，由 doctor / 存储警告，避免静默丢条件。
+    """
     if raw is None or raw == {} or raw == "":
         return {}
     if not isinstance(raw, dict):
@@ -127,7 +153,7 @@ def parse_when_loose(raw: Any) -> dict[str, list[str]]:
         try:
             values = _as_values(value, f"when.{name}")
         except FacetError:
-            return {}
+            continue
         if values:
             out[name] = list(dict.fromkeys(values))
     return out

@@ -148,3 +148,38 @@ def test_wiki_never_overwrites_hand_written_pages(root, capsys):
     assert main(["wiki", "--root", str(root), "--out", "docs"]) == 1
     assert (docs / "index.md").read_text(encoding="utf-8") == "# 项目主页\n"
     assert "index.md" in capsys.readouterr().out
+
+
+def test_wiki_shows_when_and_enforced_by(root):
+    """v0.7：Wiki 标题标已由规则拦截，并展示结构化条件 when。"""
+    (root / ".memory" / "config.yaml").write_text(
+        CONFIG + "facets:\n  platform: [ios, android]\n", encoding="utf-8")
+    (root / "rules").mkdir()
+    (root / "rules" / "reward.py").write_text("def no_client_dedupe():\n    pass\n", encoding="utf-8")
+    write_entry(
+        root, "01JA7K3M2X9F4Q8W6ZB1C2D3C1", "gameplay.Jigsaw", "Reward", "exclusion",
+        "排除：Android 上不要在客户端去重，根因在服务端幂等。",
+        "2026-11-20",
+        "when:\n  platform: [android]\nenforced_by: [rules/reward.py#no_client_dedupe]\n",
+    )
+    assert main(["wiki", "--root", str(root)]) == 0
+    page = (root / ".memory" / "wiki" / "gameplay.Jigsaw.md").read_text(encoding="utf-8")
+    assert "（已由规则拦截）" in page
+    assert "**结构化条件**：platform=android" in page
+    assert "已由规则：" in page and "rules/reward.py" in page and "no_client_dedupe" in page
+    index = (root / ".memory" / "wiki" / "index.md").read_text(encoding="utf-8")
+    assert "（已由规则拦截）" in index
+
+
+def test_wiki_marks_stale_rule_as_needs_check_not_enforced(root):
+    """规则文件不存在时不要标「已由规则拦截」，改标「规则需核实」。"""
+    write_entry(
+        root, "01JA7K3M2X9F4Q8W6ZB1C2D3C2", "gameplay.Jigsaw", "Reward", "exclusion",
+        "排除：规则已删时 Wiki 不能假装仍被拦截。",
+        "2026-11-20",
+        "enforced_by: [rules/missing.py#gone]\n",
+    )
+    assert main(["wiki", "--root", str(root)]) == 0
+    page = (root / ".memory" / "wiki" / "gameplay.Jigsaw.md").read_text(encoding="utf-8")
+    assert "（规则需核实）" in page
+    assert "（已由规则拦截）" not in page

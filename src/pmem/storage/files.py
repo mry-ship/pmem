@@ -10,6 +10,26 @@ from pmem.core.ids import is_ulid
 from pmem.vcs.base import VCS
 
 
+def _when_issues_from_markdown(text: str) -> list[str]:
+    """从记忆原文抽出 when 结构问题（读盘会跳过的坏维），供 doctor 汇总。"""
+    import re
+
+    import yaml
+
+    from pmem.core.facets import when_structure_issues
+
+    match = re.match(r"\A---\r?\n(.*?)\r?\n---", text, re.DOTALL)
+    if not match:
+        return []
+    try:
+        meta = yaml.safe_load(match.group(1)) or {}
+    except Exception:  # noqa: BLE001
+        return []
+    if not isinstance(meta, dict):
+        return []
+    return when_structure_issues(meta.get("when"))
+
+
 class StorageError(ValueError):
     """code 供统计归类（如 pmem health 的被拒写入），提示文字可以随意改。"""
 
@@ -69,7 +89,12 @@ class FilesStorage:
         self.warnings = []
         for path in self.iter_files():
             try:
-                yield path, self.read(path)
+                text = path.read_text(encoding="utf-8-sig")
+                entry = Entry.from_markdown(text)
+                rel = path.relative_to(self.root).as_posix()
+                for issue in _when_issues_from_markdown(text):
+                    self.warnings.append(f"{rel}：{issue}")
+                yield path, entry
             except Exception as exc:  # noqa: BLE001
                 self.warnings.append(f"跳过无法解析的记忆文件 {path.relative_to(self.root)}：{exc}")
 

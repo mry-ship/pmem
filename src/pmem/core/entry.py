@@ -18,8 +18,19 @@ REPLACING_STATUSES = (*VISIBLE_STATUSES, "archived")
 SCOPES = ("module", "project")
 PITFALL_KINDS = ("exclusion", "risk", "correction")
 SUMMARY_MAX = 60
+ENFORCED_OK = "（已由规则拦截）"
+ENFORCED_STALE = "（规则需核实）"
 
 _FRONT_MATTER = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.DOTALL)
+
+
+def enforced_mark(enforced_by: list[str] | None, problems: list[str] | None = None) -> str:
+    """标题旁的规则标注：规则文件缺失/改过/找不到符号时不标「已由规则拦截」，改标「规则需核实」。"""
+    if not enforced_by:
+        return ""
+    if any(isinstance(p, str) and p.startswith("规则") for p in (problems or [])):
+        return ENFORCED_STALE
+    return ENFORCED_OK
 KNOWN_KEYS = frozenset({"id", "module", "entity", "kind", "status", "supersedes", "anchors", "revision", "author",
                         "note_date", "aliases", "verified", "verified_at", "archived", "source",
                         "summary", "scope", "verify", "applies", "when", "enforced_by", "reverted"})
@@ -200,13 +211,14 @@ class Entry:
         try:
             meta = expect_mapping(meta, "YAML 头")
         except SchemaError as exc:
-            raise ValueError(str(exc)) from exc  # noqa: TRY004  调用方按 ValueError 统一处理文件格式错误
+            raise ValueError(str(exc)) from exc  # 调用方按 ValueError 统一处理文件格式错误
         missing = [k for k in ("id", "module", "entity", "kind", "note_date") if not meta.get(k)]
         if missing:
             raise ValueError(f"YAML 头缺少 {'、'.join(missing)}")
-        # when 结构不对时 parse_when_loose 返回空；若写了非对象则明确报错
+        # when 非对象明确报错；对象里个别维度结构不对时 parse_when_loose 跳过该维
         if meta.get("when") not in (None, "", {}) and not isinstance(meta.get("when"), dict):
-            raise SchemaError("YAML 头的 when", f"应是键值对，实际是 {type(meta.get('when')).__name__}")
+            raise ValueError(str(SchemaError(
+                "YAML 头的 when", f"应是键值对，实际是 {type(meta.get('when')).__name__}")))
         raw_source, raw_archived, raw_reverted = meta.get("source"), meta.get("archived"), meta.get("reverted")
         source = raw_source if isinstance(raw_source, dict) else {}
         archived = raw_archived if isinstance(raw_archived, dict) else {}

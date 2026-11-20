@@ -1,7 +1,7 @@
 """--brief：把服务返回的 JSON 压成每条一行的文本，终端里直接能读，不必再用管道筛选。"""
 from __future__ import annotations
 
-from pmem.core.entry import KIND_LABELS, strip_kind_prefix
+from pmem.core.entry import KIND_LABELS, enforced_mark, strip_kind_prefix
 from pmem.index.anchors import STALE_LABEL
 from pmem.index.graph import preview
 
@@ -66,7 +66,7 @@ def _search(result: dict) -> list[str]:
             body = preview(strip_kind_prefix(item.get("content") or ""), PREVIEW)
             text = f"{item['summary']}｜{body}" if item.get("summary") else body
         scope = "（全项目）" if item.get("scope") == "project" else ""
-        enforced = "（已由规则拦截）" if item.get("enforced_by") else ""
+        enforced = enforced_mark(item.get("enforced_by"), item.get("check"))
         lines.append(f"- {where}{_kind(item['kind'])}{seed}{enforced}{scope}｜{item['entity']}｜{item['date']}｜{item['id']}："
                      f"{text}")
         if item.get("applies"):
@@ -81,7 +81,7 @@ def _search(result: dict) -> list[str]:
         lines.append(f"功能记录与规划 {len(features)} 条（只列标题；改动会改变这些行为时先用 --id 取全文核对，规划还没实现）：")
         for row in features:
             where = f"{row['module']} · " if row.get("module") else ""
-            enforced = "（已由规则拦截）" if row.get("enforced_by") else ""
+            enforced = enforced_mark(row.get("enforced_by"), row.get("check"))
             lines.append(f"- {where}{_kind(row['kind'])}{enforced}｜{row['entity']}｜{row['date']}｜{row['id']}：{row['summary']}")
             if row.get("applies"):
                 lines.append(f"    适用：{row['applies']}")

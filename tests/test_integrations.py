@@ -4,6 +4,16 @@ import pytest
 
 from pmem.catalog.yamlfile import ModulesFile
 from pmem.generate.integrations import BLOCK_BEGIN, BLOCK_END, merge_group_hooks, merge_hooks, upsert_block
+from pmem.generate.templates import (
+    MINIMAL_SKILL,
+    QUALITY_BEGIN,
+    QUALITY_BODY,
+    QUALITY_END,
+    QUALITY_RULE,
+    QUALITY_RULE_BLOCK,
+    REVIEW_SKILL,
+    RULE_BODY,
+)
 
 BLOCK = f"{BLOCK_BEGIN}\npmem 段落\n{BLOCK_END}\n"
 
@@ -15,6 +25,61 @@ def test_upsert_block_without_end_marker_keeps_user_text(tmp_path):
     upsert_block(path, BLOCK)
     text = path.read_text(encoding="utf-8")
     assert "用户自己的说明" in text and text.count(BLOCK_BEGIN) == 1
+    assert text.index("用户自己的说明") < text.index(BLOCK_BEGIN)
+
+
+def test_quality_markers_do_not_overwrite_memory_or_user_text(tmp_path):
+    path = tmp_path / "CLAUDE.md"
+    path.write_text("# 项目说明\n团队约定 A\n", encoding="utf-8")
+    upsert_block(path, BLOCK)
+    upsert_block(path, QUALITY_RULE_BLOCK, QUALITY_BEGIN, QUALITY_END)
+    upsert_block(path, BLOCK)
+    upsert_block(path, QUALITY_RULE_BLOCK, QUALITY_BEGIN, QUALITY_END)
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("# 项目说明\n团队约定 A\n")
+    assert text.count(BLOCK_BEGIN) == 1 and text.count(BLOCK_END) == 1
+    assert text.count(QUALITY_BEGIN) == 1 and text.count(QUALITY_END) == 1
+    assert "pmem 段落" in text and "工程质量" in text
+    assert "pmem-minimal" not in RULE_BODY
+
+
+def test_quality_block_missing_end_keeps_following_text(tmp_path):
+    path = tmp_path / "AGENTS.md"
+    path.write_text(
+        "团队约定 A\n\n"
+        f"{BLOCK_BEGIN}\n记忆\n{BLOCK_END}\n\n"
+        f"{QUALITY_BEGIN}\n旧质量\n\n用户自己的说明\n",
+        encoding="utf-8",
+    )
+    upsert_block(path, QUALITY_RULE_BLOCK, QUALITY_BEGIN, QUALITY_END)
+    text = path.read_text(encoding="utf-8")
+    assert "团队约定 A" in text and "记忆" in text and "用户自己的说明" in text
+    assert text.count(BLOCK_BEGIN) == 1 and text.count(QUALITY_BEGIN) == 1
+    assert text.index(BLOCK_BEGIN) < text.index("旧质量") < text.index("用户自己的说明") < text.index(QUALITY_BEGIN)
+    assert "旧质量" not in text.split(QUALITY_BEGIN, 1)[1]
+    upsert_block(path, QUALITY_RULE_BLOCK, QUALITY_BEGIN, QUALITY_END)
+    text = path.read_text(encoding="utf-8")
+    assert text.count(QUALITY_BEGIN) == 1 and text.count(BLOCK_BEGIN) == 1
+    assert "用户自己的说明" in text and "记忆" in text
+
+
+def test_quality_templates_format_and_keep_frozen_triggers():
+    for body in (QUALITY_RULE, MINIMAL_SKILL, REVIEW_SKILL):
+        body.format(generated="x")
+    assert "跳过质量" in QUALITY_BODY and "pmem-review 仍按正常触发条件执行" in QUALITY_BODY
+    assert "不影响 pmem 记忆规则" in QUALITY_BODY
+    assert "用户明确要求" in REVIEW_SKILL and "失败语义" in REVIEW_SKILL
+    assert "没有点名审查时，契约不变的单文件内部修正不强制完整审查" in REVIEW_SKILL
+    for state in ("未触及", "符合", "违反", "待核实"):
+        assert state in REVIEW_SKILL
+    assert "待对照代码核对" in REVIEW_SKILL and "不能标成违反" in REVIEW_SKILL
+    assert "排除项" in REVIEW_SKILL and "决定" in REVIEW_SKILL and "约束核对逐条一行" in REVIEW_SKILL
+    assert "先处理需核实" not in REVIEW_SKILL and "先处理需核实" not in RULE_BODY and "先处理需核实" not in QUALITY_BODY
+    assert "用户明确要求审查时，即使只改了一个文件，也要执行" in REVIEW_SKILL
+    assert "没有点名审查时，契约不变的单文件内部修正不强制" in QUALITY_BODY
+    assert "没有新增文件、依赖、模块、抽象，也没有跨模块改动时，不做这份完整审查" not in REVIEW_SKILL
+    assert "不运行 pmem spec complete" in MINIMAL_SKILL
+    assert "pmem-minimal" not in RULE_BODY and "跳过质量" not in RULE_BODY
 
 
 def test_group_hooks_drop_pmem_handlers_of_events_no_longer_used(tmp_path):

@@ -107,7 +107,7 @@ def _search(result: dict) -> list[str]:
         lines += _children_lines(children)
     if result.get("context"):
         lines.append(result["context"])
-    for key in ("seen_hint", "applies_hint", "when_hint", "enforced_hint", "source_hint"):
+    for key in ("seen_hint", "applies_hint", "when_hint", "enforced_hint", "source_hint", "reading_hint"):
         if result.get(key):
             lines.append(f"提示：{result[key]}")
     if result.get("missing"):

@@ -84,6 +84,7 @@ class SearchResult(TypedDict, total=False):
     inherited_hint: str
     seen_hint: str
     source_hint: str
+    reading_hint: str
     as_of: str
     expanded: list[str]
     fallback: str
@@ -214,7 +215,7 @@ def check_search(response: dict) -> list[str]:
             for i, row in enumerate(features):
                 errors += _check_item(row, path=f"features[{i}]")
     for hint in ("features_hint", "applies_hint", "when_hint", "enforced_hint", "verify_hint",
-                 "inherited_hint", "seen_hint", "source_hint"):
+                 "inherited_hint", "seen_hint", "source_hint", "reading_hint"):
         if hint in response and not isinstance(response[hint], str):
             errors.append(f"{hint} 应是字符串，实际是 {_type_name(response[hint])}")
     if "children" in response and not isinstance(response["children"], list):

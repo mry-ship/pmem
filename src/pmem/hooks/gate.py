@@ -15,7 +15,7 @@ from pmem.hooks.mcp import ALLOW, PMEM_TOOLS, McpCalls, foreign_tool
 from pmem.hooks.memories import MemoryView
 from pmem.hooks.payload import asks_to_skip, fuzzy_contains, readable, tool_input
 from pmem.hooks.reminders import Reminders
-from pmem.hooks.review import MAX_REVIEW_MODULES, SEARCH_TOOLS, Review
+from pmem.hooks.review import MAX_REVIEW_MODULES, SEARCH_TOOLS, VIEW_TOOLS, Review
 from pmem.hooks.shell import (  # noqa: F401
     cli_args,
     may_change_unseen,
@@ -121,8 +121,11 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders, Harness):
             def searched_first(target: str) -> set[str]:
                 return {m for m in map(self.module_from_args, before.get(target, [])) if m}
 
-            denied = next((v for v in (self._guard(self.relative(t, base), searched_first(t)) for t in targets)
-                           if v is not None), None)
+            denied = self._guard_targets([
+                (rel, searched_first(t))
+                for t in targets
+                for rel in self._expand_target(self.relative(t, base))
+            ])
             if denied is not None:
                 return denied
             if needs_snapshot(command, base):
@@ -132,8 +135,8 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders, Harness):
             return dict(ALLOW)
         raw = args.get("file_paths") or [args.get("file_path") or args.get("path") or args.get("target_file")
                                          or args.get("target_notebook") or ""]
-        guarded = (self._guard_path(self.relative(str(p)), frozenset()) for p in raw)
-        return next((v for v in guarded if v is not None), dict(ALLOW))
+        denied = self._guard_many([self.relative(str(p)) for p in raw], frozenset())
+        return denied if denied is not None else dict(ALLOW)
 
 
     def on_edited(self) -> dict:
@@ -259,6 +262,8 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders, Harness):
         from pmem.hooks.agents import edited_files
 
         name = str(self.payload.get("tool_name") or "")
+        if name.lower() in VIEW_TOOLS:
+            self._note_spec_reads(tool_input(self.payload), tool=name.lower())
         if any(t in name for t in PMEM_TOOLS):
             return self.on_after_mcp()
         if name.lower() == "read":
@@ -279,7 +284,7 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders, Harness):
     def on_compact(self) -> dict:
         if self.state is not None:
             # 压缩后之前看过的记忆可能已不在上下文里：检索也要重新给全文
-            for key in ("searched", "warned", "reviewed", "project_shown"):
+            for key in ("searched", "warned", "reviewed", "project_shown", "spec_read", "spec_warned", "spec_offered"):
                 self.state.data[key] = []
             self.state.data["project_done"] = False
             self.state.data["stale_explained"] = False

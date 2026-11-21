@@ -1648,6 +1648,219 @@ def test_stop_skips_spec_when_declared_or_exempt_or_off(make_project, tmp_path):
     assert handle("stop", {"conversation_id": "c3", "status": "completed"}, quiet) == {}
 
 
+def _write_spec(root: Path, module: str, name: str, body: str) -> None:
+    path = root / ".memory" / "specs" / module / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+
+
+def test_edit_is_blocked_until_the_written_spec_is_read(make_project):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", "入口不变。\n")
+    _write_spec(root, "gameplay.Jigsaw", "模块现状.md", "改完仍能回放。\n")
+    _write_spec(root, "gameplay.Jigsaw", "策划设计.md", "<!-- spec:empty -->\n")
+    denied = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
+    assert denied["permission"] == "deny"
+    assert "程序设计.md" in denied["agent_message"] and "模块现状.md" in denied["agent_message"]
+    assert "策划设计.md" not in denied["agent_message"]
+    handle("post-tool", read_payload(root, ".memory/specs/gameplay.Jigsaw/程序设计.md"), root)
+    still = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
+    assert still["permission"] == "deny"
+    assert "模块现状.md" in still["agent_message"] and "程序设计.md" not in still["agent_message"]
+    handle("post-tool", read_payload(root, ".memory/specs/gameplay.Jigsaw/模块现状.md"), root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+
+
+def test_empty_spec_skeleton_does_not_block_the_edit(make_project):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", "待写\n<!-- spec:empty -->\n")
+    _write_spec(root, "gameplay.Jigsaw", "模块现状.md", "<!-- spec:empty -->\n")
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+
+
+def test_spec_read_can_be_turned_off(make_project):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", "入口不变。\n")
+    config = root / ".memory" / "config.yaml"
+    config.write_text(
+        config.read_text(encoding="utf-8").replace(
+            "spec: { reminder: false }",
+            "spec: { reminder: false, read_before_edit: false }",
+        ),
+        encoding="utf-8",
+    )
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+
+
+def test_spec_read_is_off_with_the_gate(make_project):
+    root = make_project("off", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", "入口不变。\n")
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+
+
+def test_transcript_read_unlocks_when_post_tool_did_not_see_it(make_project, tmp_path):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", "入口不变。\n")
+    spec = root / ".memory" / "specs" / "gameplay.Jigsaw" / "程序设计.md"
+    transcript = tmp_path / "t.jsonl"
+    transcript.write_text(json.dumps({
+        "role": "assistant",
+        "message": {"content": [{"type": "tool_use", "name": "Read", "input": {"file_path": str(spec)}}]},
+    }, ensure_ascii=False) + "\n", encoding="utf-8")
+    payload = write_payload(root, "src/Jigsaw/Board.cs")
+    payload["transcript_path"] = str(transcript)
+    assert handle("pre-tool", payload, root)["permission"] == "allow"
+
+
+def test_second_write_is_allowed_when_no_read_can_be_observed(make_project):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", "入口不变。\n")
+    first = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
+    assert first["permission"] == "deny" and "入口不变。" in first["agent_message"]
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+
+
+def test_crlf_empty_marker_does_not_block(make_project):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", "待写\r\n<!-- spec:empty -->\r\n")
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+
+
+def test_glob_pattern_names_the_spec_directory(make_project):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "模块现状.md", "改完仍能回放。\n")
+    handle("post-tool", {
+        "conversation_id": "c1", "tool_name": "Glob",
+        "tool_input": {"glob_pattern": ".memory/specs/gameplay.Jigsaw/**"},
+    }, root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+    handle("post-tool", {
+        "conversation_id": "c2", "tool_name": "Glob",
+        "tool_input": {"pattern": ".memory/specs/gameplay.Jigsaw/模块现状.md"},
+    }, root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs", conv="c2"), root)["permission"] == "allow"
+
+
+def test_shell_with_several_targets_checks_memory_before_spec(make_project):
+    root = make_project("block")
+    _write_spec(root, "economy.Shop", "程序设计.md", "入口不变。\n")
+    denied = handle("pre-tool", {
+        "conversation_id": "c1", "tool_name": "Shell",
+        "tool_input": {"cwd": str(root), "command": "rm src/Shop/Shop.cs src/Jigsaw/Board.cs"},
+    }, root)
+    assert denied["permission"] == "deny"
+    assert "search_memory" in denied["agent_message"]
+    assert "程序设计.md" not in denied["agent_message"]
+
+
+def test_grep_pattern_mentioning_a_spec_path_is_not_a_read(make_project):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", "入口不变。\n")
+    handle("post-tool", {
+        "conversation_id": "c1", "tool_name": "Grep",
+        "tool_input": {"pattern": ".memory/specs/gameplay.Jigsaw/程序设计.md", "path": str(root / "src/Jigsaw")},
+    }, root)
+    denied = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
+    assert denied["permission"] == "deny"
+
+
+def test_writing_the_spec_does_not_count_as_reading_it(make_project):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", "入口不变。\n")
+    spec = root / ".memory" / "specs" / "gameplay.Jigsaw" / "程序设计.md"
+    handle("post-tool", {
+        "conversation_id": "c1", "tool_name": "StrReplace",
+        "tool_input": {"file_path": str(spec), "old_string": "入口", "new_string": "入口"},
+    }, root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
+
+
+def test_pre_tool_edit_of_the_spec_does_not_count_as_reading_it(make_project):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", "入口不变。\n")
+    spec = root / ".memory" / "specs" / "gameplay.Jigsaw" / "程序设计.md"
+    assert handle("pre-tool", {
+        "conversation_id": "c1", "tool_name": "StrReplace",
+        "tool_input": {"file_path": str(spec), "old_string": "入口", "new_string": "入口"},
+    }, root)["permission"] == "allow"
+    denied = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
+    assert denied["permission"] == "deny" and "程序设计.md" in denied["agent_message"]
+
+
+def test_writing_the_spec_beside_the_code_does_not_count_as_reading_it(make_project):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", "入口不变。\n")
+    spec = root / ".memory" / "specs" / "gameplay.Jigsaw" / "程序设计.md"
+    denied = handle("pre-tool", {
+        "conversation_id": "c1", "tool_name": "Write",
+        "tool_input": {"file_paths": [str(spec), str(root / "src/Jigsaw/Board.cs")]},
+    }, root)
+    assert denied["permission"] == "deny" and "程序设计.md" in denied["agent_message"]
+
+
+def test_memory_gate_precedes_spec_across_files_in_one_write(make_project):
+    root = make_project("block")
+    _write_spec(root, "economy.Shop", "程序设计.md", "入口不变。\n")
+    denied = handle("pre-tool", {
+        "conversation_id": "c1", "tool_name": "Write",
+        "tool_input": {"file_paths": [str(root / "src/Shop/Shop.cs"), str(root / "src/Jigsaw/Board.cs")]},
+    }, root)
+    assert denied["permission"] == "deny"
+    assert "search_memory" in denied["agent_message"]
+    assert "程序设计.md" not in denied["agent_message"]
+
+
+def test_glob_inside_the_spec_directory_counts_as_read(make_project):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "模块现状.md", "改完仍能回放。\n")
+    folder = root / ".memory" / "specs" / "gameplay.Jigsaw"
+    handle("post-tool", {
+        "conversation_id": "c1", "tool_name": "Glob",
+        "tool_input": {"glob_pattern": "*.md", "target_directory": str(folder)},
+    }, root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+
+
+def test_in_project_spec_symlink_still_blocks_until_read(make_project):
+    root = make_project("block", with_memory=False)
+    folder = root / ".memory" / "specs" / "gameplay.Jigsaw"
+    folder.mkdir(parents=True)
+    (folder / "real.md").write_text("入口不变。\n", encoding="utf-8")
+    (folder / "程序设计.md").symlink_to("real.md")
+    denied = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
+    assert denied["permission"] == "deny" and "程序设计.md" in denied["agent_message"]
+
+
+def test_memory_gate_precedes_spec_when_a_directory_covers_several_modules(make_project):
+    root = make_project("block")
+    (root / "src").mkdir()
+    _write_spec(root, "economy.Shop", "程序设计.md", "入口不变。\n")
+    denied = handle("pre-tool", {
+        "conversation_id": "c1", "tool_name": "Shell",
+        "tool_input": {"cwd": str(root), "command": "rm -rf src"},
+    }, root)
+    assert denied["permission"] == "deny"
+    assert "search_memory" in denied["agent_message"]
+    assert "程序设计.md" not in denied["agent_message"]
+
+
+def test_memory_gate_still_comes_before_the_spec_read(make_project):
+    root = make_project("block")
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", "空标记写成 `<!-- spec:empty -->` 才算没写完。\n")
+    denied = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
+    assert denied["permission"] == "deny"
+    assert "search_memory" in denied["agent_message"]
+    assert "程序设计.md" not in denied["agent_message"]
+
+
+def test_spec_read_warns_once_then_allows(make_project):
+    root = make_project("warn", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "模块现状.md", "改完仍能回放。\n")
+    first = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
+    assert first["permission"] == "deny" and "模块现状.md" in first["agent_message"]
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+
+
 def test_writing_spec_file_is_not_a_code_edit(make_project):
     root = make_project(spec_reminder=True)
     spec = root / ".memory" / "specs" / "economy.Shop" / "美术设计.md"

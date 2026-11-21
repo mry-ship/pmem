@@ -174,12 +174,26 @@ def test_field_hints_are_given_once_per_conversation(svc):
     write(svc, entity="Share", kind="feature", content="用户要求：完成拼图后弹出分享面板。")
     first = svc.search(module="gameplay.Jigsaw", source_conversation="c1")
     assert "features_hint" in first
+    assert "reading_hint" in first and "stale=true" in first["reading_hint"]
+    assert "规则需核实" in first["reading_hint"]
+    assert "不改变排序" in first["reading_hint"]
     second = svc.search(module="gameplay.Jigsaw", source_conversation="c1")
     assert "features_hint" not in second and "seen_hint" in second
+    assert "reading_hint" not in second
     assert "seen_hint" in svc.search(module="gameplay.Jigsaw", source_conversation="c1")
     seen.clear(svc.config.cache_dir, "c1")
-    assert "features_hint" in svc.search(module="gameplay.Jigsaw", source_conversation="c1")
+    again = svc.search(module="gameplay.Jigsaw", source_conversation="c1")
+    assert "features_hint" in again and "reading_hint" in again
     assert "features_hint" in svc.search(module="gameplay.Jigsaw")
+
+
+def test_reading_hint_waits_until_stale_applies_or_several_hits(svc):
+    write(svc, entity="Plain", content=CONTENT + "没有前提。")
+    plain = svc.search(module="gameplay.Jigsaw", entity="Plain", source_conversation="one")
+    assert len(plain["items"]) == 1 and "reading_hint" not in plain
+    write(svc, entity="Limited", content=CONTENT + "只在断线重连后成立。", applies="仅断线重连")
+    limited = svc.search(module="gameplay.Jigsaw", entity="Limited", source_conversation="one")
+    assert "reading_hint" in limited and "applies" in limited["reading_hint"]
 
 
 def test_full_flag_and_other_conversations_get_full_text(svc):

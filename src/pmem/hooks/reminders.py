@@ -102,7 +102,7 @@ class Reminders(GateAttrs):
 
     def _pending_specs(self, declared: set[str] = frozenset()) -> list[str]:
         """改了行为却还没写对应规格的模块。和功能记录分开记已提醒，避免互相抵消。"""
-        if not self._reminders_on("spec.reminder", False):
+        if not self._reminders_on("spec.reminder", True):
             return []
         written = set(self.state.data.get("spec_written") or [])
         return [m for m in self._record_required()

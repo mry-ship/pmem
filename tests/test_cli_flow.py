@@ -34,7 +34,12 @@ def test_init_creates_project_files_and_merges_existing_cursor_config(tmp_path, 
     assert set(servers) == {"other", "pmem"}
     assert servers["pmem"]["command"] == "pmem"
     assert (cursor / "rules" / "pmem.mdc").exists()
+    quality = (cursor / "rules" / "pmem-quality.mdc").read_text(encoding="utf-8")
+    assert "alwaysApply: true" in quality and "跳过最小方案" in quality
+    assert "pmem-minimal" not in (cursor / "rules" / "pmem.mdc").read_text(encoding="utf-8")
     assert (cursor / "skills" / "pmem-bootstrap" / "SKILL.md").exists()
+    assert (cursor / "skills" / "pmem-minimal" / "SKILL.md").exists()
+    assert (cursor / "skills" / "pmem-review" / "SKILL.md").exists()
     assert "pmem compact" in (cursor / "skills" / "pmem-compact" / "SKILL.md").read_text(encoding="utf-8")
     # 默认 full：完整闸门+读码摘要+提醒；Hook 命令为 pmemw
     assert [h["command"] for h in hooks["stop"]] == ["my-own-hook", "pmemw hook stop"]
@@ -107,7 +112,9 @@ def test_init_wires_claude_and_codex_without_touching_their_other_settings(tmp_p
 
     claude_md = (tmp_path / "CLAUDE.md").read_text(encoding="utf-8")
     assert claude_md.startswith("# 项目说明\n团队约定 A\n") and claude_md.count("<!-- pmem:begin -->") == 1
-    assert "confirm_memory" in claude_md
+    assert claude_md.count("<!-- pmem-quality:begin -->") == 1
+    assert claude_md.count("<!-- pmem-quality:end -->") == 1
+    assert "confirm_memory" in claude_md and "跳过质量" in claude_md
     settings = json.loads((claude / "settings.json").read_text(encoding="utf-8"))
     assert settings["permissions"] == {"allow": ["Bash(ls)"]}
     stop = [h["command"] for g in settings["hooks"].get("Stop", []) for h in g["hooks"]]
@@ -124,6 +131,8 @@ def test_init_wires_claude_and_codex_without_touching_their_other_settings(tmp_p
     mcp = json.loads((tmp_path / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]["pmem"]
     assert mcp["command"] == "pmem" and mcp["args"] == ["serve"]
     assert (claude / "skills" / "pmem-normalize" / "SKILL.md").exists()
+    assert (claude / "skills" / "pmem-minimal" / "SKILL.md").exists()
+    assert (claude / "skills" / "pmem-review" / "SKILL.md").exists()
     consolidate = (claude / "skills" / "pmem-consolidate" / "SKILL.md").read_text(encoding="utf-8")
     assert consolidate.startswith("---\nname: pmem-consolidate") and "pmem migrate split" in consolidate
 
@@ -135,7 +144,12 @@ def test_init_wires_claude_and_codex_without_touching_their_other_settings(tmp_p
     assert "onFailure" not in codex_hooks["PreToolUse"][0]["hooks"][0]
     assert "PreCompact" in codex_hooks and "Stop" in codex_hooks
     assert (tmp_path / ".agents" / "skills" / "pmem-consolidate" / "SKILL.md").exists()
-    assert (tmp_path / "AGENTS.md").read_text(encoding="utf-8").count("<!-- pmem:end -->") == 1
+    assert (tmp_path / ".agents" / "skills" / "pmem-minimal" / "SKILL.md").exists()
+    assert (tmp_path / ".agents" / "skills" / "pmem-review" / "SKILL.md").exists()
+    agents_md = (tmp_path / "AGENTS.md").read_text(encoding="utf-8")
+    assert agents_md.count("<!-- pmem:end -->") == 1
+    assert agents_md.count("<!-- pmem-quality:begin -->") == 1
+    assert agents_md.count("<!-- pmem-quality:end -->") == 1
     out = capsys.readouterr().out
     assert "Claude Code" in out and "/hooks" in out
     assert "Hooks=full" in out
@@ -159,30 +173,35 @@ class _Answer:
         return self.text
 
 
-def test_init_enables_spec_reminder_only_when_the_user_says_yes(tmp_path, capsys):
+def test_init_keeps_spec_reminder_on_unless_the_user_says_no(tmp_path, capsys):
     from pmem.cli.init_cmd import run_init
 
     opened = tmp_path / "opened"
-    assert run_init(opened, "generic", stdin=_Answer("y\n")) == 0
+    assert run_init(opened, "generic", stdin=_Answer("\n")) == 0
     opened_config = yaml.safe_load((opened / ".memory" / "config.yaml").read_text(encoding="utf-8"))
     assert opened_config["spec"]["reminder"] is True
-    assert "规格提醒已开启" in capsys.readouterr().out
+    assert opened_config["spec"]["read_before_edit"] is True
+    assert "规格提醒默认开启" in capsys.readouterr().out
 
     declined = tmp_path / "declined"
-    assert run_init(declined, "generic", stdin=_Answer("\n")) == 0
+    assert run_init(declined, "generic", stdin=_Answer("n\n")) == 0
     declined_config = yaml.safe_load((declined / ".memory" / "config.yaml").read_text(encoding="utf-8"))
     assert declined_config["spec"]["reminder"] is False
-    assert "保持关闭" in capsys.readouterr().out
+    assert declined_config["spec"]["read_before_edit"] is True
+    assert "规格提醒已关闭" in capsys.readouterr().out
+    text = (declined / ".memory" / "config.yaml").read_text(encoding="utf-8")
+    assert "reminder: false" in text and "已关闭" in text
 
 
-def test_init_leaves_spec_reminder_off_without_a_terminal(tmp_path, capsys):
+def test_init_leaves_spec_reminder_on_without_a_terminal(tmp_path, capsys):
     assert main(["init", "--root", str(tmp_path), "--type", "generic"]) == 0
     config = yaml.safe_load((tmp_path / ".memory" / "config.yaml").read_text(encoding="utf-8"))
-    assert config["spec"]["reminder"] is False
+    assert config["spec"]["reminder"] is True
+    assert config["spec"]["read_before_edit"] is True
     out = capsys.readouterr().out
-    assert "默认不提示" in out
+    assert "规格提醒默认开启" in out
     main(["init", "--root", str(tmp_path)])
-    assert "默认不提示" not in capsys.readouterr().out
+    assert "规格提醒默认开启" not in capsys.readouterr().out
 
 
 def test_init_keeps_existing_memory_config(tmp_path):

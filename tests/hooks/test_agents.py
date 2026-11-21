@@ -122,7 +122,11 @@ def test_post_tool_record_counts_as_written(root):
     run("claude", "post-tool", {"session_id": "s6", "tool_name": "mcp__pmem__record_memory",
                                 "tool_input": {"module": "gameplay.Jigsaw"},
                                 "tool_response": [{"type": "text", "text": response}]}, root)
-    assert run("claude", "stop", {"session_id": "s6"}, root) == {}
+    # 记忆已经写下，不再催功能记录。规格是另一本账，没改规格时仍提醒一次。
+    stop = run("claude", "stop", {"session_id": "s6"}, root)
+    assert stop["decision"] == "block"
+    assert "还没有写研发记忆" not in stop["reason"]
+    assert "规格还没更新" in stop["reason"]
 
 
 def test_claude_gets_memory_digest_on_prompt_and_on_read(root):

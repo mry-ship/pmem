@@ -107,7 +107,7 @@
 <div class="layout">
 <nav>
   <div class="brand">pmem 使用手册</div>
-  <div class="ver">v0.7.2 · 项目研发记忆</div>
+  <div class="ver">v0.7.3 · 项目研发记忆</div>
   <a href="#glance">一眼看懂</a>
   <a href="#what">pmem 是什么</a>
   <a href="#benefits">收益与适用场景</a>
@@ -192,7 +192,7 @@ pmem doctor</code></pre>
     <tr><td>定期收口（模块负责人）</td><td>对 AI 说“按 pmem-consolidate 技能整理记忆库”（按 <code>pmem health</code> 逐节处理）</td></tr>
     <tr><td>想看效果</td><td><code>pmem report</code></td></tr>
     <tr><td>想通读全部结论</td><td>打开 <code>.memory/wiki/index.md</code>（写入记忆后自动更新，过期的标“需核实”）</td></tr>
-    <tr><td>看模块现在的完整设计</td><td>打开 <code>.memory/specs/&lt;模块&gt;/</code>，四份分开：策划、美术、程序、现状，记的是当前完整内容。还没有就对 AI 说“补全模块规格”（入口 <code>pmem spec complete</code>，正文写到九成八）。<code>pmem init</code> 和自动登记只铺空骨架；模块后来有变化时，对 AI 说“更新这个模块的规格”。规格提醒默认不提示，想自动跟上再把 <code>spec.reminder</code> 设为 true。写得成清单的字段名、原文整句和入口锚点，用 <code>pmem spec closed</code> 只读核对，不改规格</td></tr>
+    <tr><td>看模块现在的完整设计</td><td>打开 <code>.memory/specs/&lt;模块&gt;/</code>，四份分开：策划、美术、程序、现状，记的是当前完整内容。还没有就对 AI 说“补全模块规格”（入口 <code>pmem spec complete</code>，正文写到九成八）。<code>pmem init</code> 和自动登记只铺空骨架；模块后来有变化时，对 AI 说“更新这个模块的规格”。规格提醒默认开启，不要时把 <code>spec.reminder</code> 设为 false。改代码前默认先读已写完的程序设计和模块现状（<code>spec.read_before_edit</code>，空骨架不要求）。写得成清单的字段名、原文整句和入口锚点，用 <code>pmem spec closed</code> 只读核对，不改规格</td></tr>
     <tr><td>升级 pmem</td><td><code>uv tool upgrade pmem</code></td></tr>
   </table>
 </section>
@@ -219,8 +219,8 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
   <h2>收益与适用场景</h2>
   <p>固定开销、速度和检索命中是本仓库实测。少被纠正、少花时间、少用 token，测的是上一代记忆系统；pmem 自己的端到端对比还没做，那组数字只能当保守参考。</p>
 
-  <h3>当前版本 0.7.2</h3>
-  <p class="muted">本版可直接看到的效果与口径（本仓库 <code>pmem report --days 30</code>，2026-11-21）。0.7.2 不改检索排序和采用判定，下表沿用这份报告：</p>
+  <h3>当前版本 0.7.3</h3>
+  <p class="muted">本版可直接看到的效果与口径（本仓库 <code>pmem report --days 30</code>，2026-11-21）。0.7.3 不改检索排序和采用判定，下表沿用这份报告：</p>
   <table>
     <tr><th>指标</th><th>当前数字</th><th>本版相关说明</th></tr>
     <tr><td>检索命中率</td><td><strong>98%</strong>（740 次里 724 次）</td><td>与上版同级；只返回前几条，开销不随记忆变多</td></tr>
@@ -232,6 +232,7 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
     <tr><td>接入成熟度</td><td>Cursor / Claude Code / Codex</td><td>均已在<strong>真实会话</strong>验证可用</td></tr>
     <tr><td>v0.7 能力</td><td>已发布</td><td><code>enforced_by</code>（规则需核实双态）、health 规则候选、<code>facets</code>/<code>when</code>、doctor when 对照、返回契约、pyright；0.7.1 补 Watchdog WinError 6 重试</td></tr>
     <tr><td>v0.7.2 能力</td><td>已发布</td><td><code>source.kind</code> 只标证据来源，不写入核对、不参与排序；<code>valid_from</code> 只影响 <code>as_of</code>，现行检索不隐藏未来生效的记忆，替代要到生效日才算；<code>pmem spec closed</code> 只读核对字段闭集、原文整句和入口锚点</td></tr>
+    <tr><td>v0.7.3 能力</td><td>已发布</td><td>工程质量规则与 <code>pmem-minimal</code> / <code>pmem-review</code> 独立于记忆规则，不改检索排序；<code>spec.reminder</code> 与 <code>spec.read_before_edit</code> 默认开启，已写完的程序设计和模块现状没读过就先拦住，空骨架不要求；<code>reading_hint</code> 只在过期、有前提或多条时给一次</td></tr>
   </table>
   <p class="muted">对照实验仍见下方「v0.5 和 v0.3 比」；端到端「少被纠正 / 少耗时 / 少 token」还没在现行 pmem 上测完，请用 <code>pmem bench</code> 或继续看 <code>pmem report</code>。</p>
 
@@ -285,7 +286,7 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
     <tr><td>结束提醒后真去写</td><td>—</td><td><strong>65%</strong>（43 次里 28 次）</td><td><strong>47%</strong>（19 次里 9 次）</td><td>同上</td></tr>
     <tr><td>跨人复用</td><td>—</td><td><strong>14</strong> 次</td><td><strong>108</strong> 次</td><td>同上。用到同事写的记忆</td></tr>
   </table>
-  <p class="muted">「数字」列里带下降比例的仍是上一代口径；后两列是现行 pmem 本机使用。本仓库列为 <strong>0.7.2</strong> 口径下 2026-11-21 近 30 天报告；TileMatch 为真实业务项目（2026-10-27 报告，窗口 14 天，现行记忆 639 条）。也可用 <code>pmem bench</code> 做对照实验。</p>
+  <p class="muted">「数字」列里带下降比例的仍是上一代口径；后两列是现行 pmem 本机使用。本仓库列为 <strong>0.7.3</strong> 口径下 2026-11-21 近 30 天报告；TileMatch 为真实业务项目（2026-10-27 报告，窗口 14 天，现行记忆 639 条）。也可用 <code>pmem bench</code> 做对照实验。</p>
 
   <h3>检索有多准</h3>
   <table>
@@ -465,7 +466,7 @@ pmem init --type game                     <span class="c"># 项目类型：game 
 pmem init --agents cursor,claude,codex    <span class="c"># 指定接入哪些工具；默认 auto</span>
 pmem init --gate warn                     <span class="c"># 闸门力度：block（默认）/ warn / off，只在首次生成 config.yaml 时生效</span></code></pre>
       <p>重复运行 <code>pmem init</code>（如升级后）只更新它生成的规则、技能、Hook 和 MCP 配置，不覆盖 <code>config.yaml</code>、<code>modules.yaml</code>。这时再给 <code>--gate</code>、<code>--type</code> 不会生效，输出里会单独列出，改闸门力度、项目类型请直接改 <code>config.yaml</code>。</p>
-      <p>规格提醒默认不提示。首次生成 <code>config.yaml</code> 时，在终端里问要不要开启：输入 y 开启，直接回车保持关闭。脚本或 Agent 接入时不询问，保持关闭，并打印怎么改。再次运行不再问。</p>
+      <p>规格提醒默认开启。首次生成 <code>config.yaml</code> 时，在终端里确认：直接回车保持开启，输入 n 关闭。脚本或 Agent 接入时不询问，保持开启，并打印怎么改。再次运行不再问。改代码前读取相关规格也默认开启（<code>spec.read_before_edit</code>）：程序设计或模块现状已经写完时，本对话还没读过就先拦住；空骨架不要求。不要时把该项改成 false。</p>
       <p><code>auto</code> 总会接入 Cursor；项目里已有 <code>.claude/</code> 或 <code>CLAUDE.md</code> 时接入 Claude Code，已有 <code>.codex/</code> 或 <code>AGENTS.md</code> 时接入 Codex。已有配置只合并不覆盖。</p>
       <table>
         <tr><th>工具</th><th>生成的文件</th></tr>
@@ -534,7 +535,7 @@ git commit -m "接入 pmem"</code></pre>
   </div>
   <p><b>新目录自动登记</b>（v0.5.1）：AI 改到没登记的代码目录、或会话开始时，Hook 在后台扫描并追加到 <code>modules.yaml</code>，AI 会在回复里告诉你“这次新增了几个模块、几个冷候选”；记得把 <code>.memory/modules.yaml</code> 一起提交。真正写入新模块时，会给还没有规格的模块铺四份空骨架，正文不在这里写。细节见“整理与维护 → 目录同步”。</p>
   <p><b>记忆医生</b>（v0.6.1）：接入后约每 24 小时后台跑一次 <code>pmem doctor</code>，不阻塞对话，也不改记忆文件。有问题才让 AI 提一行（例如未提交的记忆、覆盖率不足），需要时再手动跑一遍看全文。对外帮助里这条命令仍然只有 <code>--root</code>。</p>
-  <p><b>模块规格</b>：<code>.memory/specs/&lt;模块&gt;/</code> 里四份文件记这个模块现在的完整策划、完整美术、完整程序、完整现状，和 Wiki 分开，进版本库。划分模块后对 AI 说“补全模块规格”，或跑 <code>pmem spec complete</code>（<code>fill</code> 是旧名）。这条命令列出缺谁，正文由技能写到九成八。之后某一轮改了这个模块，对 AI 说更新这个模块的规格，它只改变了的段落，已有内容留在原处。规格提醒默认不提示。没有画面的美术文件写「本模块无画面」。<code>pmem spec closed</code>（可加 <code>--module</code>）只读核对写得成清单的字段名、须按字面抄的原文整句和入口锚点，输出只有一致、可能不一致、无法判断，不改规格文件，也不把散文或「必须保持」的行为判成不一致。</p>
+  <p><b>模块规格</b>：<code>.memory/specs/&lt;模块&gt;/</code> 里四份文件记这个模块现在的完整策划、完整美术、完整程序、完整现状，和 Wiki 分开，进版本库。划分模块后对 AI 说“补全模块规格”，或跑 <code>pmem spec complete</code>（<code>fill</code> 是旧名）。这条命令列出缺谁，正文由技能写到九成八。之后某一轮改了这个模块，对 AI 说更新这个模块的规格，它只改变了的段落，已有内容留在原处。规格提醒默认开启。改代码前默认先读已写完的程序设计和模块现状。没有画面的美术文件写「本模块无画面」。<code>pmem spec closed</code>（可加 <code>--module</code>）只读核对写得成清单的字段名、须按字面抄的原文整句和入口锚点，输出只有一致、可能不一致、无法判断，不改规格文件，也不把散文或「必须保持」的行为判成不一致。</p>
 
   <h3>写记忆的约定</h3>
   <ul>
@@ -630,7 +631,7 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem map [--out 文件] [--days 30] [--json]</code></td><td>记忆演化图：默认写 Wiki 目录下的 <code>map.html</code>（单文件、不联网，可缩放、拖动、按类型筛选、只看现行，点节点看全文），终端打印总评和自检（漏记、断链、悬而未决、过期）；<code>--days</code> 是漏记统计的天数，<code>--json</code> 输出图数据。配置里的 Wiki 目录指到项目外时拒绝并返回 2；<code>--out</code> 可以指到别处</td></tr>
     <tr><td><code>pmem graph --module X</code></td><td>模块全貌，或某议题的时间线</td></tr>
     <tr><td><code>pmem wiki [--out 目录]</code></td><td>生成每模块一页的 Markdown Wiki（默认 <code>.memory/wiki/</code>）：议题、现行结论、历史、相关模块、代码链接，过期的标“需核实”；只覆盖它自己生成的页面，页面文件名只能是合法模块名，不能写出输出目录。配置里的目录指到项目外时拒绝并返回 2；<code>--out</code> 可以指到项目外，但页面仍不能跳出那个目录。写入或确认记忆后会自动运行（<code>wiki.auto</code>）；自动生成时目录在项目外则只警告、记忆仍写入</td></tr>
-    <tr><td><code>pmem spec [init|index|fill|complete|closed] [--check] [--module 模块]</code></td><td>模块规格（默认 <code>.memory/specs/&lt;模块&gt;/</code>，四份分开：策划、美术、程序、现状，进版本库，与 Wiki 分开）。给美术只拷 <code>美术设计.md</code>。不加参数只列出完成情况；<code>init</code> 给还没有的那一份写骨架，不覆盖已写正文；<code>complete</code> 是补全模块规格的入口：铺骨架并列出首稿还没写完的模块（有未完成时返回 1），完整正文由技能按代码写到九成八；程序/现状是否未完成只认整行的空标记 <code>&lt;!-- spec:empty --&gt;</code>，正文里用反引号提到该字面量不算未完成；<code>fill</code> 是 <code>complete</code> 的旧名；<code>index</code> 只刷新总目录和各模块 <code>index.md</code> 里的上下级、代码路径，留空列标出策划或美术仍留空、以及缺了那一份，不因此改变完成状态；<code>--check</code> 有模块没完成首稿时返回 1。策划、美术、程序、现状由 <code>pmem-spec</code> 技能写；没有画面的美术节写「本模块无画面」，不因此算未完成。目录指到项目外时返回 2。<code>pmem init</code>、以及 <code>pmem sync --apply</code> 和自动登记真正写入新模块时，都会补上还没有的骨架，不写正文。规格提醒默认不提示；要在回合结束提醒更新规格，把 <code>spec.reminder</code> 设为 true。只改了未登记进模块路径的资源时，这次提醒不会响。<code>closed</code> 只读：核对入参/出参字段闭集、原文整句和入口锚点，输出只有一致、可能不一致、无法判断；散文、必须保持的行为、策划稿都不判成不一致。<code>--module</code> 只用于 <code>closed</code>，只核对该模块</td></tr>
+    <tr><td><code>pmem spec [init|index|fill|complete|closed] [--check] [--module 模块]</code></td><td>模块规格（默认 <code>.memory/specs/&lt;模块&gt;/</code>，四份分开：策划、美术、程序、现状，进版本库，与 Wiki 分开）。给美术只拷 <code>美术设计.md</code>。不加参数只列出完成情况；<code>init</code> 给还没有的那一份写骨架，不覆盖已写正文；<code>complete</code> 是补全模块规格的入口：铺骨架并列出首稿还没写完的模块（有未完成时返回 1），完整正文由技能按代码写到九成八；程序/现状是否未完成只认整行的空标记 <code>&lt;!-- spec:empty --&gt;</code>，正文里用反引号提到该字面量不算未完成；<code>fill</code> 是 <code>complete</code> 的旧名；<code>index</code> 只刷新总目录和各模块 <code>index.md</code> 里的上下级、代码路径，留空列标出策划或美术仍留空、以及缺了那一份，不因此改变完成状态；<code>--check</code> 有模块没完成首稿时返回 1。策划、美术、程序、现状由 <code>pmem-spec</code> 技能写；没有画面的美术节写「本模块无画面」，不因此算未完成。目录指到项目外时返回 2。<code>pmem init</code>、以及 <code>pmem sync --apply</code> 和自动登记真正写入新模块时，都会补上还没有的骨架，不写正文。规格提醒默认开启；不要时把 <code>spec.reminder</code> 设为 false。没写过这项的旧配置升级后也会提醒。只改了未登记进模块路径的资源时，这次提醒不会响。改代码前默认先读已写完的程序设计和模块现状（<code>spec.read_before_edit</code> 缺省 true）；整行仍是空标记的骨架不要求读，闸门 off 或本对话说了跳过记忆时也不要求。warn 只拦一次，block 读完才放行。<code>closed</code> 只读：核对入参/出参字段闭集、原文整句和入口锚点，输出只有一致、可能不一致、无法判断；散文、必须保持的行为、策划稿都不判成不一致。<code>--module</code> 只用于 <code>closed</code>，只核对该模块</td></tr>
     <tr><td><code>pmem list</code></td><td>模块与记忆数量</td></tr>
     <tr><td><code>pmem terms</code></td><td>记忆里的高频词，用于整理同义词</td></tr>
     <tr><td><code>pmem compact</code></td><td>列出零碎记忆较多的议题；指定议题时输出全部正文供合并；<code>--undo &lt;id&gt;</code> 撤销一次合并（合并产物归档并标为已撤销，原记忆重新现行）</td></tr>
@@ -678,7 +679,8 @@ wiki:
   dir: .memory/wiki         <span class="c"># 必须在项目内。指到项目外时 pmem wiki / pmem map 拒绝；自动生成只警告。首次生成自带 .gitignore</span>
 spec:
   dir: .memory/specs        <span class="c"># 必须在项目内。每个模块一份当前规格，进版本库；指到项目外时 pmem spec 拒绝</span>
-  reminder: false           <span class="c"># 默认不提示。改成 true 后，改了模块却没更新规格时，回合结束提醒一次</span>
+  reminder: true            <span class="c"># 默认开启。改了模块却没更新规格时，回合结束提醒一次；不要时改成 false</span>
+  read_before_edit: true    <span class="c"># 默认开启。程序设计或模块现状已写完时，本对话还没读过就先拦住这次修改</span>
 write:
   default_status: active    <span class="c"># active 直接生效 / draft 需人工审阅</span>
   content_min: 20
@@ -916,12 +918,12 @@ pmem reindex</code></pre>
     <li><code>pmem bench</code> 还没有用真实 API Key 跑过完整对照，示例用例只用 <code>--dry-run</code> 验证过。</li>
     <li>模块划分依赖 Agent 按 pmem-bootstrap 技能完成，还没有全自动扫描器。</li>
     <li>Cursor 里 MCP：<code>pmem init</code> 会尝试项目级自动批准，但 Cursor 运行时写的批准会被它覆盖——完全退出 Cursor 后重跑 <code>pmem init</code>，或在 设置 → MCP 手动开一次后 Reload Window。</li>
-    <li>v0.7 类型安全与规则化已发布（schema、<code>enforced_by</code>、<code>facets</code>/<code>when</code>、边界校验、返回契约、pyright）。当前发布包是 v0.7.2：另有 <code>source.kind</code>、<code>valid_from</code> 和 <code>pmem spec closed</code>。旧版改写带来源或生效日的文件时不保证原样保留。</li>
+    <li>v0.7 类型安全与规则化已发布（schema、<code>enforced_by</code>、<code>facets</code>/<code>when</code>、边界校验、返回契约、pyright）。当前发布包是 v0.7.3：另有独立的工程质量技能、<code>spec.reminder</code> / <code>spec.read_before_edit</code> 默认开启，以及 <code>reading_hint</code>。<code>source.kind</code> 与 <code>valid_from</code> 需要 v0.7.2。旧版改写带来源或生效日的文件时不保证原样保留。</li>
   </ul>
   <p class="muted">更完整的限制清单见仓库首页 README「已知限制」。</p>
 </section>
 
-<p class="muted" style="text-align:center">pmem v0.7.2 · 详细设计见 <code>docs/architecture.md</code> 与 <code>README.md</code></p>
+<p class="muted" style="text-align:center">pmem v0.7.3 · 详细设计见 <code>docs/architecture.md</code> 与 <code>README.md</code></p>
 </main>
 </div>
 </body>

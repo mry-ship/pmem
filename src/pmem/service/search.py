@@ -25,13 +25,23 @@ ENFORCED_HINT = ("带 enforced_by 的记忆：规则文件与符号仍在时标�
                  "读码摘要里它们排在未保障教训之后，名额优先给仍需靠记忆防的坑。")
 SOURCE_HINT = ("source_kind 只说明证据从哪来，缺省为 null（未知）。没有 verified 时标 unverified，"
                "只说明还没核对。二者不互相推导，也不改变排序。摘要里的「需核实」只表示关联代码过期。")
+READING_HINT = ("stale=true 时先打开 check 里的代码再引用，不要把「规则需核实」当成锚点过期。"
+                "再看 applies 是否满足。多条冲突时先看有锚点、有 verify、来源不是 inference 的，其余仍要看。不改变排序。")
 INHERITED_HINT = ("标 inherited 的教训来自上级模块（module 字段），对本模块同样成立；"
                   "children 是下级模块、记忆条数和各自最新几条记忆的标题（latest，含更下级，教训和功能记录都有）；"
                   "问整体情况时先看这些标题，涉及某个下级的细节或标题不够判断时再按它检索。")
 # seen_hint 很短且告诉终端用户怎么取全文（终端看不到工具说明），每次都给
 _ONCE_HINTS = ("features_hint", "applies_hint", "when_hint", "verify_hint", "inherited_hint",
-               "enforced_hint", "source_hint")
+               "enforced_hint", "source_hint", "reading_hint")
 _HINT_MARK = "hint:"
+
+
+def _needs_reading_hint(rows: list) -> bool:
+    """单条、未过期、又没有适用条件时不给阅读顺序，免得第一次无关检索把提示用掉。"""
+    present = [row for row in rows if isinstance(row, dict)]
+    return any(row.get("stale") or row.get("applies") for row in present) or len(present) >= 2
+
+
 _KEPT_ON_COLLAPSE = ("module", "id", "entity", "kind", "date", "stale", "check", "status", "scope", "applies",
                      "when", "enforced_by", "inherited", "source_kind", "valid_from", "unverified", "verified")
 
@@ -172,6 +182,8 @@ class SearchOps(ServiceBase):
         missing = [i for i in wanted if i not in {e.id for e in entries}]
         if missing:
             response["missing"] = missing
+        if _needs_reading_hint(response["items"]):
+            response["reading_hint"] = READING_HINT
         if problems:
             response["verify_hint"] = VERIFY_HINT
         return response
@@ -238,6 +250,8 @@ class SearchOps(ServiceBase):
             response["enforced_hint"] = ENFORCED_HINT
         if result.items or result.features:
             response["source_hint"] = SOURCE_HINT
+        if _needs_reading_hint([*result.items, *result.features]):
+            response["reading_hint"] = READING_HINT
         if as_of:
             response["as_of"] = as_of
         if result.expanded:

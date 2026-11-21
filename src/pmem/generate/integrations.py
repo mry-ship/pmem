@@ -22,8 +22,14 @@ from pmem.generate.templates import (
     HOOK_WRAPPER_CMD,
     HOOK_WRAPPER_SH,
     MCP_SERVER,
+    MINIMAL_SKILL,
     NORMALIZE_SKILL,
     PLAIN_MCP_SERVER,
+    QUALITY_BEGIN,
+    QUALITY_END,
+    QUALITY_RULE,
+    QUALITY_RULE_BLOCK,
+    REVIEW_SKILL,
     RULE,
     RULE_BLOCK,
     SEED_SKILL,
@@ -185,17 +191,25 @@ def merge_codex_mcp(path: Path) -> bool:
     return True
 
 
-def upsert_block(path: Path, block: str) -> None:
-    """在 CLAUDE.md / AGENTS.md 里写入或替换 pmem 段落，段落之外的内容保持不变。"""
+def upsert_block(
+    path: Path,
+    block: str,
+    start_marker: str = BLOCK_BEGIN,
+    end_marker: str = BLOCK_END,
+) -> None:
+    """写入或替换一对标记之间的段落，标记之外的内容保持不变。
+
+    不传标记时仍是 pmem:begin / pmem:end。只有开始标记、没有结束标记时，不知道旧段落到哪为止：
+    只去掉孤立的开始标记，保留其后正文，把新段落追加到文末。不得从开始标记删到文末。
+    """
     text = path.read_text(encoding="utf-8-sig") if path.exists() else ""
-    start = text.find(BLOCK_BEGIN)
-    end = text.find(BLOCK_END, start) if start >= 0 else -1
+    start = text.find(start_marker)
+    end = text.find(end_marker, start) if start >= 0 else -1
     if start >= 0 and end > start:
-        tail = text[end + len(BLOCK_END):].lstrip("\n")
+        tail = text[end + len(end_marker):].lstrip("\n")
         text = text[:start] + block + ("\n" + tail if tail else "")
     else:
-        # 结束标记被删掉时不知道旧段落到哪为止：只去掉孤立的开始标记，免得下次把中间的用户内容当段落替换掉
-        text = text.replace(BLOCK_BEGIN, "")
+        text = text.replace(start_marker, "")
         text = (text.rstrip("\n") + "\n\n" if text.strip() else "") + block
     write_text(path, text)
 
@@ -203,13 +217,15 @@ def upsert_block(path: Path, block: str) -> None:
 def _write_skills(folder: Path) -> None:
     for name, body in (("pmem-bootstrap", BOOTSTRAP_SKILL), ("pmem-compact", COMPACT_SKILL),
                        ("pmem-consolidate", CONSOLIDATE_SKILL), ("pmem-normalize", NORMALIZE_SKILL),
-                       ("pmem-seed", SEED_SKILL), ("pmem-spec", SPEC_SKILL)):
+                       ("pmem-seed", SEED_SKILL), ("pmem-spec", SPEC_SKILL),
+                       ("pmem-minimal", MINIMAL_SKILL), ("pmem-review", REVIEW_SKILL)):
         write_text(folder / name / "SKILL.md", body.format(generated=GENERATED))
 
 
 def setup_cursor(root: Path, hooks_mode: str = "auto") -> str:
     cursor = root / ".cursor"
     write_text(cursor / "rules" / "pmem.mdc", RULE.format(generated=GENERATED))
+    write_text(cursor / "rules" / "pmem-quality.mdc", QUALITY_RULE.format(generated=GENERATED))
     _write_skills(cursor / "skills")
     wanted = cursor_hooks(hooks_mode)
     merge_hooks(cursor / "hooks.json", wanted)
@@ -225,7 +241,8 @@ def setup_cursor(root: Path, hooks_mode: str = "auto") -> str:
         mode = "full"
     else:
         mode = "quiet"
-    return ("Cursor：.cursor/rules/pmem.mdc、.cursor/skills/pmem-*、合并 .cursor/hooks.json 与 .cursor/mcp.json、"
+    return ("Cursor：.cursor/rules/pmem.mdc、.cursor/rules/pmem-quality.mdc、.cursor/skills/pmem-*、"
+            "合并 .cursor/hooks.json 与 .cursor/mcp.json、"
             f".memory/bin/pmem-hook*（没装 pmem 时提醒）；Hooks={mode}"
             + ("（闸门保留；postToolUse 仅 Shell，无读码摘要）"
                if mode == "quiet" else ("（已去掉全部 pmem Hook）" if mode == "off"
@@ -235,6 +252,7 @@ def setup_cursor(root: Path, hooks_mode: str = "auto") -> str:
 
 def setup_claude(root: Path, hooks_mode: str = "auto", *, paired_with_cursor: bool = False) -> str:
     upsert_block(root / "CLAUDE.md", RULE_BLOCK)
+    upsert_block(root / "CLAUDE.md", QUALITY_RULE_BLOCK, QUALITY_BEGIN, QUALITY_END)
     _write_skills(root / ".claude" / "skills")
     wanted = claude_hooks(hooks_mode, paired_with_cursor=paired_with_cursor)
     merge_group_hooks(root / ".claude" / "settings.json", wanted)
@@ -246,11 +264,13 @@ def setup_claude(root: Path, hooks_mode: str = "auto", *, paired_with_cursor: bo
         extra = "；Hooks=quiet（PostToolUse 无 Read|Grep）"
     else:
         extra = ""
-    return ("Claude Code：CLAUDE.md 中的 pmem 段落、.claude/skills/pmem-*、合并 .claude/settings.json 与 .mcp.json"
+    return ("Claude Code：CLAUDE.md 中的 pmem 段落与 pmem-quality 段落、.claude/skills/pmem-*、"
+            "合并 .claude/settings.json 与 .mcp.json"
             + extra + f"；{enabled}")
 
 def setup_codex(root: Path, hooks_mode: str = "auto") -> str:
     upsert_block(root / "AGENTS.md", RULE_BLOCK)
+    upsert_block(root / "AGENTS.md", QUALITY_RULE_BLOCK, QUALITY_BEGIN, QUALITY_END)
     # Codex 只从 .agents/skills 读项目技能
     _write_skills(root / ".agents" / "skills")
     wanted = codex_hooks(hooks_mode)
@@ -263,7 +283,8 @@ def setup_codex(root: Path, hooks_mode: str = "auto") -> str:
         extra = "；Hooks=quiet（闸门+prompt/stop 保留，无 PreCompact）"
     else:
         extra = ""
-    return ("Codex：AGENTS.md 中的 pmem 段落、.agents/skills/pmem-*、合并 .codex/hooks.json 与 .codex/config.toml"
+    return ("Codex：AGENTS.md 中的 pmem 段落与 pmem-quality 段落、.agents/skills/pmem-*、"
+            "合并 .codex/hooks.json 与 .codex/config.toml"
             + extra + f"；{enabled}")
 
 

@@ -13,8 +13,8 @@ revision: git:cef5279
 author: 1002378395@qq.com
 note_date: '2026-11-04'
 summary: pmem init 无条件覆盖技能和规则；技能模板花括号写成 {{ }}
-verified: '2026-11-04'
-verified_at: '2026-11-04T17:04:24.128+08:00'
+verified: '2026-11-21'
+verified_at: '2026-11-21T21:57:33.803+08:00'
 ---
 更正：旧记忆说“生成标记不对时 pmem init 判断不出是自己生成的文件，会跳过更新”，不成立：init 写技能和规则文件是无条件覆盖。
 当时 pmem-consolidate/SKILL.md 的真实问题是文件里残留了未替换的 {generated} 占位符，重新生成后修正。

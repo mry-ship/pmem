@@ -520,6 +520,22 @@ def test_evidence_version_is_073():
     assert "0.7.3" in out.stdout
 
 
+def test_package_version_sources_match():
+    """场景：版本来源。期望：pyproject、uv.lock 与 pmem.__version__ 是同一个版本。"""
+    import re
+
+    import pmem
+
+    root = Path(__file__).resolve().parents[1]
+    project = (root / "pyproject.toml").read_text(encoding="utf-8")
+    declared = re.search(r'(?m)^version = "([^"]+)"\s*$', project)
+    assert declared is not None
+    version = declared.group(1)
+    assert pmem.__version__ == version
+    lock = (root / "uv.lock").read_text(encoding="utf-8")
+    assert re.search(rf'(?m)^name = "pmem"\nversion = "{re.escape(version)}"\s*$', lock)
+
+
 def test_evidence_consolidate_skill_has_rule_upgrade_step():
     """场景：设计 §3.1。期望：consolidate 技能含「可以写成规则」并指导 enforced_by。"""
     from pmem.generate.templates import COMPACT_SKILL, CONSOLIDATE_SKILL

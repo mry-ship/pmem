@@ -18,7 +18,7 @@ aliases:
 - v0.5
 - 发版
 verified: '2026-11-21'
-verified_at: '2026-11-21T04:47:30.168+08:00'
+verified_at: '2026-11-21T23:21:25.979+08:00'
 source:
   conversation: 9622f1ee-c79a-429b-b50b-25228d393eb8
 ---

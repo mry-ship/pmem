@@ -9,13 +9,13 @@ from pmem.core.codefiles import is_code_file
 from pmem.core.config import Config
 from pmem.core.entry import Entry
 from pmem.core.registry import ModuleRegistry, is_module_id
-from pmem.hooks.guard import Guard
+from pmem.hooks.guard import Guard, read_failed
 from pmem.hooks.harness import Harness
 from pmem.hooks.mcp import ALLOW, PMEM_TOOLS, McpCalls, foreign_tool
 from pmem.hooks.memories import MemoryView
 from pmem.hooks.payload import asks_to_skip, fuzzy_contains, readable, tool_input
 from pmem.hooks.reminders import Reminders
-from pmem.hooks.review import MAX_REVIEW_MODULES, SEARCH_TOOLS, VIEW_TOOLS, Review
+from pmem.hooks.review import MAX_REVIEW_MODULES, SEARCH_TOOLS, Review
 from pmem.hooks.shell import (  # noqa: F401
     cli_args,
     may_change_unseen,
@@ -262,8 +262,8 @@ class Gate(MemoryView, Review, Guard, McpCalls, Snapshots, Reminders, Harness):
         from pmem.hooks.agents import edited_files
 
         name = str(self.payload.get("tool_name") or "")
-        if name.lower() in VIEW_TOOLS:
-            self._note_spec_reads(tool_input(self.payload), tool=name.lower())
+        if name.lower() == "read" and not read_failed(self.payload):
+            self._note_spec_reads(tool_input(self.payload), tool="read")
         if any(t in name for t in PMEM_TOOLS):
             return self.on_after_mcp()
         if name.lower() == "read":

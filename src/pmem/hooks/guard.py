@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import glob
+import json
 import re
-from pathlib import Path
 
 from pmem.core.entry import PITFALL_KINDS
 from pmem.hooks.memories import DIGEST_MATERIAL
 from pmem.hooks.payload import _transcript_tail, tool_paths
-from pmem.hooks.review import VIEW_TOOLS
 from pmem.hooks.shell import WILDCARD_PATH
 from pmem.hooks.types import GateAttrs
 from pmem.index.graph import current_entries, file_features
@@ -21,6 +20,77 @@ _SPEC_REQUIRED = ("程序设计.md", "模块现状.md")
 # 整行才算还没写完；正文里用反引号提到这个字面量不算空骨架
 _SPEC_EMPTY_LINE = re.compile(r"(?m)^[ \t]*<!-- spec:empty -->[ \t]*\r?$")
 _SPEC_EXCERPT = 800
+
+
+def read_failed(payload: dict | None) -> bool:
+    """这次查看有没有明确的失败。Cursor 的失败走 postToolUseFailure，不进 post-tool；
+    顶层 is_error，或 error_message、failure_type，或 tool_response/tool_output 里的 is_error，都不能记成已读。"""
+    if not isinstance(payload, dict):
+        return False
+    if payload.get("failure_type") or payload.get("is_error") is True:
+        return True
+    message = payload.get("error_message")
+    if isinstance(message, str) and message.strip():
+        return True
+    if "failure" in str(payload.get("hook_event_name") or "").lower():
+        return True
+    for key in ("tool_response", "tool_output"):
+        value = payload.get(key)
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                continue
+        if isinstance(value, dict) and value.get("is_error") is True:
+            return True
+    return False
+
+
+def _result_id(block: dict) -> str:
+    for key in ("tool_use_id", "id"):
+        value = block.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+def _result_failed(block: dict) -> bool:
+    if block.get("is_error") is True:
+        return True
+    error = block.get("error")
+    return isinstance(error, str) and bool(error.strip())
+
+
+def _successful_read_args(records: list) -> list[dict]:
+    """对话记录里已经成功返回的 Read。没有配对结果，或结果标了失败，都不算。"""
+    uses: list[dict] = []
+    failed: dict[str, bool] = {}
+    for _role, content in records:
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_use":
+                name = str(block.get("name") or "").lower()
+                if name == "read" and isinstance(block.get("input"), dict):
+                    uses.append(block)
+                continue
+            if block.get("type") != "tool_result":
+                continue
+            tid = _result_id(block)
+            if not tid:
+                continue
+            this = _result_failed(block)
+            failed[tid] = this if tid not in failed else failed[tid] and this
+    args = []
+    for block in uses:
+        tid = block.get("id") if isinstance(block.get("id"), str) else ""
+        if not tid:
+            tid = block.get("tool_use_id") if isinstance(block.get("tool_use_id"), str) else ""
+        if tid and failed.get(tid) is False:
+            args.append(block["input"])
+    return args
 
 
 class Guard(GateAttrs):
@@ -155,26 +225,8 @@ class Guard(GateAttrs):
             required.append(rel)
         return required
 
-    def _spec_paths_named_in(self, text: str) -> list[str]:
-        """从 Glob 模式里认出规格目录或某一份正文。扫整个仓库的 **/* 对不上前缀，不算读过。"""
-        folded = text.replace("\\", "/")
-        prefix = self._spec_root() + "/"
-        found: list[str] = []
-        start = 0
-        while True:
-            at = folded.find(prefix, start)
-            if at < 0:
-                break
-            rest = folded[at + len(prefix):]
-            module = rest.split("/", 1)[0].split("*", 1)[0].strip()
-            tail = rest[len(module):].lstrip("/") if module else ""
-            filename = tail.split("*", 1)[0].strip("/")
-            if module and "*" not in module and "/" not in module:
-                found.append(f"{prefix}{module}/{filename}" if filename in _SPEC_BODY else f"{prefix}{module}")
-            start = at + len(prefix)
-        return found
-
     def _mark_spec_path(self, raw: str) -> bool:
+        """只认某一份规格正文。打开目录、通配或其他文件名都不算读过。"""
         rel = self.relative(str(raw))
         if not rel:
             return False
@@ -183,58 +235,34 @@ class Guard(GateAttrs):
         if not rel.startswith(prefix):
             return False
         module, _, filename = rel[len(prefix):].partition("/")
-        if not module or "/" in filename:
+        if not module or "/" in filename or filename not in _SPEC_BODY:
             return False
-        names = [filename] if filename in _SPEC_BODY else (list(_SPEC_BODY) if not filename else [])
-        changed = False
-        for name in names:
-            full = f"{prefix}{module}/{name}"
-            if not filename and self._spec_text(full) is None:
-                continue
-            if not self.state.has("spec_read", full):
-                self.state.add("spec_read", full)
-                changed = True
-        return changed
+        full = f"{prefix}{module}/{filename}"
+        if self.state.has("spec_read", full):
+            return False
+        self.state.add("spec_read", full)
+        return True
 
     def _note_spec_reads(self, args: dict, tool: str = "") -> None:
-        """本对话打开过的规格正文记下来，改代码前不用再拦。
-        Grep 的 pattern 是搜索词，不能当成规格路径；只有 Glob 的 pattern 才算。"""
-        if not self._spec_reads_on() or not isinstance(args, dict):
+        """本对话用 Read 成功打开过的规格正文记下来，改代码前不用再拦。
+        Grep、Glob、语义搜索只看到片段或文件名，打开目录也不等于读过其中的正文。"""
+        if not self._spec_reads_on() or not isinstance(args, dict) or str(tool).lower() != "read":
             return
-        raws = list(tool_paths(args))
-        pattern = args.get("glob_pattern") or args.get("glob")
-        if "glob" in tool.lower() and not isinstance(pattern, str):
-            pattern = args.get("pattern") if isinstance(args.get("pattern"), str) else None
-        target = args.get("target_directory") if isinstance(args.get("target_directory"), str) else ""
-        if isinstance(pattern, str) and pattern:
-            if target:
-                raws.append(target)
-                name = pattern.replace("\\", "/").rstrip("/").split("/")[-1]
-                if name in _SPEC_BODY:
-                    raws.append(str(Path(target) / name))
-            raws.extend(self._spec_paths_named_in("/".join(part for part in (target, pattern) if part)))
         changed = False
-        for raw in raws:
+        for raw in tool_paths(args):
             changed = self._mark_spec_path(raw) or changed
         if changed:
             self.save()
 
     def _harvest_spec_reads(self) -> None:
-        """post-tool 没覆盖 Read 时（quiet、Codex），从对话记录里补上已经出现的读取。
-        当前这次工具多半是写入，不能把它的路径当成读过规格。"""
+        """post-tool 没覆盖 Read 时（quiet、Codex），从对话记录里补上已经成功返回的 Read。
+        只有 tool_use、没有对应成功结果的不算。当前这次工具多半是写入，不能把它的路径当成读过规格。"""
         if not self._spec_reads_on():
             return
         payload = getattr(self, "payload", None) or {}
-        for _role, content in _transcript_tail(payload.get("transcript_path") if isinstance(payload, dict) else None) or []:
-            if not isinstance(content, list):
-                continue
-            for block in content:
-                if not isinstance(block, dict) or block.get("type") != "tool_use":
-                    continue
-                name = str(block.get("name") or "").lower()
-                if name not in VIEW_TOOLS or not isinstance(block.get("input"), dict):
-                    continue
-                self._note_spec_reads(block["input"], tool=name)
+        path = payload.get("transcript_path") if isinstance(payload, dict) else None
+        for args in _successful_read_args(_transcript_tail(path) or []):
+            self._note_spec_reads(args, tool="read")
 
     def _spec_excerpt(self, rel: str) -> str:
         text = (self._spec_text(rel) or "").strip()

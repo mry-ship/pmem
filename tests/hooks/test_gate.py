@@ -1739,6 +1739,85 @@ def test_transcript_read_without_a_result_stays_blocked(make_project, tmp_path):
     assert denied["permission"] == "deny" and "程序设计.md" in denied["agent_message"]
 
 
+def test_colon_ended_sentence_stays_inside_verbatim(make_project):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", (
+        "原文（须按字面抄）：\n"
+        "读码摘要 intro 三种全文：\n"
+        "[pmem] 现行记忆仍在。\n"
+    ))
+    denied = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
+    message = denied["agent_message"]
+    assert "读码摘要 intro 三种全文：" in message
+    assert "现行记忆仍在" in message
+
+
+def test_entry_heading_ends_the_contract_section(make_project):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", (
+        "入参字段闭集：\n"
+        "- limit\n\n"
+        "入口：五个工具\n\n"
+        "数据形状与闭集词表：\n"
+        "不要混进来。\n\n"
+        "原文（须按字面抄）：\n"
+        "这句要在。\n"
+    ))
+    denied = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
+    message = denied["agent_message"]
+    assert denied["permission"] == "deny"
+    assert "limit" in message and "这句要在" in message
+    assert "不要混进来" not in message and "五个工具" not in message
+
+
+def test_unknown_heading_ends_the_contract_excerpt(make_project):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", (
+        "入参字段闭集：\n"
+        "- limit\n\n"
+        "配置与环境变量：\n"
+        "不要混进来。\n\n"
+        "### 旁注\n"
+        "也不要。\n"
+    ))
+    denied = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
+    message = denied["agent_message"]
+    assert denied["permission"] == "deny"
+    assert "limit" in message
+    assert "不要混进来" not in message
+    assert "也不要" not in message
+
+
+def test_mixed_success_and_error_on_the_same_read_does_not_count(make_project, tmp_path):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", "入口不变。\n")
+    spec = root / ".memory" / "specs" / "gameplay.Jigsaw" / "程序设计.md"
+    orders = (
+        ("c-fail-then-ok", [
+            {"type": "tool_result", "tool_use_id": "read-1", "is_error": True, "content": "File not found"},
+            {"type": "tool_result", "tool_use_id": "read-1", "content": "入口不变。"},
+        ]),
+        ("c-ok-then-fail", [
+            {"type": "tool_result", "tool_use_id": "read-1", "content": "入口不变。"},
+            {"type": "tool_result", "tool_use_id": "read-1", "is_error": True, "content": "File not found"},
+        ]),
+    )
+    for conv, results in orders:
+        rows = [{
+            "role": "assistant",
+            "message": {"content": [{
+                "type": "tool_use", "id": "read-1", "name": "Read", "input": {"file_path": str(spec)},
+            }]},
+        }]
+        rows.extend({"role": "user", "message": {"content": [result]}} for result in results)
+        transcript = tmp_path / f"{conv}.jsonl"
+        _write_transcript(transcript, rows)
+        payload = write_payload(root, "src/Jigsaw/Board.cs", conv=conv)
+        payload["transcript_path"] = str(transcript)
+        denied = handle("pre-tool", payload, root)
+        assert denied["permission"] == "deny" and "程序设计.md" in denied["agent_message"]
+
+
 def test_failed_transcript_read_does_not_count(make_project, tmp_path):
     root = make_project("block", with_memory=False)
     _write_spec(root, "gameplay.Jigsaw", "程序设计.md", "入口不变。\n")

@@ -21,6 +21,15 @@ _SPEC_REQUIRED = ("程序设计.md", "模块现状.md")
 _SPEC_EMPTY_LINE = re.compile(r"(?m)^[ \t]*<!-- spec:empty -->[ \t]*\r?$")
 # 摘录只带这些契约节。前面的所有权和入口不代替闭集、原文和失败条件。
 _CONTRACT_HEADINGS = ("会话字段闭集", "入参字段闭集", "出参字段闭集", "原文（须按字面抄）", "失败条件", "必须保持")
+# 骨架栏目。不在这张表里、又不是 Markdown 标题的句子，即使以冒号结尾也仍是正文。
+# 与 spec_closed 的同名常量保持一致。
+_SECTION_TITLES = (
+    "入口", "入参字段闭集", "出参字段闭集", "原文（须按字面抄）", "必须保持",
+    "会话字段闭集", "数据形状与闭集词表", "所有权", "决定表", "失败条件",
+    "配置与环境变量", "关键流程", "生成物", "一轮例子", "单独拿走时还要带走的依赖规格",
+)
+# 与 spec_closed._line_heading 同一规则：已知标题切换，骨架栏目或 Markdown 标题结束当前节。
+_ATX = re.compile(r"^#{1,6}\s+(\S.*?)\s*$")
 
 
 def read_failed(payload: dict | None) -> bool:
@@ -62,13 +71,30 @@ def _result_failed(block: dict) -> bool:
     return isinstance(error, str) and bool(error.strip())
 
 
-def _heading_rest(line: str) -> tuple[str, str] | None:
-    """标题可以独占一行，也可以和第一句写在同一行。"""
+def _split_title(body: str) -> tuple[str, str]:
+    for mark in ("：", ":"):
+        if mark in body:
+            title, rest = body.split(mark, 1)
+            return title.strip(), rest.strip()
+    return body.strip(), ""
+
+
+def _line_heading(line: str, names: tuple[str, ...]) -> tuple[str, str] | None:
+    """已知标题返回 (名称, 同一行剩余)。未知栏目返回 ("", "")。普通正文返回 None。
+
+    标题可以独占一行，也可以和第一句写在同一行。第一句仍进摘录。
+    未知栏目只包括 Markdown 标题，以及骨架里的其他栏目。
+    原文里单独成行、以冒号结尾的句子不是栏目，仍留在当前节。
+    """
     stripped = line.strip()
-    for name in _CONTRACT_HEADINGS:
-        for mark in (name + "：", name + ":"):
-            if stripped == mark or stripped.startswith(mark):
-                return name, stripped[len(mark):].strip()
+    if not stripped or stripped.startswith("<!--"):
+        return None
+    atx = _ATX.match(stripped)
+    title, rest = _split_title(atx.group(1).strip() if atx else stripped)
+    if title in names:
+        return title, rest
+    if atx or title in _SECTION_TITLES:
+        return "", ""
     return None
 
 
@@ -77,10 +103,11 @@ def _contract_text(text: str) -> str:
     current: str | None = None
     buckets: dict[str, list[str]] = {name: [] for name in _CONTRACT_HEADINGS}
     for line in text.splitlines():
-        found = _heading_rest(line)
+        found = _line_heading(line, _CONTRACT_HEADINGS)
         if found is not None:
-            current, rest = found
-            if rest:
+            name, rest = found
+            current = name or None
+            if current and rest:
                 buckets[current].append(rest)
             continue
         if current:
@@ -114,7 +141,8 @@ def _successful_read_args(records: list) -> list[dict]:
             if not tid:
                 continue
             this = _result_failed(block)
-            failed[tid] = this if tid not in failed else failed[tid] and this
+            # 同一条 Read 只要有一条结果失败，就不算已读。
+            failed[tid] = this if tid not in failed else failed[tid] or this
     args = []
     for block in uses:
         tid = block.get("id") if isinstance(block.get("id"), str) else ""

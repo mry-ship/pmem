@@ -667,7 +667,8 @@ score   = (rel + bonus) * (0.7 + 0.3 * recency)
 | v0.7 | 已完成（2026-11-20 发 0.7.0）：类型安全与规则化——`enforced_by`、health 规则候选、`facets`/`when`、边界校验、返回契约、pyright 基线。设计见 `2026-10-21-pmem-typesafe-design.md`，Issue #15 |
 | v0.7.2 | 已完成：`source.kind`（只标证据来源、不参与排序）、`valid_from`（YYYY-MM-DD，只影响 as_of）、`pmem spec closed` 只读核对闭集 |
 | v0.7.3 | 已完成：工程质量技能 `pmem-minimal` / `pmem-review` 与 `pmem-quality` 规则独立于记忆规则；`spec.reminder` 与 `spec.read_before_edit` 默认开启；`reading_hint` 不改变排序；记忆闸门优先于规格闸门 |
-| v0.7.4 | 已完成（当前版本）：`spec closed` 原文按同一文件顺序核对并剥说明前缀；规格摘录给契约全文，已读看整份对话；拒绝文案写明摘录后再改可放行；`modules.yaml` 认 `schema_version` |
+| v0.7.4 | 已完成：`spec closed` 原文按同一文件顺序核对并剥说明前缀；规格摘录给契约全文，已读看整份对话；拒绝文案写明摘录后再改可放行；`modules.yaml` 认 `schema_version` |
+| v0.7.5 | 已完成（当前版本）：规格核对不再串节，未知栏目结束上一节；带类型的字段只对照入口函数；同一条 Read 有失败就不算已读 |
 
 ### 14.1 v0.1 验收标准
 
@@ -772,7 +773,7 @@ v0.2 末本仓库的实测基线（2026-10-19）：
 
 ### 14.7 v0.7 任务：类型安全与规则化
 
-状态：已完成（2026-11-20 发 0.7.0，GitHub Issue #15 已关闭）。设计见 `2026-10-21-pmem-typesafe-design.md`。交付：`enforced_by`、health 规则候选、`facets`/`when`、边界校验（schema/doctor）、返回契约 TypedDict + 形状测试、core/index/service/catalog 的 pyright 基线；效果表与 Wiki/Pages「当前版本」当时同步为 0.7.0。之后补丁：0.7.2 来源与生效日、`spec closed`；0.7.3 工程质量技能、规格默认先读与阅读顺序；0.7.4 规格闭集按同一文件核对、规格摘录与整份对话已读（当前安装包见 README）。
+状态：已完成（2026-11-20 发 0.7.0，GitHub Issue #15 已关闭）。设计见 `2026-10-21-pmem-typesafe-design.md`。交付：`enforced_by`、health 规则候选、`facets`/`when`、边界校验（schema/doctor）、返回契约 TypedDict + 形状测试、core/index/service/catalog 的 pyright 基线；效果表与 Wiki/Pages「当前版本」当时同步为 0.7.0。之后补丁：0.7.2 来源与生效日、`spec closed`；0.7.3 工程质量技能、规格默认先读与阅读顺序；0.7.4 规格闭集按同一文件核对、规格摘录与整份对话已读；0.7.5 规格核对不再串节、字段签名只对照入口、同一条 Read 有失败就不算已读（当前安装包见 README）。
 
 ---
 

@@ -175,6 +175,94 @@ pmem：修改 <路径>）之前，请先阅读相关规格：
     assert "可能不一致  原文（须按字面抄）  pmem：修改 <路径>）之前，请先阅读相关规格：" in out
 
 
+def test_colon_ended_sentence_stays_in_verbatim(tmp_path, monkeypatch, capsys):
+    root = _root(tmp_path, monkeypatch)
+    program = """## 程序设计
+
+原文（须按字面抄）：
+读码摘要 intro 三种全文：
+这段不会出现在代码里
+"""
+    status = "## 模块现状\n\n必须保持：\n- 占位\n"
+    _write_specs(root, program, status)
+    assert main(["spec", "closed", "--root", str(root), "--module", "gameplay.Jigsaw"]) == 0
+    out = capsys.readouterr().out
+    assert "可能不一致  原文（须按字面抄）  这段不会出现在代码里" in out
+
+
+def test_unknown_heading_stops_the_previous_section(tmp_path, monkeypatch, capsys):
+    root = _root(tmp_path, monkeypatch)
+    program = """## 程序设计
+
+入口：src/mod.py#grant
+
+失败条件：
+- src/missing.py#Handle
+
+### 其他说明
+- src/extra.py#Process
+"""
+    status = "## 模块现状\n\n必须保持：\n- 占位\n一轮例子：\n- 后文不算必须保持\n"
+    _write_specs(root, program, status)
+    assert main(["spec", "closed", "--root", str(root), "--module", "gameplay.Jigsaw"]) == 0
+    out = capsys.readouterr().out
+    assert "一致  入口  src/mod.py#grant" in out
+    assert "src/missing.py" not in out
+    assert "src/extra.py" not in out
+    assert "后文不算必须保持" not in out
+
+
+def test_unrelated_same_name_parameter_is_not_a_match(tmp_path, monkeypatch, capsys):
+    root = _root(tmp_path, monkeypatch)
+    (root / "src" / "mod.py").write_text(
+        "def unrelated_helper(limit: int):\n    pass\n\n"
+        "def actual_entry():\n    pass\n\n"
+        "class Box:\n    def grant(self, limit: int):\n        return None\n",
+        encoding="utf-8",
+    )
+    program = """## 程序设计
+
+入口：
+- src/mod.py#actual_entry
+
+入参字段闭集：
+- limit: int
+"""
+    status = "## 模块现状\n\n必须保持：\n- 占位\n"
+    _write_specs(root, program, status)
+    assert main(["spec", "closed", "--root", str(root), "--module", "gameplay.Jigsaw"]) == 0
+    out = capsys.readouterr().out
+    assert "一致  入参字段闭集  limit: int" not in out
+    assert "无法判断  入参字段闭集  limit: int  入口函数没有这个参数" in out
+
+    program = """## 程序设计
+
+入口：
+- src/mod.py
+
+入参字段闭集：
+- limit: int
+"""
+    (root / ".memory" / "specs" / "gameplay.Jigsaw" / "程序设计.md").write_text(program, encoding="utf-8")
+    assert main(["spec", "closed", "--root", str(root), "--module", "gameplay.Jigsaw"]) == 0
+    out = capsys.readouterr().out
+    assert "一致  入参字段闭集  limit: int" not in out
+    assert "无法判断  入参字段闭集  limit: int  没有带符号的入口，同名参数不算入口契约" in out
+
+    program = """## 程序设计
+
+入口：
+- src/mod.py#Box.grant
+
+入参字段闭集：
+- limit: int
+"""
+    (root / ".memory" / "specs" / "gameplay.Jigsaw" / "程序设计.md").write_text(program, encoding="utf-8")
+    assert main(["spec", "closed", "--root", str(root), "--module", "gameplay.Jigsaw"]) == 0
+    out = capsys.readouterr().out
+    assert "一致  入参字段闭集  limit: int" in out
+
+
 def test_closed_unsigned_missing_name_is_possible_mismatch(tmp_path, monkeypatch, capsys):
     root = _root(tmp_path, monkeypatch)
     program = """## 程序设计

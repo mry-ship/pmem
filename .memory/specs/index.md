@@ -17,6 +17,6 @@
 | [feature.Storage](feature.Storage/index.md) | 已有规格 | 策划 | 2026-10-23 |
 | [feature.Tools](feature.Tools/index.md) | 已有规格 | 策划 | 2026-10-23 |
 | [feature.Wiki](feature.Wiki/index.md) | 已有规格 | 策划 | 2026-10-23 |
-| [infra.Common](infra.Common/index.md) | 已有规格 | 策划 | 2026-10-23 |
+| [infra.Common](infra.Common/index.md) | 已有规格 | 策划 | 2026-11-23 |
 | [infra.Model](infra.Model/index.md) | 已有规格 | 策划 | 2026-11-21 |
 | [infra.Watchdog](infra.Watchdog/index.md) | 已有规格 | 策划 | 2026-10-23 |

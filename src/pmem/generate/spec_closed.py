@@ -5,7 +5,9 @@
 """
 from __future__ import annotations
 
+import ast
 import re
+import textwrap
 from pathlib import Path
 
 from wcmatch import glob as wglob
@@ -17,6 +19,15 @@ from pmem.index.anchors import symbol_block
 _GLOB = wglob.GLOBSTAR | wglob.BRACE | wglob.FORCEUNIX | wglob.IGNORECASE
 
 _HEADINGS = ("入口", "入参字段闭集", "出参字段闭集", "原文（须按字面抄）", "必须保持")
+# 骨架栏目。不在这张表里、又不是 Markdown 标题的句子，即使以冒号结尾也仍是正文。
+# 与 guard 的同名常量保持一致。
+_SECTION_TITLES = (
+    "入口", "入参字段闭集", "出参字段闭集", "原文（须按字面抄）", "必须保持",
+    "会话字段闭集", "数据形状与闭集词表", "所有权", "决定表", "失败条件",
+    "配置与环境变量", "关键流程", "生成物", "一轮例子", "单独拿走时还要带走的依赖规格",
+)
+# 与 guard._line_heading 同一规则：已知标题切换，骨架栏目或 Markdown 标题结束当前节。
+_ATX = re.compile(r"^#{1,6}\s+(\S.*?)\s*$")
 _FIELD = re.compile(r"^\s*(?:[-*]\s+)?([A-Za-z_][\w.]*)\s*(?::\s*(\S.*?))?\s*$")
 _ANCHOR = re.compile(r"((?:[\w.-]+/)+[\w.-]+\.\w+)(?:#([\w.:-]+))?")
 _PLACEHOLDER = re.compile(r"<[^>\n]*>")
@@ -66,6 +77,32 @@ def format_closed(report: dict) -> str:
     return "\n".join(lines)
 
 
+def _split_title(body: str) -> tuple[str, str]:
+    for mark in ("：", ":"):
+        if mark in body:
+            title, rest = body.split(mark, 1)
+            return title.strip(), rest.strip()
+    return body.strip(), ""
+
+
+def _line_heading(line: str, names: tuple[str, ...]) -> tuple[str, str] | None:
+    """已知标题返回 (名称, 同一行剩余)。未知栏目返回 ("", "")。普通正文返回 None。
+
+    未知栏目只包括 Markdown 标题，以及骨架里的其他栏目。
+    原文里单独成行、以冒号结尾的句子不是栏目，仍留在当前节。
+    """
+    stripped = line.strip()
+    if not stripped or stripped.startswith("<!--"):
+        return None
+    atx = _ATX.match(stripped)
+    title, rest = _split_title(atx.group(1).strip() if atx else stripped)
+    if title in names:
+        return title, rest
+    if atx or title in _SECTION_TITLES:
+        return "", ""
+    return None
+
+
 def _sections(text: str) -> dict[str, str]:
     if text.startswith("---"):
         end = text.find("\n---", 3)
@@ -74,9 +111,12 @@ def _sections(text: str) -> dict[str, str]:
     current: str | None = None
     buckets: dict[str, list[str]] = {name: [] for name in _HEADINGS}
     for line in text.splitlines():
-        name = line.strip().rstrip("：:")
-        if name in buckets and line.strip().endswith(("：", ":")):
-            current = name
+        found = _line_heading(line, _HEADINGS)
+        if found is not None:
+            name, rest = found
+            current = name or None
+            if current and rest:
+                buckets[current].append(rest)
             continue
         if current:
             buckets[current].append(line)
@@ -97,8 +137,9 @@ def _check_module(root: Path, sections: dict[str, str], files: list[tuple[Path, 
     if not sections:
         return [{"status": "无法判断", "section": "规格", "detail": "没有程序设计或模块现状"}]
     items: list[dict] = []
+    entries = _entry_symbols(sections.get("入口", ""))
     for name in ("入参字段闭集", "出参字段闭集"):
-        items.extend(_fields(name, sections.get(name, ""), files))
+        items.extend(_fields(name, sections.get(name, ""), files, root, entries))
     items.extend(_sentences(sections.get("原文（须按字面抄）", ""), files))
     items.extend(_anchors(root, "入口", sections.get("入口", "")))
     for line in _content_lines(sections.get("必须保持", "")):
@@ -112,7 +153,8 @@ def _check_module(root: Path, sections: dict[str, str], files: list[tuple[Path, 
     return [item for item in items if item["status"] in _STATUSES]
 
 
-def _fields(section: str, body: str, files: list[tuple[Path, str]]) -> list[dict]:
+def _fields(section: str, body: str, files: list[tuple[Path, str]], root: Path,
+            entries: list[tuple[str, str]]) -> list[dict]:
     lines = _content_lines(body)
     if not lines:
         return [{"status": "无法判断", "section": section, "detail": "没有可核对的字段清单"}]
@@ -122,24 +164,28 @@ def _fields(section: str, body: str, files: list[tuple[Path, str]]) -> list[dict
         if match is None:
             return [{"status": "无法判断", "section": section, "detail": "不是一行一个字段名的清单"}]
         parsed.append((match.group(1), (match.group(2) or "").strip()))
-    return [_one_field(section, name, signature, files) for name, signature in parsed]
+    return [_one_field(section, name, signature, files, root, entries) for name, signature in parsed]
 
 
-def _one_field(section: str, name: str, signature: str, files: list[tuple[Path, str]]) -> dict:
+def _one_field(section: str, name: str, signature: str, files: list[tuple[Path, str]], root: Path,
+               entries: list[tuple[str, str]]) -> dict:
     row = {"section": section, "text": name if not signature else f"{name}: {signature}"}
     if not files:
         row.update(status="无法判断", detail="模块没有可读取的代码文件")
         return row
     word = re.compile(rf"\b{re.escape(name)}\b")
     found = any(word.search(text) for _, text in files)
-    annotations = [ann for path, text in files if path.suffix == ".py"
-                   for ann in _param_annotations(text, name)]
     if signature:
+        annotations, saw_function = _entry_annotations(root, files, entries, name)
         if not annotations:
-            if found:
-                row.update(status="无法判断", detail="代码里见过这个名字，但解析不出参数签名")
-            else:
+            if not found:
                 row.update(status="可能不一致", detail="代码里找不到该字段名")
+            elif not entries:
+                row.update(status="无法判断", detail="没有带符号的入口，同名参数不算入口契约")
+            elif not saw_function:
+                row.update(status="无法判断", detail="入口符号对不上函数，同名参数不算入口契约")
+            else:
+                row.update(status="无法判断", detail="入口函数没有这个参数")
             return row
         norms = {_norm(ann) for ann in annotations}
         spec = _norm(signature)
@@ -160,26 +206,69 @@ def _one_field(section: str, name: str, signature: str, files: list[tuple[Path, 
     return row
 
 
-def _param_annotations(text: str, name: str) -> list[str]:
-    import ast
-
-    try:
-        tree = ast.parse(text)
-    except (SyntaxError, ValueError, RecursionError, MemoryError):
-        return []
-    found: list[str] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        args = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
-        for extra in (node.args.vararg, node.args.kwarg):
-            if extra is not None:
-                args.append(extra)
-        for arg in args:
-            if arg.arg != name:
-                continue
-            found.append(ast.unparse(arg.annotation) if arg.annotation is not None else "")
+def _entry_symbols(body: str) -> list[tuple[str, str]]:
+    found = []
+    for line in _content_lines(body):
+        for match in _ANCHOR.finditer(line):
+            symbol = match.group(2) or ""
+            if symbol:
+                found.append((match.group(1), symbol))
     return found
+
+
+def _text_of(root: Path, files: list[tuple[Path, str]], rel: str) -> str | None:
+    path = _inside(root, rel)
+    if path is None:
+        return None
+    for got, text in files:
+        if got.resolve() == path.resolve():
+            return text
+    if not path.is_file() or path.is_symlink():
+        return None
+    try:
+        return path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return None
+
+
+def _entry_annotations(root: Path, files: list[tuple[Path, str]], entries: list[tuple[str, str]],
+                       name: str) -> tuple[list[str], bool]:
+    """只取入口符号自己的参数注解。返回 (注解列表, 是否至少对上一个函数)。"""
+    annotations: list[str] = []
+    saw_function = False
+    for rel, symbol in entries:
+        text = _text_of(root, files, rel)
+        if text is None:
+            continue
+        got = _annotation_on_symbol(text, symbol, name)
+        if got is False:
+            continue
+        saw_function = True
+        if got is not None:
+            annotations.append(got)
+    return annotations, saw_function
+
+
+def _annotation_on_symbol(text: str, symbol: str, name: str) -> str | None | bool:
+    """False：符号不是能解析的函数。None：函数在，没有这个参数。str：注解，没写注解时是空串。"""
+    block = symbol_block(text, symbol)
+    if not block:
+        return False
+    try:
+        tree = ast.parse(textwrap.dedent(block))
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return False
+    fn = next((node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))), None)
+    if fn is None:
+        return False
+    args = [*fn.args.posonlyargs, *fn.args.args, *fn.args.kwonlyargs]
+    for extra in (fn.args.vararg, fn.args.kwarg):
+        if extra is not None:
+            args.append(extra)
+    for arg in args:
+        if arg.arg == name:
+            return ast.unparse(arg.annotation) if arg.annotation is not None else ""
+    return None
 
 
 def _verbatim_body(line: str) -> str:

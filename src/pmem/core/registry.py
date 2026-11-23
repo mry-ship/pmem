@@ -227,6 +227,7 @@ _MODULE_KEYS = frozenset({
     "paths", "aliases", "entities", "components", "variants", "parent", "related", "status", "description",
 })
 _MODULES_TOP = {
+    "schema_version": None,  # 目录格式版本，与模板一致；解析时忽略数值
     "categories": None,  # 大类说明自由
     "modules": None,  # 模块体单独查 _MODULE_KEYS
     "candidates": None,

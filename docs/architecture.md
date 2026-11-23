@@ -2,6 +2,8 @@
 
 本文是 v0.1 实现之后提炼出的最小架构。完整的设计过程见 `docs/superpowers/specs/`。
 
+**当前安装包 0.7.4（相对 0.7.3 的增量）**：`pmem spec closed` 仍只读，原文先剥一行说明前缀，字面量只在同一文件内按顺序、相邻不超过 4000 字才算一致，无签名字段名只出现过不算一致；规格闸门摘录改为契约各节全文，已读扫描整份对话记录，拒绝文案写明摘录后再改可放行；`modules.yaml` 顶层 `schema_version` 不再报不认识。0.7.3 的工程质量技能、规格默认先读、`reading_hint` 与二次放行仍然成立。效果数字与路线表以 README / 手册为准。
+
 ## 设计原则
 
 1. **记忆就是仓库里的文件。** `.memory/entries/<模块>/<ULID>.md` 随代码提交、评审、回滚；没有服务器和数据库，检索索引只是本机缓存，删掉可以重建。
@@ -15,7 +17,7 @@
 ```mermaid
 flowchart LR
     subgraph Agent[Cursor / Claude Code / Codex]
-        R[规则 pmem.mdc 等]
+        R[规则 pmem.mdc<br/>pmem-quality 等]
         M[MCP 工具<br/>search_memory<br/>record_memory<br/>confirm_memory<br/>memory_graph<br/>list_modules]
         H[Hooks<br/>读码附摘要<br/>改前拦截<br/>结束审查与提醒]
     end

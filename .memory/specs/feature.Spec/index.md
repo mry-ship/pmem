@@ -5,7 +5,7 @@ module: feature.Spec
 <!-- spec:facts:start -->
 - 上级：无
 - 下级：无
-- 代码路径：`src/pmem/generate/spec.py`、`src/pmem/cli/spec_cmd.py`、`tests/test_spec.py`
+- 代码路径：`src/pmem/generate/spec.py`、`src/pmem/generate/spec_closed.py`、`src/pmem/cli/spec_cmd.py`、`tests/test_spec.py`、`tests/test_spec_closed.py`
 <!-- spec:facts:end -->
 
 - [策划设计](策划设计.md)

@@ -8,7 +8,7 @@ import re
 
 from pmem.core.entry import PITFALL_KINDS
 from pmem.hooks.memories import DIGEST_MATERIAL
-from pmem.hooks.payload import _transcript_tail, tool_paths
+from pmem.hooks.payload import tool_paths, transcript_records
 from pmem.hooks.shell import WILDCARD_PATH
 from pmem.hooks.types import GateAttrs
 from pmem.index.graph import current_entries, file_features
@@ -19,7 +19,8 @@ _SPEC_BODY = ("策划设计.md", "美术设计.md", "程序设计.md", "模块�
 _SPEC_REQUIRED = ("程序设计.md", "模块现状.md")
 # 整行才算还没写完；正文里用反引号提到这个字面量不算空骨架
 _SPEC_EMPTY_LINE = re.compile(r"(?m)^[ \t]*<!-- spec:empty -->[ \t]*\r?$")
-_SPEC_EXCERPT = 800
+# 摘录只带这些契约节。前面的所有权和入口不代替闭集、原文和失败条件。
+_CONTRACT_HEADINGS = ("会话字段闭集", "入参字段闭集", "出参字段闭集", "原文（须按字面抄）", "失败条件", "必须保持")
 
 
 def read_failed(payload: dict | None) -> bool:
@@ -59,6 +60,37 @@ def _result_failed(block: dict) -> bool:
         return True
     error = block.get("error")
     return isinstance(error, str) and bool(error.strip())
+
+
+def _heading_rest(line: str) -> tuple[str, str] | None:
+    """标题可以独占一行，也可以和第一句写在同一行。"""
+    stripped = line.strip()
+    for name in _CONTRACT_HEADINGS:
+        for mark in (name + "：", name + ":"):
+            if stripped == mark or stripped.startswith(mark):
+                return name, stripped[len(mark):].strip()
+    return None
+
+
+def _contract_text(text: str) -> str:
+    """摘录契约各节的全文。没有这些标题时附上整份正文，避免只看到开头。"""
+    current: str | None = None
+    buckets: dict[str, list[str]] = {name: [] for name in _CONTRACT_HEADINGS}
+    for line in text.splitlines():
+        found = _heading_rest(line)
+        if found is not None:
+            current, rest = found
+            if rest:
+                buckets[current].append(rest)
+            continue
+        if current:
+            buckets[current].append(line)
+    parts = []
+    for name in _CONTRACT_HEADINGS:
+        body = "\n".join(buckets[name]).strip()
+        if body:
+            parts.append(f"{name}：\n{body}")
+    return "\n\n".join(parts) if parts else text.strip()
 
 
 def _successful_read_args(records: list) -> list[dict]:
@@ -261,13 +293,11 @@ class Guard(GateAttrs):
             return
         payload = getattr(self, "payload", None) or {}
         path = payload.get("transcript_path") if isinstance(payload, dict) else None
-        for args in _successful_read_args(_transcript_tail(path) or []):
+        for args in _successful_read_args(transcript_records(path) or []):
             self._note_spec_reads(args, tool="read")
 
     def _spec_excerpt(self, rel: str) -> str:
-        text = (self._spec_text(rel) or "").strip()
-        if len(text) > _SPEC_EXCERPT:
-            text = text[:_SPEC_EXCERPT] + "…"
+        text = _contract_text(self._spec_text(rel) or "")
         return f"{rel}：\n{text}" if text else rel
 
     def _guard_spec(self, rel: str, module: str) -> dict | None:
@@ -293,8 +323,9 @@ class Guard(GateAttrs):
                 return None
         files = "、".join(pending)
         excerpt = "\n".join(self._spec_excerpt(path) for path in pending)
-        message = (f"pmem：修改 {rel}（{module}）之前，请先阅读相关规格：{files}。读完再重试本次修改。\n"
-                   f"{excerpt}")
+        message = (
+            f"pmem：修改 {rel}（{module}）之前，请先阅读相关规格：{files}。请阅读后重试；若环境看不到 Read，摘录给过后再改会放行。\n{excerpt}"
+        )
         for path in pending:
             self.state.add("spec_offered", path)
         self.save()

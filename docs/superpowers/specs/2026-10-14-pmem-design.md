@@ -663,8 +663,11 @@ score   = (rel + bonus) * (0.7 + 0.3 * recency)
 | v0.4+ | 治理闭环与团队化：自动新建模块的转正提示、召回审计建议（已实现）；团队汇总（导出文件进仓库，不搭服务）、`RemoteStorage` 中心服务、身份与权限、审计、看板（长期搁置）。以后评估：模块依赖/调用关系，详见 14.5 |
 | v0.5 | 父子模块与回复格式：模块名用点号续写最多 4 段，父子关系由名字表达；查子模块带上级教训、查父模块附各下级最新记忆标题；手工 `related`；改名级联、sync 提议拆子模块、health“父子模块结构”；回复用【pmem检索】【pmem查询】【pmem修改】行，结尾声明过的模块不再追加提醒；正文上限 5000 字；安装包版本号从此与路线对齐（0.5.0）。设计见 `2026-10-21-pmem-module-hierarchy-design.md` |
 | v0.5.1 | 新模块自动登记：Hook 在改到没登记的代码目录时立即、会话开始时按 `sync.interval_minutes` 拉起后台 `pmem sync --auto`；目录指纹没变就跳过，平时不读提交历史，每 `sync.full_hours` 做一次完整扫描；`sync.auto` 默认 `apply` 只追加，正文有注释时退回提醒；结果写明新增数量，`pmem sync --history` 看最近 20 次；路径匹配缓存编译结果（大项目规划 4.8 → 2.1 秒） |
-| v0.6 | 已完成（安装包 0.6.0），模块规格：与 Wiki 平级，每个已登记模块一份可提交的当前文档（策划设计、美术设计、程序设计、模块现状）。无画面的美术节写「本模块无画面」；有画面的写下风格、布局、状态、动效和资源规格。单拿一份就能在别处重做该模块。旧模块先按代码写首稿，策划和美术只记录代码或资源里看得到的部分；之后在改动的那一轮更新一次，不整篇覆盖、不定时重扫、不做记忆过期核对。规格提醒默认不提示。设计见 `2026-10-23-pmem-module-spec-design.md` |
+| v0.6 | 已完成（安装包 0.6.0），模块规格：与 Wiki 平级，每个已登记模块一份可提交的当前文档（策划设计、美术设计、程序设计、模块现状）。无画面的美术节写「本模块无画面」；有画面的写下风格、布局、状态、动效和资源规格。单拿一份就能在别处重做该模块。旧模块先按代码写首稿，策划和美术只记录代码或资源里看得到的部分；之后在改动的那一轮更新一次，不整篇覆盖、不定时重扫、不做记忆过期核对。规格提醒后来在 0.7.3 改为默认开启（见下）。设计见 `2026-10-23-pmem-module-spec-design.md` |
 | v0.7 | 已完成（2026-11-20 发 0.7.0）：类型安全与规则化——`enforced_by`、health 规则候选、`facets`/`when`、边界校验、返回契约、pyright 基线。设计见 `2026-10-21-pmem-typesafe-design.md`，Issue #15 |
+| v0.7.2 | 已完成：`source.kind`（只标证据来源、不参与排序）、`valid_from`（YYYY-MM-DD，只影响 as_of）、`pmem spec closed` 只读核对闭集 |
+| v0.7.3 | 已完成：工程质量技能 `pmem-minimal` / `pmem-review` 与 `pmem-quality` 规则独立于记忆规则；`spec.reminder` 与 `spec.read_before_edit` 默认开启；`reading_hint` 不改变排序；记忆闸门优先于规格闸门 |
+| v0.7.4 | 已完成（当前版本）：`spec closed` 原文按同一文件顺序核对并剥说明前缀；规格摘录给契约全文，已读看整份对话；拒绝文案写明摘录后再改可放行；`modules.yaml` 认 `schema_version` |
 
 ### 14.1 v0.1 验收标准
 
@@ -769,7 +772,7 @@ v0.2 末本仓库的实测基线（2026-10-19）：
 
 ### 14.7 v0.7 任务：类型安全与规则化
 
-状态：已完成（2026-11-20 发 0.7.0，GitHub Issue #15 已关闭）。设计见 `2026-10-21-pmem-typesafe-design.md`。交付：`enforced_by`、health 规则候选、`facets`/`when`、边界校验（schema/doctor）、返回契约 TypedDict + 形状测试、core/index/service/catalog 的 pyright 基线；效果表与 Wiki/Pages「当前版本」同步为 0.7.0。
+状态：已完成（2026-11-20 发 0.7.0，GitHub Issue #15 已关闭）。设计见 `2026-10-21-pmem-typesafe-design.md`。交付：`enforced_by`、health 规则候选、`facets`/`when`、边界校验（schema/doctor）、返回契约 TypedDict + 形状测试、core/index/service/catalog 的 pyright 基线；效果表与 Wiki/Pages「当前版本」当时同步为 0.7.0。之后补丁：0.7.2 来源与生效日、`spec closed`；0.7.3 工程质量技能、规格默认先读与阅读顺序；0.7.4 规格闭集按同一文件核对、规格摘录与整份对话已读（当前安装包见 README）。
 
 ---
 

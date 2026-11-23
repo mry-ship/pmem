@@ -5,7 +5,7 @@ module: infra.Model
 <!-- spec:facts:start -->
 - 上级：无
 - 下级：无
-- 代码路径：`src/pmem/core/entry.py`、`src/pmem/core/ids.py`、`src/pmem/core/config.py`、`src/pmem/core/textfmt.py`、`tests/core/test_entry.py`、`tests/core/test_ids.py`、`tests/core/test_config.py`、`tests/core/test_textfmt.py`
+- 代码路径：`src/pmem/core/entry.py`、`src/pmem/core/ids.py`、`src/pmem/core/config.py`、`src/pmem/core/textfmt.py`、`src/pmem/core/schema.py`、`tests/core/test_entry.py`、`tests/core/test_ids.py`、`tests/core/test_config.py`、`tests/core/test_textfmt.py`、`tests/core/test_schema.py`
 <!-- spec:facts:end -->
 
 - [策划设计](策划设计.md)

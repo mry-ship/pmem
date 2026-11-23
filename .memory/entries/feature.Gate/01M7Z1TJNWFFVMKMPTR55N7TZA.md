@@ -3,7 +3,7 @@ id: 01M7Z1TJNWFFVMKMPTR55N7TZA
 module: feature.Gate
 entity: SpecRead
 kind: exclusion
-status: active
+status: archived
 supersedes: []
 anchors:
 - src/pmem/hooks/guard.py#_note_spec_reads
@@ -15,6 +15,10 @@ summary: 排除：把 Grep 搜索词、改规格文件或打开 harness 当成�
 verify: uv run pytest tests/hooks/test_gate.py -q -k 'grep_pattern or writing_the_spec
   or pre_tool_edit'
 applies: 判断本对话是否已经读过模块规格时
+archived:
+  'on': '2026-11-23'
+  from: active
+  by: 1002378395@qq.com
 source:
   conversation: 5500e8d7-007c-460c-b7d7-15a5bb04aee9
 ---

@@ -1792,6 +1792,47 @@ def test_skip_marker_also_skips_the_spec_gate(make_project):
     assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
 
 
+def test_spec_excerpt_keeps_the_contract_not_the_preamble(make_project):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", (
+        "所有权：不要只看开头。\n\n"
+        "入参字段闭集：\n"
+        "- limit\n\n"
+        "失败条件：\n"
+        "没读就拦。\n"
+    ))
+    denied = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
+    message = denied["agent_message"]
+    assert denied["permission"] == "deny"
+    assert "limit" in message and "没读就拦。" in message
+    assert "不要只看开头" not in message
+    _write_spec(root, "gameplay.Jigsaw", "模块现状.md", (
+        "入口说明不算契约。\n"
+        "必须保持：第一句仍在。\n"
+        "第二句也在。\n"
+    ))
+    again = handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)
+    assert "第一句仍在。" in again["agent_message"] and "第二句也在。" in again["agent_message"]
+    assert "入口说明不算契约" not in again["agent_message"]
+
+
+def test_early_transcript_read_still_counts(make_project, tmp_path):
+    root = make_project("block", with_memory=False)
+    _write_spec(root, "gameplay.Jigsaw", "程序设计.md", "入口不变。\n")
+    spec = root / ".memory" / "specs" / "gameplay.Jigsaw" / "程序设计.md"
+    transcript = tmp_path / "t.jsonl"
+    padding = {"role": "assistant", "message": {"content": [{"type": "text", "text": "x" * 4000}]}}
+    rows = _read_exchange(spec, "read-1", {
+        "type": "tool_result", "tool_use_id": "read-1", "content": "入口不变。",
+    })
+    rows.extend(padding for _ in range(160))
+    _write_transcript(transcript, rows)
+    assert transcript.stat().st_size > 512 * 1024
+    payload = write_payload(root, "src/Jigsaw/Board.cs")
+    payload["transcript_path"] = str(transcript)
+    assert handle("pre-tool", payload, root)["permission"] == "allow"
+
+
 def test_second_write_allows_every_offered_spec_when_nothing_was_read(make_project):
     root = make_project("block", with_memory=False)
     _write_spec(root, "gameplay.Jigsaw", "程序设计.md", "入口不变。\n")

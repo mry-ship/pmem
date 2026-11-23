@@ -10,7 +10,7 @@
 让 AI 编程助手记住项目里踩过的坑、排除过的方向和做过的决定，<br>
 并在下次改代码前自动想起来。
 
-![Version](https://img.shields.io/badge/version-0.7.3-blue)
+![Version](https://img.shields.io/badge/version-0.7.4-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0-green)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![Cursor](https://img.shields.io/badge/Cursor-支持-000000)
@@ -37,7 +37,7 @@ pmem 把这些结论按**业务模块**沉淀成仓库里的 Markdown 文件。A
 | 👥 **团队共享** | 记忆随代码提交，队友拉代码就有；不需要服务器，不上传任何数据 |
 | 📉 **越用越收敛** | 记忆越积累，AI 越少犯同样的错、越少从头排查、越省 token，维护期越明显 |
 
-**关键数字**（口径见[效果](#效果)）：单次检索中位约 **7 毫秒**；真实问题的正确结论排进前 3 **90%**；一次修 bug 额外约 **3000～5000 token**；写进去的记忆被悄悄删掉 **0 条**。本仓库近 30 天（0.7.3 口径）：检索命中 **98%**、记忆被采用 **16%**、改前真查 **55%**。真实业务项目 TileMatch 近 14 天：检索命中 **99%**、改前真查 **98%**、跨人复用 **108** 次。
+**关键数字**（口径见[效果](#效果)）：单次检索中位约 **7 毫秒**；真实问题的正确结论排进前 3 **90%**；一次修 bug 额外约 **3000～5000 token**；写进去的记忆被悄悄删掉 **0 条**。本仓库近 30 天（0.7.4 口径）：检索命中 **98%**、记忆被采用 **16%**、改前真查 **55%**。真实业务项目 TileMatch 近 14 天：检索命中 **99%**、改前真查 **98%**、跨人复用 **108** 次。
 
 ## 工作原理
 
@@ -193,9 +193,9 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 
 固定开销、速度和检索命中是本仓库实测。少被纠正、少花时间、少用 token，测的是上一代记忆系统；pmem 自己的端到端对比还没做，那组数字只能当保守参考。
 
-### 当前版本 0.7.3
+### 当前版本 0.7.4
 
-本版可直接看到的效果与口径（本仓库 `pmem report --days 30`，2026-11-21）。0.7.3 不改检索排序和采用判定，下表沿用这份报告：
+本版可直接看到的效果与口径（本仓库 `pmem report --days 30`，2026-11-21）。0.7.4 不改检索排序和采用判定，下表沿用这份报告：
 
 | 指标 | 当前数字 | 本版相关说明 |
 |---|---|---|
@@ -209,6 +209,7 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 | v0.7 能力 | 已发布 | `enforced_by`（规则需核实双态）、health 规则候选、`facets`/`when`、doctor when 对照、返回契约、pyright；0.7.1 补 Watchdog WinError 6 重试 |
 | v0.7.2 能力 | 已发布 | `source.kind` 只标证据来源，不写入核对、不参与排序；`valid_from` 只影响 `as_of`，现行检索不隐藏未来生效的记忆，替代要到生效日才算；`pmem spec closed` 只读核对字段闭集、原文整句和入口锚点 |
 | v0.7.3 能力 | 已发布 | 工程质量规则与 `pmem-minimal` / `pmem-review` 独立于记忆规则，不改检索排序；`spec.reminder` 与 `spec.read_before_edit` 默认开启，已写完的程序设计和模块现状没读过就先拦住，空骨架不要求，记忆闸门优先于规格闸门；`reading_hint` 只在过期、有前提或多条时给一次 |
+| v0.7.4 能力 | 已发布 | `pmem spec closed` 仍只读，输出仍是一致 / 可能不一致 / 无法判断；原文先剥一行说明前缀，字面量只在同一文件内按顺序、相邻不超过 4000 字才算一致；无签名字段名只出现过不算一致。规格闸门摘录改为契约各节全文，已读扫描整份对话记录；拒绝文案写明摘录后再改可放行。`modules.yaml` 顶层 `schema_version` 不再报不认识 |
 
 对照实验仍见下方「v0.5 和 v0.3 对比」；端到端「少被纠正 / 少耗时 / 少 token」还没在现行 pmem 上测完，请用 `pmem bench` 或继续看 `pmem report`。
 
@@ -271,7 +272,7 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 | 结束提醒后真去写 | — | **65%**（43 次里 28 次） | **47%**（19 次里 9 次） | 同上 |
 | 跨人复用 | — | **14** 次 | **108** 次 | 同上。用到同事写的记忆 |
 
-「数字」列里带下降比例的仍是上一代口径；后两列是现行 pmem 的本机使用。本仓库列为 **0.7.3** 口径下 2026-11-21 近 30 天报告；TileMatch 为真实业务项目（2026-10-27 报告，窗口 14 天，现行记忆 639 条 / 80 个模块）。样本：一个游戏项目里改过代码的对话，没有记忆时 122 个，用上一代系统后 62 个。也可用 `pmem bench` 做对照实验。
+「数字」列里带下降比例的仍是上一代口径；后两列是现行 pmem 的本机使用。本仓库列为 **0.7.4** 口径下 2026-11-21 近 30 天报告；TileMatch 为真实业务项目（2026-10-27 报告，窗口 14 天，现行记忆 639 条 / 80 个模块）。样本：一个游戏项目里改过代码的对话，没有记忆时 122 个，用上一代系统后 62 个。也可用 `pmem bench` 做对照实验。
 
 ### 检索有多准
 
@@ -357,7 +358,7 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 | [v0.4](https://github.com/mry-ship/pmem/issues/14) | 治理闭环与团队化 | 已关闭：转正提示和召回审计已实现，团队汇总与中心服务长期搁置 |
 | v0.5（[设计稿](docs/superpowers/specs/2026-10-21-pmem-module-hierarchy-design.md)） | 父子模块与回复格式 | 已完成 |
 | v0.5.1 | 新模块自动登记 | 已完成 |
-| [v0.6](https://github.com/mry-ship/pmem/issues/16)（[设计稿](docs/superpowers/specs/2026-10-23-pmem-module-spec-design.md)） | 模块规格：每个模块一份可拿走重做的当前文档；`pmem spec complete` 写到九成八。规格提醒默认不提示 | 已完成 |
+| [v0.6](https://github.com/mry-ship/pmem/issues/16)（[设计稿](docs/superpowers/specs/2026-10-23-pmem-module-spec-design.md)） | 模块规格：每个模块一份可拿走重做的当前文档；`pmem spec complete` 写到九成八。规格提醒后来在 0.7.3 改为默认开启 | 已完成 |
 | v0.6.1 | 检索采用与防错记忆：无关键词速览防错优先、同一对话再查先给未见全文、写过的模块不再催、compact 保留 exclusion/risk/correction。到期后台巡检记忆医生，有问题才提一行 | 已完成 |
 | v0.6.2 | 默认 Hooks=full（不靠 quiet 削闸门）；Hook/VCS 用 CREATE_NO_WINDOW 防弹窗；Windows+Cursor 清空 Claude Hooks；init 可自动启用 MCP；模块路径挂靠与双周 health 文档 | 已完成 |
 | v0.6.3 | 过期核对读锚点前校验路径仍在项目内，`../` 越界按“已不存在”处理；修 Cursor 运行时 `init` 自动批准 MCP 被其内存副本覆盖（改为提示退出后重跑或手动开 + Reload） | 已完成 |
@@ -367,7 +368,8 @@ pmem format --apply                    # 把旧记忆里一整行的长正文断
 | v0.6.7 | 采用判定：够长 summary/title 与正文取较大字面覆盖率（阈值仍 0.15）；cites 缓存按版本与材料摘要重算；Bench 议题收口；Claude Code / Codex 标注为真实会话可用 | 已完成 |
 | [v0.7](https://github.com/mry-ship/pmem/issues/15)（[设计稿](docs/superpowers/specs/2026-10-21-pmem-typesafe-design.md)） | 类型安全与规则化：`enforced_by`（规则需核实双态）、health 规则候选、`facets`/`when`、doctor when 对照、返回契约、pyright；0.7.1 补 Watchdog WinError 6 重试 | 已完成 |
 | v0.7.2 | 来源与生效日：`source.kind`（不参与排序、不等于已核对）、`valid_from`（只影响 `as_of`；未来生效日不提前替代）；`pmem spec closed` 只读核对闭集，只出一致 / 可能不一致 / 无法判断 | 已完成 |
-| v0.7.3 | 工程质量：`pmem-minimal` 与 `pmem-review` 独立于记忆规则（审查四态：未触及、符合、违反、待核实），不改检索排序和 bench 开关；规格提醒与改前读规格默认开启；`reading_hint` 只在过期、有前提或多条时给一次 | 已完成（当前版本 0.7.3） |
+| v0.7.3 | 工程质量：`pmem-minimal` 与 `pmem-review` 独立于记忆规则（审查四态：未触及、符合、违反、待核实），不改检索排序和 bench 开关；规格提醒与改前读规格默认开启；`reading_hint` 只在过期、有前提或多条时给一次 | 已完成 |
+| v0.7.4 | `spec closed` 原文按同一文件顺序核对并剥说明前缀；规格摘录给契约全文，已读看整份对话；拒绝文案写明摘录后再改可放行；`modules.yaml` 认 `schema_version` | 已完成（当前版本 0.7.4） |
 
 ## 许可证
 

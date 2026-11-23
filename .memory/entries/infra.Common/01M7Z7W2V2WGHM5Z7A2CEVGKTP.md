@@ -15,6 +15,8 @@ note_date: '2026-11-21'
 summary: 首页、手册和 Wiki 已同步到 0.7.3
 verify: README 与手册含「当前版本 0.7.3」
 applies: 改 README/手册效果表、Wiki 或发版同步效果数字时
+verified: '2026-11-23'
+verified_at: '2026-11-23T15:17:59.340+08:00'
 source:
   conversation: dfe5efd8-5694-4dd1-a697-c16f1ce9cd6a
 ---

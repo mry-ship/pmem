@@ -67,3 +67,7 @@ def test_module_entity_and_component_resolve_case_insensitively(registry):
 
 def test_unknown_entity_is_kept_as_given(registry):
     assert registry.resolve_entity("gameplay.Jigsaw", " Exp89 ") == "Exp89"
+
+
+def test_schema_version_top_key_is_known(registry):
+    assert not any("schema_version" in w for w in registry.warnings)

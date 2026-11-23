@@ -20,6 +20,10 @@ _HEADINGS = ("入口", "入参字段闭集", "出参字段闭集", "原文（须
 _FIELD = re.compile(r"^\s*(?:[-*]\s+)?([A-Za-z_][\w.]*)\s*(?::\s*(\S.*?))?\s*$")
 _ANCHOR = re.compile(r"((?:[\w.-]+/)+[\w.-]+\.\w+)(?:#([\w.:-]+))?")
 _PLACEHOLDER = re.compile(r"<[^>\n]*>")
+# 说明前缀（规格闸门拦截全文：）不是代码里的字面量。只剥一行开头的一截。
+_LABEL = re.compile(r"^([^<：:\n]{1,32})[：:]\s*(\S.*)$")
+_MIN_LITERAL = 2
+_MAX_GAP = 4000
 _STATUSES = ("一致", "可能不一致", "无法判断")
 
 
@@ -52,9 +56,6 @@ def format_closed(report: dict) -> str:
     for module in report.get("modules") or []:
         lines.append(module["module"])
         items = module["items"]
-        if not items:
-            lines.append("  无法判断  没有程序设计或模块现状")
-            continue
         for item in items:
             bits = [item["status"], item["section"]]
             if item.get("text"):
@@ -93,6 +94,8 @@ def _content_lines(body: str) -> list[str]:
 
 
 def _check_module(root: Path, sections: dict[str, str], files: list[tuple[Path, str]]) -> list[dict]:
+    if not sections:
+        return [{"status": "无法判断", "section": "规格", "detail": "没有程序设计或模块现状"}]
     items: list[dict] = []
     for name in ("入参字段闭集", "出参字段闭集"):
         items.extend(_fields(name, sections.get(name, ""), files))
@@ -106,8 +109,6 @@ def _check_module(root: Path, sections: dict[str, str], files: list[tuple[Path, 
             "detail": "原句仍在现状节；行为是否仍成立不判断",
         })
         items.extend(_anchors(root, "必须保持", line))
-    if not sections:
-        items.append({"status": "无法判断", "section": "规格", "detail": "没有程序设计或模块现状"})
     return [item for item in items if item["status"] in _STATUSES]
 
 
@@ -152,7 +153,8 @@ def _one_field(section: str, name: str, signature: str, files: list[tuple[Path, 
             row.update(status="可能不一致", detail="名字在，签名对不上")
         return row
     if found:
-        row.update(status="一致")
+        # 无签名时名字出现在字符串/注释里也会命中，不能据此报一致。
+        row.update(status="无法判断", detail="没有类型签名，只核对到名字出现过")
     else:
         row.update(status="可能不一致", detail="代码里找不到该字段名")
     return row
@@ -180,23 +182,48 @@ def _param_annotations(text: str, name: str) -> list[str]:
     return found
 
 
+def _verbatim_body(line: str) -> str:
+    match = _LABEL.match(line.strip())
+    return match.group(2).strip() if match else line
+
+
+def _literals(line: str) -> list[str]:
+    return [part for part in _PLACEHOLDER.split(_verbatim_body(line)) if len(part.strip()) >= _MIN_LITERAL]
+
+
+def _ordered(text: str, literals: list[str]) -> bool:
+    """同一份文件里按顺序出现，相邻两段之间只留占位符能展开的距离。"""
+    pos = 0
+    for index, part in enumerate(literals):
+        found = text.find(part, pos)
+        if found < 0 or (index and found - pos > _MAX_GAP):
+            return False
+        pos = found + len(part)
+    return True
+
+
 def _sentences(body: str, files: list[tuple[Path, str]]) -> list[dict]:
     lines = _content_lines(body)
     if not lines:
         return [{"status": "无法判断", "section": "原文（须按字面抄）", "detail": "没有可按字面核对的整句"}]
     items = []
-    blob = "\n".join(text for _, text in files)
+    texts = [text for _, text in files]
     for line in lines:
         if _vague(line):
             items.append({"status": "无法判断", "section": "原文（须按字面抄）", "text": line,
                           "detail": "只写了含某某，不是整句"})
             continue
-        if not files:
+        if not texts:
             items.append({"status": "无法判断", "section": "原文（须按字面抄）", "text": line,
                           "detail": "模块没有可读取的代码文件"})
             continue
-        pattern = ".*?".join(re.escape(part) for part in _PLACEHOLDER.split(line))
-        if re.search(pattern, blob, re.DOTALL):
+        literals = _literals(line)
+        if not literals:
+            raw = [part for part in _PLACEHOLDER.split(_verbatim_body(line)) if part.strip()]
+            detail = "只有占位符，无法按字面核对" if not raw else "去掉占位符后没有够长的字面量"
+            items.append({"status": "无法判断", "section": "原文（须按字面抄）", "text": line, "detail": detail})
+            continue
+        if any(_ordered(text, literals) for text in texts):
             items.append({"status": "一致", "section": "原文（须按字面抄）", "text": line})
         else:
             items.append({"status": "可能不一致", "section": "原文（须按字面抄）", "text": line,

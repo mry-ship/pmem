@@ -5,7 +5,7 @@ module: feature.Metrics
 <!-- spec:facts:start -->
 - 上级：无
 - 下级：无
-- 代码路径：`src/pmem/metrics/**`、`src/pmem/bench/**`、`src/pmem/generate/memmap.py`、`src/pmem/cli/map_cmd.py`、`tests/metrics/**`、`tests/bench/**`、`tests/test_memmap.py`、`scripts/calibrate_cite.py`、`bench/**`
+- 代码路径：`src/pmem/metrics/**`、`src/pmem/bench/**`、`src/pmem/generate/memmap.py`、`src/pmem/cli/map_cmd.py`、`tests/metrics/**`、`tests/bench/**`、`tests/test_memmap.py`、`scripts/calibrate_cite.py`、`scripts/pmem-biweekly-health.ps1`、`bench/**`
 <!-- spec:facts:end -->
 
 - [策划设计](策划设计.md)

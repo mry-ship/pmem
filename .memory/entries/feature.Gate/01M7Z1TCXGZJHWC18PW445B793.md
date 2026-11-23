@@ -3,7 +3,7 @@ id: 01M7Z1TCXGZJHWC18PW445B793
 module: feature.Gate
 entity: SpecRead
 kind: feature
-status: active
+status: archived
 supersedes:
 - 01M5M2X26PNS3D45NPQMFV9A59
 anchors:
@@ -18,6 +18,10 @@ verify: uv run pytest tests/hooks/test_gate.py -q -k 'spec_read or empty_spec or
   or glob_ or symlink or memory_gate or grep_pattern or writing_the_spec or shell_with_several
   or pre_tool_edit'
 applies: spec.read_before_edit 为真且闸门不是 off、本对话未跳过记忆时
+archived:
+  'on': '2026-11-23'
+  from: active
+  by: 1002378395@qq.com
 source:
   conversation: 5500e8d7-007c-460c-b7d7-15a5bb04aee9
 ---

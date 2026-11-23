@@ -236,17 +236,21 @@ def tool_paths(args: dict) -> list[str]:
     return paths
 
 
-def _transcript_tail(transcript_path: str | None) -> list[tuple[str, list]] | None:
-    """对话记录（JSONL，UTF-8，不受 Hook 转码影响）末尾的消息，从新到旧，每条为（角色, 内容块）；读不到时返回 None。"""
+def _transcript_lines(transcript_path: str | None, *, entire: bool) -> list[str] | None:
     if not transcript_path:
         return None
     try:
         with open(_local_path(str(transcript_path)), "rb") as fh:
-            fh.seek(0, 2)
-            fh.seek(max(0, fh.tell() - _TRANSCRIPT_TAIL))
+            if not entire:
+                fh.seek(0, 2)
+                fh.seek(max(0, fh.tell() - _TRANSCRIPT_TAIL))
             lines = fh.read().decode("utf-8", errors="replace").splitlines()
     except OSError:
         return None
+    return lines
+
+
+def _records_from_lines(lines: list[str]) -> list[tuple[str, list]]:
     records = []
     for line in reversed(lines):
         try:
@@ -260,6 +264,18 @@ def _transcript_tail(transcript_path: str | None) -> list[tuple[str, list]] | No
         content = message.get("content", record.get("content"))
         records.append((role, content if isinstance(content, list) else [{"type": "text", "text": content or ""}]))
     return records
+
+
+def _transcript_tail(transcript_path: str | None) -> list[tuple[str, list]] | None:
+    """对话记录（JSONL，UTF-8，不受 Hook 转码影响）末尾的消息，从新到旧，每条为（角色, 内容块）；读不到时返回 None。"""
+    lines = _transcript_lines(transcript_path, entire=False)
+    return None if lines is None else _records_from_lines(lines)
+
+
+def transcript_records(transcript_path: str | None) -> list[tuple[str, list]] | None:
+    """整份对话记录，从新到旧。规格是否已读不能只看末尾，更早的成功 Read 也要算。"""
+    lines = _transcript_lines(transcript_path, entire=True)
+    return None if lines is None else _records_from_lines(lines)
 
 
 def last_user_text(transcript_path: str | None) -> str | None:

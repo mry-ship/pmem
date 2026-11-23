@@ -5,7 +5,7 @@ module: feature.ModuleCatalog
 <!-- spec:facts:start -->
 - 上级：无
 - 下级：无
-- 代码路径：`src/pmem/core/registry.py`、`src/pmem/catalog/**`、`src/pmem/cli/migrate_cmd.py`、`src/pmem/cli/sync_cmd.py`、`tests/core/test_registry_*.py`、`tests/core/conftest.py`、`tests/test_migrate.py`、`tests/test_migrate_split.py`、`tests/test_sync.py`
+- 代码路径：`src/pmem/core/registry.py`、`src/pmem/core/autosync.py`、`src/pmem/core/codefiles.py`、`src/pmem/catalog/**`、`src/pmem/cli/migrate_cmd.py`、`src/pmem/cli/sync_cmd.py`、`tests/core/test_registry_*.py`、`tests/core/conftest.py`、`tests/test_migrate.py`、`tests/test_migrate_split.py`、`tests/test_sync.py`、`tests/test_autosync.py`、`tests/test_module_hierarchy.py`
 <!-- spec:facts:end -->
 
 - [策划设计](策划设计.md)

@@ -5,7 +5,7 @@ module: feature.Onboarding
 <!-- spec:facts:start -->
 - 上级：无
 - 下级：无
-- 代码路径：`src/pmem/cli/init_cmd.py`、`src/pmem/cli/doctor_cmd.py`、`src/pmem/generate/templates.py`、`src/pmem/generate/integrations.py`、`src/pmem/scan/**`、`tests/test_cli_flow.py`
+- 代码路径：`src/pmem/cli/init_cmd.py`、`src/pmem/cli/doctor_cmd.py`、`src/pmem/generate/templates.py`、`src/pmem/generate/integrations.py`、`src/pmem/generate/mcp_enable.py`、`src/pmem/scan/**`、`tests/test_cli_flow.py`、`tests/test_lazy_doctor.py`、`tests/test_mcp_enable.py`、`tests/test_integrations.py`、`tests/test_doctor_console_python.py`
 <!-- spec:facts:end -->
 
 - [策划设计](策划设计.md)

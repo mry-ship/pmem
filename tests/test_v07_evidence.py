@@ -511,13 +511,13 @@ def test_evidence_search_json_when_via_cli_parser():
     assert _parse_when_arg(['{"platform":["android","ios"]}']) == {"platform": ["android", "ios"]}
 
 
-def test_evidence_version_is_073():
-    """场景：安装包版本。期望：当前为 0.7.3。"""
+def test_evidence_version_is_074():
+    """场景：安装包版本。期望：当前为 0.7.4。"""
     import pmem
 
-    assert pmem.__version__ == "0.7.3"
+    assert pmem.__version__ == "0.7.4"
     out = _pmem("--version")
-    assert "0.7.3" in out.stdout
+    assert "0.7.4" in out.stdout
 
 
 def test_package_version_sources_match():

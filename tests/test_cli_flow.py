@@ -173,35 +173,35 @@ class _Answer:
         return self.text
 
 
-def test_init_keeps_spec_reminder_on_unless_the_user_says_no(tmp_path, capsys):
+def test_init_keeps_spec_reminder_off_unless_the_user_says_yes(tmp_path, capsys):
     from pmem.cli.init_cmd import run_init
 
+    kept = tmp_path / "kept"
+    assert run_init(kept, "generic", stdin=_Answer("\n")) == 0
+    kept_config = yaml.safe_load((kept / ".memory" / "config.yaml").read_text(encoding="utf-8"))
+    assert kept_config["spec"]["reminder"] is False
+    assert kept_config["spec"]["read_before_edit"] is False
+    assert "规格提醒默认关闭" in capsys.readouterr().out
+
     opened = tmp_path / "opened"
-    assert run_init(opened, "generic", stdin=_Answer("\n")) == 0
+    assert run_init(opened, "generic", stdin=_Answer("y\n")) == 0
     opened_config = yaml.safe_load((opened / ".memory" / "config.yaml").read_text(encoding="utf-8"))
     assert opened_config["spec"]["reminder"] is True
-    assert opened_config["spec"]["read_before_edit"] is True
-    assert "规格提醒默认开启" in capsys.readouterr().out
-
-    declined = tmp_path / "declined"
-    assert run_init(declined, "generic", stdin=_Answer("n\n")) == 0
-    declined_config = yaml.safe_load((declined / ".memory" / "config.yaml").read_text(encoding="utf-8"))
-    assert declined_config["spec"]["reminder"] is False
-    assert declined_config["spec"]["read_before_edit"] is True
-    assert "规格提醒已关闭" in capsys.readouterr().out
-    text = (declined / ".memory" / "config.yaml").read_text(encoding="utf-8")
-    assert "reminder: false" in text and "已关闭" in text
+    assert opened_config["spec"]["read_before_edit"] is False
+    assert "规格提醒已开启" in capsys.readouterr().out
+    text = (opened / ".memory" / "config.yaml").read_text(encoding="utf-8")
+    assert "reminder: true" in text and "已开启" in text
 
 
-def test_init_leaves_spec_reminder_on_without_a_terminal(tmp_path, capsys):
+def test_init_leaves_spec_reminder_off_without_a_terminal(tmp_path, capsys):
     assert main(["init", "--root", str(tmp_path), "--type", "generic"]) == 0
     config = yaml.safe_load((tmp_path / ".memory" / "config.yaml").read_text(encoding="utf-8"))
-    assert config["spec"]["reminder"] is True
-    assert config["spec"]["read_before_edit"] is True
+    assert config["spec"]["reminder"] is False
+    assert config["spec"]["read_before_edit"] is False
     out = capsys.readouterr().out
-    assert "规格提醒默认开启" in out
+    assert "规格提醒默认关闭" in out
     main(["init", "--root", str(tmp_path)])
-    assert "规格提醒默认开启" not in capsys.readouterr().out
+    assert "规格提醒默认关闭" not in capsys.readouterr().out
 
 
 def test_init_keeps_existing_memory_config(tmp_path):

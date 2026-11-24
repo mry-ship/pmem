@@ -63,8 +63,8 @@ wiki:
   dir: .memory/wiki       # 首次生成时放一个 .gitignore 不进版本库；想提交就删掉它
 spec:
   dir: .memory/specs      # 每个模块一份当前规格，进版本库；正文由 pmem-spec 技能写
-  reminder: true          # 默认开启。改了模块却没更新规格时，回合结束提醒一次；不要时改成 false
-  read_before_edit: true  # 默认开启。程序设计或模块现状已写完时，本对话还没读过就先拦住这次修改
+  reminder: false         # 默认关闭。要在回合结束提醒更新规格，改成 true
+  read_before_edit: false # 默认关闭。程序设计或模块现状已写完时，要在改代码前先读，改成 true
 server:
   watchdog: true          # MCP 服务崩溃、卡死或 pmem 升级后自动重启，Cursor 不用手动重连
   request_timeout: 120    # 单次调用超过这么多秒没响应就判定卡死并重启

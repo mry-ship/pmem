@@ -258,7 +258,7 @@ class Guard(GateAttrs):
             return False
         if self.config.get("gate.mode") == "off":
             return False
-        return bool(self.config.get("spec.read_before_edit", True))
+        return bool(self.config.get("spec.read_before_edit", False))
 
     def _spec_root(self) -> str:
         return str(self.config.get("spec.dir") or ".memory/specs").replace("\\", "/").strip("/")

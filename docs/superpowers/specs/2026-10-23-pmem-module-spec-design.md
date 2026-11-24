@@ -96,9 +96,9 @@
 
 不设定时任务，也不在写入记忆后自动改规格。
 
-`spec.reminder` 默认开启。设为 false 时不提醒。开启且闸门不是 off 时，回合结束和功能记录用同一份「本轮真正改了行为的模块」名单（`Reminders._record_required`：不计废弃模块，不计 `gate.record_exempt`）。其中还没写过对应规格文件的，提醒一次。回复里对该模块声明了「无需记录」的，规格也不提醒。
+`spec.reminder` 默认关闭。设为 true 且闸门不是 off 时，回合结束和功能记录用同一份「本轮真正改了行为的模块」名单（`Reminders._record_required`：不计废弃模块，不计 `gate.record_exempt`）。其中还没写过对应规格文件的，提醒一次。回复里对该模块声明了「无需记录」的，规格也不提醒。
 
-`spec.read_before_edit` 默认开启。程序设计或模块现状已经写完（没有整行 `<!-- spec:empty -->`）时，本对话还没读过这些文件，block 会先拦住并把规格摘录放进提示，warn 只拦一次。空骨架、文件不存在、只写了策划或美术，不拦。闸门 off，或本对话说了跳过记忆，也不要求。读过只认 Read 成功打开某一份规格正文：post-tool 没有失败字段，或对话记录里同一次 Read 的每条结果都未标失败；同一条 Read 只要有一条结果标了失败就不算。Grep、Glob、语义搜索和打开目录不算。只发起还没有成功结果的不算。Cursor 对话记录往往不含工具调用，quiet / Codex 的 Hook 也看不到 Read：本对话还没记到过任何一次成功读取时，摘录给过后再改放行；一旦记到过读取，没读完的文件继续拦。记忆闸门优先于规格闸门。设为 false 时不拦。这项不跟着 harness：harness 仍默认 off，只在开启时附「常一起改 / 修复提交 / 必须保持」摘录。
+`spec.read_before_edit` 默认关闭。设为 true 后，程序设计或模块现状已经写完（没有整行 `<!-- spec:empty -->`）时，本对话还没读过这些文件，block 会先拦住并把规格摘录放进提示，warn 只拦一次。空骨架、文件不存在、只写了策划或美术，不拦。闸门 off，或本对话说了跳过记忆，也不要求。读过只认 Read 成功打开某一份规格正文：post-tool 没有失败字段，或对话记录里同一次 Read 的每条结果都未标失败；同一条 Read 只要有一条结果标了失败就不算。Grep、Glob、语义搜索和打开目录不算。只发起还没有成功结果的不算。Cursor 对话记录往往不含工具调用，quiet / Codex 的 Hook 也看不到 Read：本对话还没记到过任何一次成功读取时，摘录给过后再改放行；一旦记到过读取，没读完的文件继续拦。记忆闸门优先于规格闸门。设为 false 时不拦。这项不跟着 harness：harness 仍默认 off，只在开启时附「常一起改 / 修复提交 / 必须保持」摘录。
 
 `.memory/**` 在闸门忽略名单里，写规格不会进入 `edited_files`。因此在 `_post_tool` 里单独认：写入路径落在 `spec.dir` 下、文件名是某个模块的规格时，记入本对话状态 `spec_written`。忽略名单继续挡住它，不把它当成业务改动，也不为此再要求写一条功能记录。
 
@@ -111,11 +111,11 @@
 ```yaml
 spec:
   dir: .memory/specs
-  reminder: true          # 默认开启。不要时改成 false；gate.mode 为 off 时不提醒
-  read_before_edit: true  # 默认开启。已写完的程序设计、模块现状，改代码前本对话还没读过就先拦住
+  reminder: false         # 默认关闭。要开启，改成 true；gate.mode 为 off 时不提醒
+  read_before_edit: false # 默认关闭。已写完的程序设计、模块现状，改代码前要先读就改成 true
 ```
 
-`spec.dir`、`spec.reminder`、`spec.read_before_edit` 有缺省值，后两项缺省是开。首次 `pmem init` 生成配置时，在终端里确认规格提醒：直接回车保持开启，输入 n 才写成 false。没有终端时不询问，保持开启并打印改法。`read_before_edit` 不单独询问，模板里就是 true。已有项目的 `config.yaml` 不被 `pmem init` 改写，再次运行也不再问，也不会被补上一份 `spec` 段。缺了这两项时，`Config.load` 在读取时并入 true，因此没写过的旧项目升级后会开始提醒，也会在改代码前要求读已写完的规格。文件里已经写成 false 的保持关闭，已经写了的 `spec.dir` 保持原值。
+`spec.dir`、`spec.reminder`、`spec.read_before_edit` 有缺省值，后两项缺省是关。首次 `pmem init` 生成配置时，在终端里确认规格提醒：直接回车保持关闭，输入 y 才写成 true。没有终端时不询问，保持关闭并打印改法。`read_before_edit` 不单独询问，模板里就是 false。已有项目的 `config.yaml` 不被 `pmem init` 改写，再次运行也不再问，也不会被补上一份 `spec` 段。缺了这两项时，`Config.load` 在读取时并入 false，因此没写过的旧项目升级后不再提醒，也不在改代码前要求读已写完的规格。文件里已经写成 true 的保持开启，已经写了的 `spec.dir` 保持原值。
 
 ### 3.5 和记忆、Wiki 的关系
 

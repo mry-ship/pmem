@@ -19,22 +19,22 @@ def test_defaults_fill_missing_keys(tmp_path):
     assert cfg.get("search.limit") == 5
     assert cfg.get("vcs") == "auto"
     assert cfg.get("spec.dir") == ".memory/specs"
-    assert cfg.get("spec.reminder") is True
-    assert cfg.get("spec.read_before_edit") is True
+    assert cfg.get("spec.reminder") is False
+    assert cfg.get("spec.read_before_edit") is False
 
 
-def test_spec_switches_stay_on_when_only_the_directory_is_set(tmp_path):
+def test_spec_switches_stay_off_when_only_the_directory_is_set(tmp_path):
     write_config(tmp_path, "spec: { dir: .memory/specs }\n")
-    cfg = Config.load(tmp_path)
-    assert cfg.get("spec.reminder") is True
-    assert cfg.get("spec.read_before_edit") is True
-
-
-def test_spec_switches_can_be_turned_off(tmp_path):
-    write_config(tmp_path, "spec: { reminder: false, read_before_edit: false }\n")
     cfg = Config.load(tmp_path)
     assert cfg.get("spec.reminder") is False
     assert cfg.get("spec.read_before_edit") is False
+
+
+def test_spec_switches_can_be_turned_on(tmp_path):
+    write_config(tmp_path, "spec: { reminder: true, read_before_edit: true }\n")
+    cfg = Config.load(tmp_path)
+    assert cfg.get("spec.reminder") is True
+    assert cfg.get("spec.read_before_edit") is True
 
 
 def test_empty_config_file_uses_defaults(tmp_path):

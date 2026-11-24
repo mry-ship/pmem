@@ -15,7 +15,7 @@ from pmem.hooks.state import SessionState
 from pmem.metrics.events import read_events
 
 CONFIG = ("project: {{ name: demo }}\nvcs: none\n"
-          "gate: {{ mode: {mode}, analysis_reminder: true }}\nspec: {{ reminder: false }}\n")
+          "gate: {{ mode: {mode}, analysis_reminder: true }}\nspec: {{ reminder: false, read_before_edit: true }}\n")
 MODULES = """
 categories: { gameplay: {}, economy: {} }
 modules:
@@ -1684,7 +1684,7 @@ def test_spec_read_can_be_turned_off(make_project):
     config = root / ".memory" / "config.yaml"
     config.write_text(
         config.read_text(encoding="utf-8").replace(
-            "spec: { reminder: false }",
+            "spec: { reminder: false, read_before_edit: true }",
             "spec: { reminder: false, read_before_edit: false }",
         ),
         encoding="utf-8",

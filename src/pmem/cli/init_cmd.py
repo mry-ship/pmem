@@ -21,24 +21,24 @@ def guess_type(root: Path) -> str:
 
 
 def choose_spec_reminder(stdin=None) -> bool | None:
-    """首次写入配置时确认规格提醒。默认开启。
+    """首次写入配置时确认规格提醒。默认关闭。
 
-    直接回车，或输入 y、yes、「是」，保持开启。输入 n、no 或「否」才关闭。
-    没有终端（脚本、测试、Agent）时不询问，返回 None，沿用模板里的开启。
+    输入 y、yes 或「是」才开启。直接回车，或输入 n、no、「否」，保持关闭。
+    没有终端（脚本、测试、Agent）时不询问，返回 None，沿用模板里的关闭。
     """
     stream = sys.stdin if stdin is None else stdin
     if not getattr(stream, "isatty", lambda: False)():
         return None
-    print("规格提醒默认开启。改了模块后，要在回合结束提醒更新规格吗？"
-          "直接回车保持开启，输入 n 关闭：", end=" ", flush=True)
+    print("规格提醒默认关闭。改了模块后，要在回合结束提醒更新规格吗？直接回车保持关闭，输入 y 开启：",
+          end=" ", flush=True)
     try:
         answer = stream.readline()
     except EOFError:
         print()
-        return True
-    if answer.strip().lower() in {"n", "no", "否"}:
         return False
-    return True
+    if answer.strip().lower() in {"y", "yes", "是"}:
+        return True
+    return False
 
 
 def run_init(root: Path, project_type: str | None, gate: str | None = None, agents: str = "auto",
@@ -62,15 +62,15 @@ def run_init(root: Path, project_type: str | None, gate: str | None = None, agen
     if not config_path.exists():
         choice = choose_spec_reminder(stdin)
         text = CONFIG_TEMPLATE.format(name=root.name, type=project_type, gate=gate)
-        if choice is False:
+        if choice is True:
             text = text.replace(
-                "  reminder: true          # 默认开启。改了模块却没更新规格时，回合结束提醒一次；不要时改成 false",
-                "  reminder: false         # 已关闭。要重新开启，改成 true",
+                "  reminder: false         # 默认关闭。要在回合结束提醒更新规格，改成 true",
+                "  reminder: true          # 已开启。不要时改成 false",
                 1,
             )
-            spec_note = "规格提醒已关闭。以后要开，把 .memory/config.yaml 里的 spec.reminder 改成 true。"
+            spec_note = "规格提醒已开启。不想要时，把 .memory/config.yaml 里的 spec.reminder 改成 false。"
         else:
-            spec_note = "规格提醒默认开启。不想要时，把 .memory/config.yaml 里的 spec.reminder 改成 false。"
+            spec_note = "规格提醒默认关闭。要开启时，把 .memory/config.yaml 里的 spec.reminder 改成 true。"
         write_text(config_path, text)
         done.append(f"创建 {config_path.relative_to(root)}（项目类型 {project_type}，闸门 {gate}）")
     if not modules_path.exists():

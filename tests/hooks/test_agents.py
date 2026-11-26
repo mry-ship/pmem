@@ -115,6 +115,9 @@ def test_stop_reminder_after_edit_blocks_so_every_agent_version_continues(root):
 
 
 def test_post_tool_record_counts_as_written(root):
+    # 0.7.6 起规格提醒默认关闭，这里要验证“记忆已写、规格没更新”仍各自记账，所以显式打开。
+    config = root / ".memory" / "config.yaml"
+    config.write_text(config.read_text(encoding="utf-8") + "spec: { reminder: true }\n", encoding="utf-8")
     run("claude", "pre-tool", {"session_id": "s6", "tool_name": "mcp__pmem__search_memory",
                                "tool_input": {"module": "gameplay.Jigsaw"}}, root)
     run("claude", "post-tool", claude_edit(root, "src/Jigsaw/Board.cs", "s6"), root)

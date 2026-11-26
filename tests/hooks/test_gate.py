@@ -1092,6 +1092,57 @@ def test_events_are_logged_for_report(make_project):
     assert stop["nudged"] == ["gameplay.Jigsaw"]
 
 
+def _logged(root: Path, kind: str) -> list[dict]:
+    return [e for e in read_events(Config.load(root).cache_dir) if e["type"] == kind]
+
+
+def test_deny_event_carries_tool_use_id(make_project):
+    """afterFileEdit 没有 tool_use_id，只能在 preToolUse 的判定上留 id，report 才能对上是哪次写入。"""
+    root = make_project("block")
+    payload = {**write_payload(root, "src/Jigsaw/Board.cs"), "tool_use_id": "toolu_1"}
+    assert handle("pre-tool", payload, root)["permission"] == "deny"
+    [event] = _logged(root, "gate")
+    assert event["tool"] == "toolu_1"
+    assert _logged(root, "gate_pass") == []
+
+
+def test_pass_event_when_module_has_no_memory(make_project):
+    root = make_project("block", with_memory=False)
+    payload = {**write_payload(root, "src/Jigsaw/Board.cs"), "tool_use_id": "toolu_2"}
+    assert handle("pre-tool", payload, root)["permission"] == "allow"
+    [event] = _logged(root, "gate_pass")
+    assert (event["module"], event["reason"], event["tool"]) == ("gameplay.Jigsaw", "no_memory", "toolu_2")
+    assert _logged(root, "gate") == []
+
+
+def test_pass_event_after_warning_and_without_tool_id(make_project):
+    root = make_project("warn")
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "deny"
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+    [event] = _logged(root, "gate_pass")
+    assert event["reason"] == "warned"
+    assert "tool" not in event
+
+
+def test_pass_event_when_user_skipped_memory(make_project):
+    root = make_project("block")
+    handle("prompt", {"conversation_id": "c1", "prompt": "这次跳过记忆，直接改"}, root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+    assert [e["reason"] for e in _logged(root, "gate_pass")] == ["skip"]
+
+
+def test_no_pass_event_once_module_was_searched(make_project):
+    """已查过的模块是正常路径，不记 gate_pass。没查过却放行（跳过、没记忆、已提醒过）的每次写入都会记一条。"""
+    root = make_project("block")
+    handle("before-mcp", search_payload(module="gameplay.Jigsaw"), root)
+    after = {"conversation_id": "c1", "tool_name": "MCP:search_memory",
+             "result_json": json.dumps({"ok": True, "module": "gameplay.Jigsaw",
+                                        "items": [{"id": "01JA7K3M2X9F4Q8W6ZB1C2D3E4", "kind": "conclusion"}]})}
+    handle("after-mcp", after, root)
+    assert handle("pre-tool", write_payload(root, "src/Jigsaw/Board.cs"), root)["permission"] == "allow"
+    assert _logged(root, "gate_pass") == [] and _logged(root, "gate") == []
+
+
 # ---- 提问审查 ----
 
 def read_payload(root: Path, rel: str, conv="c1") -> dict:

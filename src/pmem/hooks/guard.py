@@ -195,18 +195,20 @@ class Guard(GateAttrs):
 
     def _guard_module(self, rel: str, module: str) -> dict | None:
         mode = self.config.get("gate.mode")
-        if mode == "off" or self.state is None or self.state.data["skip"]:
+        if mode == "off" or self.state is None:
             return None
         if self.state.has("searched", module):
             return None
+        if self.state.data["skip"]:
+            return self._gate_pass(rel, module, "skip")
         count = self.memory_count(module)
         # 子模块自己还没有记忆、上级模块有教训时照样要先查：查子模块会带上上级的教训
         _, upper = self.ancestor_pitfalls(module)
         if count == 0 and upper == 0:
-            return None
+            return self._gate_pass(rel, module, "no_memory")
         if mode == "warn":
             if self.state.has("warned", module):
-                return None
+                return self._gate_pass(rel, module, "warned")
             self.state.add("warned", module)
             self.save()
         call = f'search_memory(module="{module}", path="{rel}")'
@@ -224,8 +226,17 @@ class Guard(GateAttrs):
             )
         text, total = self._pitfalls(module, rel)
         message += text
-        self.log("gate", module=module, file=rel, mode=mode, pitfalls=total or None)
+        self.log("gate", module=module, file=rel, mode=mode, pitfalls=total or None, tool=self._tool_use_id())
         return {"permission": "deny", "user_message": message, "agent_message": message}
+
+    def _tool_use_id(self) -> str | None:
+        """宿主给 preToolUse 的工具调用 id；afterFileEdit 没有它，所以闸门的判定要在这里留下，才能和哪次调用对上。"""
+        value = self.payload.get("tool_use_id")
+        return value if isinstance(value, str) and value else None
+
+    def _gate_pass(self, rel: str, module: str, reason: str) -> None:
+        """模块还没查过却放行：记下原因，report 才能区分“没记忆/已提醒过/用户跳过”和真正漏过。"""
+        self.log("gate_pass", module=module, file=rel, reason=reason, tool=self._tool_use_id())
 
     def _pitfalls(self, module: str, rel: str | None = None) -> tuple[str, int]:
         """检索按关键词排序，可能漏掉与这次修改相关的坑；排除项、风险、更正直接列出来，按这个顺序。

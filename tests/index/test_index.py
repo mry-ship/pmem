@@ -316,7 +316,20 @@ def test_source_kind_does_not_outrank_a_relevant_memory(storage, tmp_path):
     hit = add(storage, "奖励重复发放的根因是领取按钮没有防连点", source_kind="inference")
     result = make_index(storage, tmp_path).search(module="gameplay.Jigsaw", query="奖励重复发放", today=TODAY)
     assert ids(result)[0] == hit.id
-    assert result.items[0]["source_kind"] == "inference" and result.items[0]["unverified"] is True
+    assert result.items[0]["source_kind"] == "inference" and "unverified" not in result.items[0]
+
+
+def test_check_rows_folds_extra_problems_but_keeps_rule_problem_visible():
+    from pmem.core.entry import ENFORCED_STALE, enforced_mark
+    from pmem.index.store import CHECK_SHOWN, _check_rows
+
+    few = ["a 已不存在", "b 已不存在"]
+    assert _check_rows(few) == few
+    many = [f"f{i} 已不存在" for i in range(CHECK_SHOWN + 2)] + ["规则文件 r.mdc 已不存在"]
+    rows = _check_rows(many)
+    assert len(rows) == CHECK_SHOWN + 1 and rows[-1] == f"另有 {len(many) - CHECK_SHOWN} 处"
+    # 规则类问题排在前面，折叠后仍能让标题标「规则需核实」，不会误标成已由规则拦截
+    assert enforced_mark(["r.mdc#x"], rows) == ENFORCED_STALE
 
 
 def test_as_of_follows_valid_from_and_current_search_does_not_hide(storage, tmp_path):

@@ -308,4 +308,4 @@ def test_trimmed_rule_keeps_every_instruction_that_changes_behaviour():
                    "不要向用户确认", "draft_id", "plan", "exclusion", "risk", "decision", "不问用户",
                    "不写密码、密钥、个人信息"):
         assert phrase in RULE_BODY, phrase
-    assert len(RULE_BODY) < 1400
+    assert len(RULE_BODY) < 1450

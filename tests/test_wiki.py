@@ -70,7 +70,18 @@ def test_wiki_marks_only_memories_whose_code_changed(root):
     assert "需核实" not in page
 
 
+def test_wiki_auto_defaults_to_off(root):
+    service = MemoryService(root)
+    try:
+        result = service.record("economy.Shop", "Price", "decision", "价格统一走服务端下发，客户端只做展示，不在本地缓存价格")
+    finally:
+        service.close()
+    assert result["ok"] and "warnings" not in result
+    assert not (root / ".memory" / "wiki").exists()
+
+
 def test_record_regenerates_wiki(root):
+    (root / ".memory" / "config.yaml").write_text(CONFIG + "wiki: { auto: true }\n", encoding="utf-8")
     service = MemoryService(root)
     try:
         result = service.record("economy.Shop", "Price", "decision", "价格统一走服务端下发，客户端只做展示，不在本地缓存价格")

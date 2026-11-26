@@ -107,7 +107,7 @@
 <div class="layout">
 <nav>
   <div class="brand">pmem 使用手册</div>
-  <div class="ver">v0.7.6 · 项目研发记忆</div>
+  <div class="ver">v0.7.7 · 项目研发记忆</div>
   <a href="#glance">一眼看懂</a>
   <a href="#what">pmem 是什么</a>
   <a href="#benefits">收益与适用场景</a>
@@ -191,7 +191,7 @@ pmem doctor</code></pre>
     <tr><td>业务下线、模块不再维护</td><td><code>pmem migrate deprecate &lt;模块&gt; --apply</code>，<code>--undo</code> 撤销</td></tr>
     <tr><td>定期收口（模块负责人）</td><td>对 AI 说“按 pmem-consolidate 技能整理记忆库”（按 <code>pmem health</code> 逐节处理）</td></tr>
     <tr><td>想看效果</td><td><code>pmem report</code></td></tr>
-    <tr><td>想通读全部结论</td><td>打开 <code>.memory/wiki/index.md</code>（写入记忆后自动更新，过期的标“需核实”）</td></tr>
+    <tr><td>想通读全部结论</td><td>先手动运行 <code>pmem wiki</code>，再打开 <code>.memory/wiki/index.md</code>（过期的标“需核实”）；想在写入记忆后自动更新，把 <code>wiki.auto</code> 改成 <code>true</code></td></tr>
     <tr><td>看模块现在的完整设计</td><td>打开 <code>.memory/specs/&lt;模块&gt;/</code>，四份分开：策划、美术、程序、现状，记的是当前完整内容。还没有就对 AI 说“补全模块规格”（入口 <code>pmem spec complete</code>，正文写到九成八）。<code>pmem init</code> 和自动登记只铺空骨架；模块后来有变化时，对 AI 说“更新这个模块的规格”。规格提醒默认关闭，要开启时把 <code>spec.reminder</code> 设为 true。改代码前默认不要求先读已写完的程序设计和模块现状（<code>spec.read_before_edit</code> 默认关闭；改成 true 后，空骨架仍不要求）。写得成清单的字段名、原文整句和入口锚点，用 <code>pmem spec closed</code> 只读核对，不改规格</td></tr>
     <tr><td>升级 pmem</td><td><code>uv tool upgrade pmem</code></td></tr>
   </table>
@@ -219,8 +219,8 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
   <h2>收益与适用场景</h2>
   <p>固定开销、速度和检索命中是本仓库实测。少被纠正、少花时间、少用 token，测的是上一代记忆系统；pmem 自己的端到端对比还没做，那组数字只能当保守参考。</p>
 
-  <h3>当前版本 0.7.6</h3>
-  <p class="muted">本版可直接看到的效果与口径（本仓库 <code>pmem report --days 30</code>，2026-11-21）。0.7.6 不改检索排序和采用判定，下表沿用这份报告：</p>
+  <h3>当前版本 0.7.7</h3>
+  <p class="muted">本版可直接看到的效果与口径（本仓库 <code>pmem report --days 30</code>，2026-11-21）。0.7.7 不改检索排序和采用判定，下表沿用这份报告：</p>
   <table>
     <tr><th>指标</th><th>当前数字</th><th>本版相关说明</th></tr>
     <tr><td>检索命中率</td><td><strong>98%</strong>（740 次里 724 次）</td><td>与上版同级；只返回前几条，开销不随记忆变多</td></tr>
@@ -236,6 +236,7 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
     <tr><td>v0.7.4 能力</td><td>已发布</td><td><code>pmem spec closed</code> 仍只读，输出仍是一致 / 可能不一致 / 无法判断；原文先剥一行说明前缀，字面量只在同一文件内按顺序、相邻不超过 4000 字才算一致；无签名字段名只出现过不算一致。规格闸门摘录改为契约各节全文，已读扫描整份对话记录；拒绝文案写明摘录后再改可放行。<code>modules.yaml</code> 顶层 <code>schema_version</code> 不再报不认识</td></tr>
     <tr><td>v0.7.5 能力</td><td>已发布</td><td><code>pmem spec closed</code> 仍只读，三档不变。Markdown 标题和骨架里的其他栏目会结束当前节，原文里以冒号结尾的普通句子仍留在当前节。带类型的字段只对照入口里的路径#符号；没有这种入口，或入口函数没有这个参数时，不把别的函数的同名注解报成一致。规格摘录用同一条栏目边界。同一条 Read 的每条结果都未标失败才算已读，有一条失败就不算</td></tr>
     <tr><td>v0.7.6 能力</td><td>已发布</td><td><code>spec.reminder</code> 与 <code>spec.read_before_edit</code> 缺省改回关闭。没写这两项的配置升级后不再提醒更新规格，也不再拦未读规格；文件里已经写成 true 的保持开启。首次 <code>pmem init</code> 直接回车保持关闭，输入 y 才打开规格提醒</td></tr>
+    <tr><td>v0.7.7 能力</td><td>已发布</td><td><code>wiki.auto</code> 缺省改为关闭，平时手动运行 <code>pmem wiki</code>；工程质量规则里 <code>pmem-minimal</code> / <code>pmem-review</code> 只在用户点名时加载，常驻规则缩成几行；检索结果不再输出 <code>unverified</code> 和 <code>source_hint</code>，没填的 <code>source_kind</code> 不再给 null，<code>check</code> 最多列 3 条；闸门放行时记下 <code>gate_pass</code>（没记忆 / 已提醒过 / 用户跳过）和工具调用 id；MCP <code>record_memory</code> 的说明里不再讲 when、enforced_by、source_kind、valid_from，这些字段本身仍可写</td></tr>
   </table>
   <p class="muted">对照实验仍见下方「v0.5 和 v0.3 比」；端到端「少被纠正 / 少耗时 / 少 token」还没在现行 pmem 上测完，请用 <code>pmem bench</code> 或继续看 <code>pmem report</code>。</p>
 
@@ -289,7 +290,7 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
     <tr><td>结束提醒后真去写</td><td>—</td><td><strong>65%</strong>（43 次里 28 次）</td><td><strong>47%</strong>（19 次里 9 次）</td><td>同上</td></tr>
     <tr><td>跨人复用</td><td>—</td><td><strong>14</strong> 次</td><td><strong>108</strong> 次</td><td>同上。用到同事写的记忆</td></tr>
   </table>
-  <p class="muted">「数字」列里带下降比例的仍是上一代口径；后两列是现行 pmem 本机使用。本仓库列为 <strong>0.7.6</strong> 仍沿用的 2026-11-21 近 30 天报告；TileMatch 为真实业务项目（2026-10-27 报告，窗口 14 天，现行记忆 639 条）。也可用 <code>pmem bench</code> 做对照实验。</p>
+  <p class="muted">「数字」列里带下降比例的仍是上一代口径；后两列是现行 pmem 本机使用。本仓库列为 <strong>0.7.7</strong> 仍沿用的 2026-11-21 近 30 天报告；TileMatch 为真实业务项目（2026-10-27 报告，窗口 14 天，现行记忆 639 条）。也可用 <code>pmem bench</code> 做对照实验。</p>
 
   <h3>检索有多准</h3>
   <table>
@@ -361,7 +362,7 @@ Agent：（自动查 gameplay.Jigsaw 的记忆）
     </div>
     <div class="card">
       <h4>来源 source.kind 与生效日 valid_from</h4>
-      <p><code>source.kind</code> 只说明证据从哪来：<code>human</code>、<code>code</code>、<code>test</code>、<code>conversation</code>、<code>document</code>、<code>inference</code>。缺省是未知。它不写入 <code>verified</code>，也不参与排序。没核对过的结果另标 <code>unverified</code>，和摘要里的「需核实」（关联代码过期）不是一回事。<code>valid_from</code> 是结论实际生效日，格式 <code>YYYY-MM-DD</code>；不填等于写下日期。它只影响 <code>as_of</code>，不改变现行检索。</p>
+      <p><code>source.kind</code> 只说明证据从哪来：<code>human</code>、<code>code</code>、<code>test</code>、<code>conversation</code>、<code>document</code>、<code>inference</code>。缺省是未知。它不写入 <code>verified</code>，也不参与排序。没有 <code>verified</code> 的结果就是还没核对，和摘要里的「需核实」（关联代码过期）不是一回事。<code>valid_from</code> 是结论实际生效日，格式 <code>YYYY-MM-DD</code>；不填等于写下日期。它只影响 <code>as_of</code>，不改变现行检索。</p>
     </div>
     <div class="card">
       <h4>关联代码 anchors 与过期 stale</h4>
@@ -611,7 +612,7 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>memory_graph</code></td><td>模块全貌：每个议题的最新两条结论（过期的带 <code>stale</code>）和相关模块；带 <code>entity</code> 时看该议题的时间线（谁哪天替代了谁）</td><td><code>module</code>；可选 <code>entity</code></td></tr>
     <tr><td><code>list_modules</code></td><td>列出模块、记忆数量和常用议题</td><td>可选 <code>category</code></td></tr>
   </table>
-  <p>检索结果里几个关键字段：<code>items</code>（教训，全文）、<code>features</code>（功能记录和规划，只有标题；改动会改变这些行为时先用 <code>ids</code> 取全文核对）、<code>applies</code>（自由文字适用条件）、<code>when</code>（结构化适用条件）、<code>source_kind</code>（证据来源，缺省 <code>null</code>）、<code>valid_from</code>（写了才出现）、<code>unverified</code>（还没人核对；已有 <code>verified</code> 时不出现）、<code>stale</code>（关联代码已变）、<code>check</code>（具体哪些文件变了）、<code>fallback: module</code>（议题内没命中，退回整个模块）、<code>related</code>（相关模块）、<code>status</code>（只在不是正式记忆时出现，如 <code>seed</code>）、<code>seen</code>（本对话已返回过全文，这次只给标题；上下文里找不到原文时带 <code>full=true</code> 重查）。有检索结果时附一次 <code>source_hint</code>：来源和未核对只是展示，不互相推导，也不改变排序；摘要里的「需核实」只表示关联代码过期。<code>as_of</code> 按生效日回看那天已经生效的记忆和替代；不带 <code>as_of</code> 的现行检索不因未来的 <code>valid_from</code> 把记忆藏起来。同一对话的去重记录在上下文压缩后清空；终端里的 <code>pmem search</code> 由 Hook 在执行前交接对话 id，同样参与去重。MCP 不提供改状态的工具，转正、退回、归档只能由人在命令行操作。</p>
+  <p>检索结果里几个关键字段：<code>items</code>（教训，全文）、<code>features</code>（功能记录和规划，只有标题；改动会改变这些行为时先用 <code>ids</code> 取全文核对）、<code>applies</code>（自由文字适用条件）、<code>when</code>（结构化适用条件）、<code>source_kind</code>（证据来源，没填不出现）、<code>valid_from</code>（写了才出现）、<code>verified</code>（核对日期；没有它就是还没核对）、<code>stale</code>（关联代码已变）、<code>check</code>（具体哪些文件变了，最多列 3 条，超出折成“另有 N 处”）、<code>fallback: module</code>（议题内没命中，退回整个模块）、<code>related</code>（相关模块）、<code>status</code>（只在不是正式记忆时出现，如 <code>seed</code>）、<code>seen</code>（本对话已返回过全文，这次只给标题；上下文里找不到原文时带 <code>full=true</code> 重查）。提示合并在一条 <code>reading_hint</code> 里：没有 <code>verified</code> 表示还没核对，来源只是展示，都不改变排序；摘要里的「需核实」只表示关联代码过期。<code>as_of</code> 按生效日回看那天已经生效的记忆和替代；不带 <code>as_of</code> 的现行检索不因未来的 <code>valid_from</code> 把记忆藏起来。同一对话的去重记录在上下文压缩后清空；终端里的 <code>pmem search</code> 由 Hook 在执行前交接对话 id，同样参与去重。MCP 不提供改状态的工具，转正、退回、归档只能由人在命令行操作。</p>
 </section>
 
 <!-- ============ CLI ============ -->
@@ -633,7 +634,7 @@ git commit -m "接入 pmem"</code></pre>
     <tr><td><code>pmem health [--days 60]</code></td><td>健康报告：未登记和疑似重复的模块、还在旧模块名下的记忆、无归属的代码目录、检索落空热点、可能过时的记忆、疑似互相矛盾的记忆、没人检索的模块、被拒绝的写入、待确认的种子、改了代码却没写功能记录的模块、建议归档与清理待核对、召回偏低的模块</td></tr>
     <tr><td><code>pmem map [--out 文件] [--days 30] [--json]</code></td><td>记忆演化图：默认写 Wiki 目录下的 <code>map.html</code>（单文件、不联网，可缩放、拖动、按类型筛选、只看现行，点节点看全文），终端打印总评和自检（漏记、断链、悬而未决、过期）；<code>--days</code> 是漏记统计的天数，<code>--json</code> 输出图数据。配置里的 Wiki 目录指到项目外时拒绝并返回 2；<code>--out</code> 可以指到别处</td></tr>
     <tr><td><code>pmem graph --module X</code></td><td>模块全貌，或某议题的时间线</td></tr>
-    <tr><td><code>pmem wiki [--out 目录]</code></td><td>生成每模块一页的 Markdown Wiki（默认 <code>.memory/wiki/</code>）：议题、现行结论、历史、相关模块、代码链接，过期的标“需核实”；只覆盖它自己生成的页面，页面文件名只能是合法模块名，不能写出输出目录。配置里的目录指到项目外时拒绝并返回 2；<code>--out</code> 可以指到项目外，但页面仍不能跳出那个目录。写入或确认记忆后会自动运行（<code>wiki.auto</code>）；自动生成时目录在项目外则只警告、记忆仍写入</td></tr>
+    <tr><td><code>pmem wiki [--out 目录]</code></td><td>生成每模块一页的 Markdown Wiki（默认 <code>.memory/wiki/</code>）：议题、现行结论、历史、相关模块、代码链接，过期的标“需核实”；只覆盖它自己生成的页面，页面文件名只能是合法模块名，不能写出输出目录。配置里的目录指到项目外时拒绝并返回 2；<code>--out</code> 可以指到项目外，但页面仍不能跳出那个目录。默认只在手动运行时生成；把 <code>wiki.auto</code> 改成 <code>true</code> 后，写入或确认记忆会自动运行，自动生成时目录在项目外则只警告、记忆仍写入</td></tr>
     <tr><td><code>pmem spec [init|index|fill|complete|closed] [--check] [--module 模块]</code></td><td>模块规格（默认 <code>.memory/specs/&lt;模块&gt;/</code>，四份分开：策划、美术、程序、现状，进版本库，与 Wiki 分开）。给美术只拷 <code>美术设计.md</code>。不加参数只列出完成情况；<code>init</code> 给还没有的那一份写骨架，不覆盖已写正文；<code>complete</code> 是补全模块规格的入口：铺骨架并列出首稿还没写完的模块（有未完成时返回 1），完整正文由技能按代码写到九成八；程序/现状是否未完成只认整行的空标记 <code>&lt;!-- spec:empty --&gt;</code>，正文里用反引号提到该字面量不算未完成；<code>fill</code> 是 <code>complete</code> 的旧名；<code>index</code> 只刷新总目录和各模块 <code>index.md</code> 里的上下级、代码路径，留空列标出策划或美术仍留空、以及缺了那一份，不因此改变完成状态；<code>--check</code> 有模块没完成首稿时返回 1。策划、美术、程序、现状由 <code>pmem-spec</code> 技能写；没有画面的美术节写「本模块无画面」，不因此算未完成。目录指到项目外时返回 2。<code>pmem init</code>、以及 <code>pmem sync --apply</code> 和自动登记真正写入新模块时，都会补上还没有的骨架，不写正文。规格提醒默认关闭；要开启时把 <code>spec.reminder</code> 设为 true。没写过这项的旧配置升级后不再提醒。只改了未登记进模块路径的资源时，这次提醒不会响。改代码前默认不要求先读规格（<code>spec.read_before_edit</code> 缺省 false）。设为 true 后，已写完的程序设计和模块现状没读过就先拦住；整行仍是空标记的骨架不要求读，闸门 off 或本对话说了跳过记忆时也不要求。warn 只拦一次；block 先摘录规格，本对话还没记到任何成功读取时再改放行（Cursor/quiet/Codex 往往看不到 Read），一旦记到过读取则未读完的继续拦。记忆闸门优先于规格闸门。<code>closed</code> 只读：核对入参/出参字段闭集、原文整句和入口锚点，输出只有一致、可能不一致、无法判断；散文、必须保持的行为、策划稿都不判成不一致。<code>--module</code> 只用于 <code>closed</code>，只核对该模块</td></tr>
     <tr><td><code>pmem list</code></td><td>模块与记忆数量</td></tr>
     <tr><td><code>pmem terms</code></td><td>记忆里的高频词，用于整理同义词</td></tr>
@@ -678,7 +679,7 @@ gate:
   question_review: true     <span class="c"># 问题提到的模块没查过时，结束时要求核对</span>
   record_exempt: [...]      <span class="c"># 只改了这些文件的模块不提醒写功能记录；默认是测试、生成代码、json/yaml/toml 等配置，写了就整个替换默认值</span>
 wiki:
-  auto: true                <span class="c"># 写入或确认记忆后自动重新生成 Wiki</span>
+  auto: false               <span class="c"># 默认关闭，要手动运行 pmem wiki。改成 true 后，写入或确认记忆会自动重新生成 Wiki</span>
   dir: .memory/wiki         <span class="c"># 必须在项目内。指到项目外时 pmem wiki / pmem map 拒绝；自动生成只警告。首次生成自带 .gitignore</span>
 spec:
   dir: .memory/specs        <span class="c"># 必须在项目内。每个模块一份当前规格，进版本库；指到项目外时 pmem spec 拒绝</span>
@@ -779,7 +780,7 @@ health:
     <li>同一批次（同一对话，或同一作者 90 分钟内）只有前 2 条按原位置排，超出的降到其他相关结果之后（仍在不相关的之前），避免碎片挤占名额，又不整条丢掉。</li>
     <li>议题内没命中时退回整个模块，并标注 <code>fallback: module</code>。</li>
   </ol>
-  <p>分词：中文按二元组切分、英文按词，camelCase 拆开。默认语义模型 bge-small-zh-v1.5（ONNX 格式，约 90 MB），首次调用才加载。<code>source.kind</code> 和 <code>unverified</code> 不参与排序，也不另设可信度分。时间衰减仍按核对日期（没核对过就用写下日期）。<code>valid_from</code> 必须是 <code>YYYY-MM-DD</code>，不改变现行检索里看不看得到；带 <code>as_of</code> 时，生效日晚于那天的记忆还不存在，替代也要到后继的生效日才把旧结论藏起来。多条已生效的后继里，时间线指向生效最早的那条。</p>
+  <p>分词：中文按二元组切分、英文按词，camelCase 拆开。默认语义模型 bge-small-zh-v1.5（ONNX 格式，约 90 MB），首次调用才加载。<code>source.kind</code> 和有没有 <code>verified</code> 不参与排序，也不另设可信度分。时间衰减仍按核对日期（没核对过就用写下日期）。<code>valid_from</code> 必须是 <code>YYYY-MM-DD</code>，不改变现行检索里看不看得到；带 <code>as_of</code> 时，生效日晚于那天的记忆还不存在，替代也要到后继的生效日才把旧结论藏起来。多条已生效的后继里，时间线指向生效最早的那条。</p>
   <p class="muted">实测：853 条真实记忆、13 个限定模块查询，前 3 条命中目标 pmem 9/13，原向量库服务 4/13；单次检索 1～14 毫秒。</p>
 </section>
 
@@ -921,12 +922,12 @@ pmem reindex</code></pre>
     <li><code>pmem bench</code> 还没有用真实 API Key 跑过完整对照，示例用例只用 <code>--dry-run</code> 验证过。</li>
     <li>模块划分依赖 Agent 按 pmem-bootstrap 技能完成，还没有全自动扫描器。</li>
     <li>Cursor 里 MCP：<code>pmem init</code> 会尝试项目级自动批准，但 Cursor 运行时写的批准会被它覆盖——完全退出 Cursor 后重跑 <code>pmem init</code>，或在 设置 → MCP 手动开一次后 Reload Window。</li>
-    <li>v0.7 类型安全与规则化已发布（schema、<code>enforced_by</code>、<code>facets</code>/<code>when</code>、边界校验、返回契约、pyright）。当前发布包是 v0.7.6：<code>spec.reminder</code> 与 <code>spec.read_before_edit</code> 缺省关闭。0.7.5 的规格核对不再串节、字段签名只对照入口、同一条 Read 有失败就不算已读仍然成立。0.7.4 的同一文件核对、契约全文摘录与整份对话已读仍然成立。0.7.3 的工程质量技能与 <code>reading_hint</code> 仍然成立；<code>spec.reminder</code> 与 <code>spec.read_before_edit</code> 仍可打开，缺省已改回关闭。<code>source.kind</code> 与 <code>valid_from</code> 需要 v0.7.2。旧版改写带来源或生效日的文件时不保证原样保留。</li>
+    <li>v0.7 类型安全与规则化已发布（schema、<code>enforced_by</code>、<code>facets</code>/<code>when</code>、边界校验、返回契约、pyright）。当前发布包是 v0.7.7：<code>wiki.auto</code> 缺省关闭，质量技能只在点名时加载，检索结果不再输出 <code>unverified</code>。0.7.6 的 <code>spec.reminder</code> 与 <code>spec.read_before_edit</code> 缺省关闭仍然成立。0.7.5 的规格核对不再串节、字段签名只对照入口、同一条 Read 有失败就不算已读仍然成立。0.7.4 的同一文件核对、契约全文摘录与整份对话已读仍然成立。0.7.3 的工程质量技能与 <code>reading_hint</code> 仍然成立；<code>spec.reminder</code> 与 <code>spec.read_before_edit</code> 仍可打开，缺省已改回关闭。<code>source.kind</code> 与 <code>valid_from</code> 需要 v0.7.2。旧版改写带来源或生效日的文件时不保证原样保留。</li>
   </ul>
   <p class="muted">更完整的限制清单见仓库首页 README「已知限制」。</p>
 </section>
 
-<p class="muted" style="text-align:center">pmem v0.7.6 · 详细设计见 <code>docs/architecture.md</code> 与 <code>README.md</code></p>
+<p class="muted" style="text-align:center">pmem v0.7.7 · 详细设计见 <code>docs/architecture.md</code> 与 <code>README.md</code></p>
 </main>
 </div>
 </body>

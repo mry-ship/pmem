@@ -66,20 +66,25 @@ def test_quality_block_missing_end_keeps_following_text(tmp_path):
 def test_quality_templates_format_and_keep_frozen_triggers():
     for body in (QUALITY_RULE, MINIMAL_SKILL, REVIEW_SKILL):
         body.format(generated="x")
-    assert "跳过质量" in QUALITY_BODY and "pmem-review 仍按正常触发条件执行" in QUALITY_BODY
-    assert "不影响 pmem 记忆规则" in QUALITY_BODY
-    assert "用户明确要求" in REVIEW_SKILL and "失败语义" in REVIEW_SKILL
-    assert "没有点名审查时，契约不变的单文件内部修正不强制完整审查" in REVIEW_SKILL
+    assert "只在用户点名时加载" in QUALITY_BODY and "不因改动大小自动触发" in QUALITY_BODY
+    assert "仍按 pmem 记忆规则" in QUALITY_BODY
+    assert "用户明确要求" in REVIEW_SKILL and "不因新增文件" in REVIEW_SKILL
+    assert "没有点名审查时，不强制完整审查" in REVIEW_SKILL
     for state in ("未触及", "符合", "违反", "待核实"):
         assert state in REVIEW_SKILL
     assert "待对照代码核对" in REVIEW_SKILL and "不能标成违反" in REVIEW_SKILL
     assert "排除项" in REVIEW_SKILL and "决定" in REVIEW_SKILL and "约束核对逐条一行" in REVIEW_SKILL
     assert "先处理需核实" not in REVIEW_SKILL and "先处理需核实" not in RULE_BODY and "先处理需核实" not in QUALITY_BODY
     assert "用户明确要求审查时，即使只改了一个文件，也要执行" in REVIEW_SKILL
-    assert "没有点名审查时，契约不变的单文件内部修正不强制" in QUALITY_BODY
     assert "没有新增文件、依赖、模块、抽象，也没有跨模块改动时，不做这份完整审查" not in REVIEW_SKILL
     assert "不运行 pmem spec complete" in MINIMAL_SKILL
     assert "pmem-minimal" not in RULE_BODY and "跳过质量" not in RULE_BODY
+    # 工程原则放独立质量段，不进记忆规则正文（见记忆「MinimalChange」排除项）
+    assert "最小改动" not in RULE_BODY
+    assert "只做当前任务所需的最小改动，复用现有写法，改完核对调用方与边界" in QUALITY_BODY
+    assert "只清理本次新增的冗余" in QUALITY_BODY and "不顺手重构既有代码" in QUALITY_BODY
+    assert "3 个及以上文件" in QUALITY_BODY and "不打印审查表格" in QUALITY_BODY
+    assert "spec.read_before_edit 为 true" in MINIMAL_SKILL
 
 
 def test_group_hooks_drop_pmem_handlers_of_events_no_longer_used(tmp_path):

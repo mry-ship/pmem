@@ -19,10 +19,8 @@ def _stale(row: dict) -> list[str]:
 def _provenance(row: dict) -> list[str]:
     """来源和核对只附在结果上。摘要行里的需核实仍只由 _stale 表示锚点过期。"""
     bits = []
-    if "source_kind" in row:
-        bits.append(f"来源：{row['source_kind'] or '未知'}")
-    if row.get("unverified"):
-        bits.append("未核对")
+    if row.get("source_kind"):
+        bits.append(f"来源：{row['source_kind']}")
     if row.get("valid_from"):
         bits.append(f"生效：{row['valid_from']}")
     return [f"    {'；'.join(bits)}"] if bits else []
@@ -107,7 +105,7 @@ def _search(result: dict) -> list[str]:
         lines += _children_lines(children)
     if result.get("context"):
         lines.append(result["context"])
-    for key in ("seen_hint", "applies_hint", "when_hint", "enforced_hint", "source_hint", "reading_hint"):
+    for key in ("seen_hint", "applies_hint", "when_hint", "enforced_hint", "reading_hint"):
         if result.get(key):
             lines.append(f"提示：{result[key]}")
     if result.get("missing"):

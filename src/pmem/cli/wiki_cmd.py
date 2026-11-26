@@ -1,4 +1,4 @@
-"""pmem wiki：从记忆文件生成可浏览的模块 Wiki（Markdown）。写入记忆后也会自动重新生成（wiki.auto）。"""
+"""pmem wiki：从记忆文件生成可浏览的模块 Wiki（Markdown）。默认只手动运行；wiki.auto 设为 true 后，写入记忆也会自动重新生成。"""
 from __future__ import annotations
 
 import sys

@@ -35,7 +35,7 @@ def test_init_creates_project_files_and_merges_existing_cursor_config(tmp_path, 
     assert servers["pmem"]["command"] == "pmem"
     assert (cursor / "rules" / "pmem.mdc").exists()
     quality = (cursor / "rules" / "pmem-quality.mdc").read_text(encoding="utf-8")
-    assert "alwaysApply: true" in quality and "跳过最小方案" in quality
+    assert "alwaysApply: true" in quality and "只在用户点名时加载" in quality
     assert "pmem-minimal" not in (cursor / "rules" / "pmem.mdc").read_text(encoding="utf-8")
     assert (cursor / "skills" / "pmem-bootstrap" / "SKILL.md").exists()
     assert (cursor / "skills" / "pmem-minimal" / "SKILL.md").exists()
@@ -114,7 +114,7 @@ def test_init_wires_claude_and_codex_without_touching_their_other_settings(tmp_p
     assert claude_md.startswith("# 项目说明\n团队约定 A\n") and claude_md.count("<!-- pmem:begin -->") == 1
     assert claude_md.count("<!-- pmem-quality:begin -->") == 1
     assert claude_md.count("<!-- pmem-quality:end -->") == 1
-    assert "confirm_memory" in claude_md and "跳过质量" in claude_md
+    assert "confirm_memory" in claude_md and "只在用户点名时加载" in claude_md
     settings = json.loads((claude / "settings.json").read_text(encoding="utf-8"))
     assert settings["permissions"] == {"allow": ["Bash(ls)"]}
     stop = [h["command"] for g in settings["hooks"].get("Stop", []) for h in g["hooks"]]

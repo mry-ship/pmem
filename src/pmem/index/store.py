@@ -456,7 +456,7 @@ def title_row(entry: Entry, problems: list[str] | None, with_module: bool) -> di
     if with_module:
         row = {"module": entry.module, **row}
     if problems is not None:
-        row["check"] = problems
+        row["check"] = _check_rows(problems)
     _provenance(row, entry)
     if entry.status != "active":
         row["status"] = entry.status
@@ -488,7 +488,7 @@ def entry_row(entry: Entry, problems: list[str] | None, with_module: bool) -> di
     if with_module:
         row = {"module": entry.module, **row}
     if problems is not None:
-        row["check"] = problems
+        row["check"] = _check_rows(problems)
     if entry.verified:
         row["verified"] = entry.verified
     _provenance(row, entry)
@@ -498,9 +498,20 @@ def entry_row(entry: Entry, problems: list[str] | None, with_module: bool) -> di
 
 
 def _provenance(row: dict, entry: Entry) -> None:
-    """来源和核对只展示。缺省来源用 null；没核对过标 unverified。不参与排序。"""
-    row["source_kind"] = entry.source_kind
+    """来源只展示，不参与排序。没填的字段不输出；没有 verified 就是还没核对，不再另给 unverified。"""
+    if entry.source_kind:
+        row["source_kind"] = entry.source_kind
     if entry.valid_from:
         row["valid_from"] = entry.valid_from
-    if not entry.verified:
-        row["unverified"] = True
+
+
+CHECK_SHOWN = 3
+
+
+def _check_rows(problems: list[str]) -> list[str]:
+    """check 只给前几条，其余折成一句，免得一条记忆的问题列表淹没正文。
+    以“规则”开头的问题排在最前：enforced_mark 靠它判断「规则需核实」，被折掉会误标成「已由规则拦截」。"""
+    if len(problems) <= CHECK_SHOWN:
+        return problems
+    ordered = sorted(problems, key=lambda p: not (isinstance(p, str) and p.startswith("规则")))
+    return [*ordered[:CHECK_SHOWN], f"另有 {len(problems) - CHECK_SHOWN} 处"]

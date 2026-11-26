@@ -669,7 +669,8 @@ score   = (rel + bonus) * (0.7 + 0.3 * recency)
 | v0.7.3 | 已完成：工程质量技能 `pmem-minimal` / `pmem-review` 与 `pmem-quality` 规则独立于记忆规则；`spec.reminder` 与 `spec.read_before_edit` 默认开启；`reading_hint` 不改变排序；记忆闸门优先于规格闸门 |
 | v0.7.4 | 已完成：`spec closed` 原文按同一文件顺序核对并剥说明前缀；规格摘录给契约全文，已读看整份对话；拒绝文案写明摘录后再改可放行；`modules.yaml` 认 `schema_version` |
 | v0.7.5 | 已完成：规格核对不再串节，未知栏目结束上一节；带类型的字段只对照入口函数；同一条 Read 有失败就不算已读 |
-| v0.7.6 | 已完成（当前版本）：`spec.reminder` 与 `spec.read_before_edit` 缺省改回关闭。没写这两项的旧配置升级后不再提醒，也不再拦未读规格 |
+| v0.7.6 | 已完成：`spec.reminder` 与 `spec.read_before_edit` 缺省改回关闭。没写这两项的旧配置升级后不再提醒，也不再拦未读规格 |
+| v0.7.7 | 已完成（当前版本）：减负。`wiki.auto` 缺省关闭；`pmem-minimal` / `pmem-review` 只在用户点名时加载；检索结果去掉 `unverified` 与 `source_hint`，`check` 最多 3 条；闸门放行记 `gate_pass` |
 
 ### 14.1 v0.1 验收标准
 

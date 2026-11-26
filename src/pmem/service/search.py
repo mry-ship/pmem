@@ -23,16 +23,15 @@ WHEN_HINT = ("带 when 的记忆只在结构化条件匹配时返回：项目在
 ENFORCED_HINT = ("带 enforced_by 的记忆：规则文件与符号仍在时标题标「已由规则拦截」；"
                  "规则缺失/改过/找不到符号时改标「规则需核实」，勿当已拦住；"
                  "读码摘要里它们排在未保障教训之后，名额优先给仍需靠记忆防的坑。")
-SOURCE_HINT = ("source_kind 只说明证据从哪来，缺省为 null（未知）。没有 verified 时标 unverified，"
-               "只说明还没核对。二者不互相推导，也不改变排序。摘要里的「需核实」只表示关联代码过期。")
 READING_HINT = ("stale=true 时先打开 check 里的代码再引用，不要把「规则需核实」当成锚点过期。"
-                "再看 applies 是否满足。多条冲突时先看有锚点、有 verify、来源不是 inference 的，其余仍要看。不改变排序。")
+                "再看 applies 是否满足。多条冲突时先看有锚点、有 verify、来源不是 inference 的，其余仍要看。"
+                "没有 verified 表示还没核对；source_kind 只说明证据来源。都不改变排序。")
 INHERITED_HINT = ("标 inherited 的教训来自上级模块（module 字段），对本模块同样成立；"
                   "children 是下级模块、记忆条数和各自最新几条记忆的标题（latest，含更下级，教训和功能记录都有）；"
                   "问整体情况时先看这些标题，涉及某个下级的细节或标题不够判断时再按它检索。")
 # seen_hint 很短且告诉终端用户怎么取全文（终端看不到工具说明），每次都给
 _ONCE_HINTS = ("features_hint", "applies_hint", "when_hint", "verify_hint", "inherited_hint",
-               "enforced_hint", "source_hint", "reading_hint")
+               "enforced_hint", "reading_hint")
 _HINT_MARK = "hint:"
 
 
@@ -43,7 +42,7 @@ def _needs_reading_hint(rows: list) -> bool:
 
 
 _KEPT_ON_COLLAPSE = ("module", "id", "entity", "kind", "date", "stale", "check", "status", "scope", "applies",
-                     "when", "enforced_by", "inherited", "source_kind", "valid_from", "unverified", "verified")
+                     "when", "enforced_by", "inherited", "source_kind", "valid_from", "verified")
 
 
 class SearchOps(ServiceBase):
@@ -248,8 +247,6 @@ class SearchOps(ServiceBase):
             response["when_hint"] = WHEN_HINT
         if any(i.get("enforced_by") for i in result.items + result.features):
             response["enforced_hint"] = ENFORCED_HINT
-        if result.items or result.features:
-            response["source_hint"] = SOURCE_HINT
         if _needs_reading_hint([*result.items, *result.features]):
             response["reading_hint"] = READING_HINT
         if as_of:
